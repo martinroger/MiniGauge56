@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "esp32_s3_touch_amoled_1_75.h"
 #include "ui.h"
+#include "esp_log.h"
 
 lv_display_t *main_display;
 
@@ -11,9 +12,18 @@ extern "C" void app_main(void)
     ui_init();
     bsp_display_unlock();
 
-    while(true)
-    {
-        vTaskDelay(pdMS_TO_TICKS(100));
-    }
+    uint8_t brightness = 0;
+    // bsp_display_brightness_set(10);
 
+
+    ESP_LOGI("TAG","Test");
+    while (true)
+    {
+        ESP_LOGI("Pre","Pre Delay");
+        vTaskDelay(pdMS_TO_TICKS(100));
+        brightness += 1;
+        brightness %= 100;
+        // bsp_display_brightness_set(50);
+        
+    }
 }
