@@ -370,7 +370,14 @@
           "disabledStateType": "literal",
           "states": "",
           "localStyles": {
-            "objID": "8eb86917-c831-b762-5685-8d01972e8a22"
+            "objID": "8eb86917-c831-b762-5685-8d01972e8a22",
+            "definition": {
+              "MAIN": {
+                "DEFAULT": {
+                  "bg_color": "000000"
+                }
+              }
+            }
           },
           "groupIndex": 0
         }

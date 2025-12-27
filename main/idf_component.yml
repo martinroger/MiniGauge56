@@ -15,3 +15,7 @@ dependencies:
   #   # All dependencies of `main` are public by default.
   #   public: true
   waveshare/esp32_s3_touch_amoled_1_75: ^1.0.2
+  # waveshare/esp32_s3_touch_amoled_1_75:
+  #   git: https://github.com/ukos-git/Waveshare-ESP32-components.git
+  #   version: d9cd504ba4edf9b5044db51f83b44e9307ec4548
+

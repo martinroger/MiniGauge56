@@ -15,15 +15,20 @@ extern "C" void app_main(void)
     uint8_t brightness = 0;
     // bsp_display_brightness_set(10);
 
-
-    ESP_LOGI("TAG","Test");
+    ESP_LOGI("TAG", "Test");
     while (true)
     {
-        ESP_LOGI("Pre","Pre Delay");
+        ESP_LOGI("Pre", "Pre Delay");
         vTaskDelay(pdMS_TO_TICKS(100));
         brightness += 1;
         brightness %= 100;
-        // bsp_display_brightness_set(50);
-        
+        if (lvgl_port_lock(1))
+        {
+            if (bsp_display_brightness_set(brightness) != ESP_OK)
+                ESP_LOGE(__func__, "Cannot set brightness");
+            else
+                ESP_LOGI(__func__, "Brightness set to %u", brightness);
+            lvgl_port_unlock();
+        }
     }
 }
