@@ -15,22 +15,23 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "esp_timer.h"
-// #include "common.h"
 #include "esp_heap_caps.h"
 #include "esp32_s3_touch_amoled_1_75.h"
 
 // -----------------------------
 // Shared config (from main)
 // -----------------------------
-#define CAN_TX_PIN         GPIO_NUM_18
-#define CAN_RX_PIN         GPIO_NUM_17
-#define CAN_QUEUE_LEN          480
-#define SD_QUEUE_LEN          1000
-#define BATCH_MAX_BYTES    (64*1024)
-#define BATCH_MAX_MS       20
-#define FICTIONAL_START_TIME 1755839937.312293  // due to missing RTC
+// #define CAN_TX_PIN         GPIO_NUM_18
+// #define CAN_RX_PIN         GPIO_NUM_17
+#define CAN_TX_PIN GPIO_NUM_43
+#define CAN_RX_PIN GPIO_NUM_44
+#define CAN_QUEUE_LEN 480
+#define SD_QUEUE_LEN 1000
+#define BATCH_MAX_BYTES (64 * 1024)
+#define BATCH_MAX_MS 20
+#define FICTIONAL_START_TIME 1755839937.312293 // due to missing RTC
 
-static const char* TAG = "LOGGING_MODE";
+static const char *TAG = "LOGGING_MODE";
 
 // -----------------------------
 // Log line structure
@@ -55,7 +56,7 @@ typedef struct
 // -----------------------------
 // Globals
 // -----------------------------
-static FILE* logFile = nullptr;
+static FILE *logFile = nullptr;
 static unsigned long messageCount = 0;
 static unsigned long lastSync = 0;
 
@@ -63,7 +64,7 @@ static QueueHandle_t sdQueue = nullptr;
 static QueueHandle_t canQueue = nullptr;
 
 // Large batch buffer moved to heap/PSRAM to save internal DRAM for queues
-static uint8_t* g_batchBuf = nullptr;
+static uint8_t *g_batchBuf = nullptr;
 static size_t g_batchBufSize = BATCH_MAX_BYTES;
 
 // -----------------------------
@@ -82,23 +83,23 @@ static double get_unix_timestamp()
 }
 
 // cleanup threshold (bytes)
-#define SD_LOW_LIMIT   (2ULL * 1024 * 1024 * 1024)  // 2 GB
-#define SD_TARGET_FREE (4ULL * 1024 * 1024 * 1024)  // 4 GB
+#define SD_LOW_LIMIT (2ULL * 1024 * 1024 * 1024)   // 2 GB
+#define SD_TARGET_FREE (4ULL * 1024 * 1024 * 1024) // 4 GB
 
 // -----------------------------
 // Next free filename (CANxxxxx.LOG) with cleanup
 // -----------------------------
-static void next_free_file_name(char* path, size_t path_size)
+static void next_free_file_name(char *path, size_t path_size)
 {
     int max_index = -1;
-    struct dirent* entry;
+    struct dirent *entry;
 
     // Check free space
     uint64_t out_total = 0, out_free = 0;
     esp_err_t err = esp_vfs_fat_info(BSP_SD_MOUNT_POINT, &out_total, &out_free);
     if (err == ESP_OK)
     {
-        ESP_LOGI("SD", "Free space: %llu bytes", (unsigned long long) out_free);
+        ESP_LOGI("SD", "Free space: %llu bytes", (unsigned long long)out_free);
 
         if (out_free < SD_LOW_LIMIT)
         {
@@ -107,8 +108,9 @@ static void next_free_file_name(char* path, size_t path_size)
             while (out_free < SD_TARGET_FREE)
             {
                 int min_index = -1;
-                DIR* d = opendir(BSP_SD_MOUNT_POINT);
-                if (!d) break;
+                DIR *d = opendir(BSP_SD_MOUNT_POINT);
+                if (!d)
+                    break;
 
                 while ((entry = readdir(d)) != nullptr)
                 {
@@ -134,10 +136,11 @@ static void next_free_file_name(char* path, size_t path_size)
                 ESP_LOGW("SD", "Deleting %s", del_path);
                 unlink(del_path);
 
-                if (esp_vfs_fat_info(BSP_SD_MOUNT_POINT, &out_total, &out_free) != ESP_OK) break;
+                if (esp_vfs_fat_info(BSP_SD_MOUNT_POINT, &out_total, &out_free) != ESP_OK)
+                    break;
             }
 
-            ESP_LOGI("SD", "Free space after cleanup: %llu bytes", (unsigned long long) out_free);
+            ESP_LOGI("SD", "Free space after cleanup: %llu bytes", (unsigned long long)out_free);
         }
     }
     else
@@ -146,7 +149,7 @@ static void next_free_file_name(char* path, size_t path_size)
     }
 
     // Find next free filename
-    DIR* dir = opendir(BSP_SD_MOUNT_POINT);
+    DIR *dir = opendir(BSP_SD_MOUNT_POINT);
     if (dir == nullptr)
     {
         snprintf(path, path_size, BSP_SD_MOUNT_POINT "/CAN%05d.LOG", 0);
@@ -158,7 +161,8 @@ static void next_free_file_name(char* path, size_t path_size)
         int idx;
         if (sscanf(entry->d_name, "CAN%05d.LOG", &idx) == 1)
         {
-            if (idx > max_index) max_index = idx;
+            if (idx > max_index)
+                max_index = idx;
         }
     }
     closedir(dir);
@@ -183,7 +187,7 @@ static bool init_sd_card_and_open_file()
     ESP_LOGI("SD", "Logging to: %s", path);
     static char io_buf[8 * 1024];
     setvbuf(logFile, io_buf, _IOFBF, sizeof(io_buf));
-    const char* header = "* CAN Bus Log Started\n";
+    const char *header = "* CAN Bus Log Started\n";
     fwrite(header, 1, strlen(header), logFile);
     fflush(logFile);
     fsync(fileno(logFile));
@@ -216,7 +220,7 @@ static bool init_can()
 // -----------------------------
 // Tasks
 // -----------------------------
-[[noreturn]] static void can_receiver_task(void* arg)
+[[noreturn]] static void can_receiver_task(void *arg)
 {
     twai_message_t message;
     while (true)
@@ -240,7 +244,7 @@ static bool init_can()
     }
 }
 
-[[noreturn]] static void can_processor_task(void* arg)
+[[noreturn]] static void can_processor_task(void *arg)
 {
     CANMessage_t msg;
     while (true)
@@ -277,7 +281,7 @@ static bool init_can()
     }
 }
 
-[[noreturn]] static void sd_writer_task(void* arg)
+[[noreturn]] static void sd_writer_task(void *arg)
 {
     while (true)
     {
@@ -301,11 +305,14 @@ static bool init_can()
         TickType_t start = xTaskGetTickCount();
         while (g_batchBuf && (used + sizeof(LogLine::data) < g_batchBufSize))
         {
-            if ((xTaskGetTickCount() - start) * portTICK_PERIOD_MS >= BATCH_MAX_MS) break;
+            if ((xTaskGetTickCount() - start) * portTICK_PERIOD_MS >= BATCH_MAX_MS)
+                break;
 
             LogLine more;
-            if (xQueueReceive(sdQueue, &more, 0) != pdTRUE) break;
-            if (used + more.len > g_batchBufSize) break;
+            if (xQueueReceive(sdQueue, &more, 0) != pdTRUE)
+                break;
+            if (used + more.len > g_batchBufSize)
+                break;
             memcpy(g_batchBuf + used, more.data, more.len);
             used += more.len;
         }
@@ -315,13 +322,14 @@ static bool init_can()
             size_t written = fwrite(g_batchBuf, 1, used, logFile);
             if (written != used)
             {
-                ESP_LOGE("SD", "fwrite failed: wrote %u of %u", (unsigned) written, (unsigned) used);
+                ESP_LOGE("SD", "fwrite failed: wrote %u of %u", (unsigned)written, (unsigned)used);
             }
             fflush(logFile);
         }
 
         // Only yield if we didn't write anything this iteration to keep draining the queue aggressively
-        if (used == 0) {
+        if (used == 0)
+        {
             vTaskDelay(pdMS_TO_TICKS(1));
         }
     }
@@ -360,19 +368,19 @@ void start_logging_mode()
     // Allocate batch buffer in PSRAM if available to preserve internal DRAM for queues
     if (!g_batchBuf)
     {
-        g_batchBuf = (uint8_t*)heap_caps_malloc(BATCH_MAX_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        g_batchBuf = (uint8_t *)heap_caps_malloc(BATCH_MAX_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         if (g_batchBuf)
         {
             g_batchBufSize = BATCH_MAX_BYTES;
-            ESP_LOGI("SD", "Batch buffer allocated in PSRAM: %u bytes", (unsigned) g_batchBufSize);
+            ESP_LOGI("SD", "Batch buffer allocated in PSRAM: %u bytes", (unsigned)g_batchBufSize);
         }
         else
         {
-            g_batchBuf = (uint8_t*)heap_caps_malloc(BATCH_MAX_BYTES, MALLOC_CAP_8BIT);
+            g_batchBuf = (uint8_t *)heap_caps_malloc(BATCH_MAX_BYTES, MALLOC_CAP_8BIT);
             if (g_batchBuf)
             {
                 g_batchBufSize = BATCH_MAX_BYTES;
-                ESP_LOGI("SD", "Batch buffer allocated in internal heap: %u bytes", (unsigned) g_batchBufSize);
+                ESP_LOGI("SD", "Batch buffer allocated in internal heap: %u bytes", (unsigned)g_batchBufSize);
             }
             else
             {
@@ -395,7 +403,8 @@ void start_logging_mode()
         if (millis() - lastSync >= 1000)
         {
             lastSync = millis();
-            if (logFile) fsync(fileno(logFile));
+            if (logFile)
+                fsync(fileno(logFile));
             if (stat_cnt++ >= 60)
             {
                 ESP_LOGI(TAG, "Messages: %lu", messageCount);
