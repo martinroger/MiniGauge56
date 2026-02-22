@@ -14,9 +14,16 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "freertos/ringbuf.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
 #include "esp32_s3_touch_amoled_1_75.h"
+
+/*Upgrade strategy : 
+- Use the FrameDispatcher to pass frames to a ringbuffer
+- Setup a write timer that flushes to the SD card every xx seconds
+- Set up a ringbuffer consumer that fires an SD write every xx elements using xRingbufferReceiveUpTo()
+*/
 
 // -----------------------------
 // Shared config (from main)
