@@ -2,35 +2,9 @@
 #include "esp32_s3_touch_amoled_1_75.h"
 #include "ui.h"
 #include "esp_log.h"
-#include <dirent.h>
-#include <sys/stat.h>
-#include <string.h>
+#include "sdLogger.h"
 
 lv_display_t *main_display;
-
-static void list_dir(const char *path)
-{
-    const char *TAG = "SD";
-    DIR *dir = opendir(path);
-    if (!dir) {
-        ESP_LOGW(TAG, "opendir failed: %s", path);
-        return;
-    }
-    struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL) {
-        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
-        char full[512];
-        snprintf(full, sizeof(full), "%s/%s", path, ent->d_name);
-        struct stat st;
-        if (stat(full, &st) == 0) {
-            ESP_LOGI(TAG, "%c %s", (S_ISDIR(st.st_mode) ? 'd' : '-'), full);
-        } else {
-            ESP_LOGI(TAG, "? %s", full);
-        }
-    }
-    closedir(dir);
-}
-
 
 extern "C" void app_main(void)
 {
@@ -41,10 +15,12 @@ extern "C" void app_main(void)
     else
     {
         ESP_LOGI(__func__, "SD card mounted at %s", BSP_SD_MOUNT_POINT);
-        list_dir(BSP_SD_MOUNT_POINT);
+        check_and_prepare_storage();
+        open_next_log_file();
+
     }
     main_display = bsp_display_start();
-    bsp_display_brightness_set(100);
+    bsp_display_brightness_set(0);
     // if(bsp_display_lock(100))
     // {
     //     ESP_LOGI(__func__,"first mutex taken");
@@ -58,7 +34,7 @@ extern "C" void app_main(void)
     uint8_t brightness = 0;
     // bsp_display_brightness_set(10);
 
-    
+    log_to_sd("Test-log!");
 
     while (true)
     {
