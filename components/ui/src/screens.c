@@ -27,9 +27,9 @@ void create_screen_main() {
             // filename
             lv_obj_t *obj = lv_label_create(parent_obj);
             objects.filename = obj;
-            lv_obj_set_pos(obj, 0, -173);
-            lv_obj_set_size(obj, 246, LV_SIZE_CONTENT);
-            lv_label_set_long_mode(obj, LV_LABEL_LONG_SCROLL);
+            lv_obj_set_pos(obj, 0, -92);
+            lv_obj_set_size(obj, 405, LV_SIZE_CONTENT);
+            lv_label_set_long_mode(obj, LV_LABEL_LONG_SCROLL_CIRCULAR);
             lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_text_font(obj, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -39,7 +39,7 @@ void create_screen_main() {
             // filesize
             lv_obj_t *obj = lv_label_create(parent_obj);
             objects.filesize = obj;
-            lv_obj_set_pos(obj, 0, -146);
+            lv_obj_set_pos(obj, 0, -173);
             lv_obj_set_size(obj, 246, LV_SIZE_CONTENT);
             lv_label_set_long_mode(obj, LV_LABEL_LONG_SCROLL);
             lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -51,7 +51,7 @@ void create_screen_main() {
             // bufferedSize
             lv_obj_t *obj = lv_label_create(parent_obj);
             objects.buffered_size = obj;
-            lv_obj_set_pos(obj, 0, -119);
+            lv_obj_set_pos(obj, 0, -146);
             lv_obj_set_size(obj, 246, LV_SIZE_CONTENT);
             lv_label_set_long_mode(obj, LV_LABEL_LONG_SCROLL);
             lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);

@@ -1,428 +1,213 @@
 #include "logging.h"
-
-#include <cstdio>
-#include <cstring>
-#include <dirent.h>
-#include <sys/time.h>
-#include <unistd.h>
-
-#include "esp_log.h"
-#include "driver/sdmmc_host.h"
-#include "sdmmc_cmd.h"
+#include <stdio.h>
+#include <string.h>
+#include <sys/unistd.h>
 #include "esp_vfs_fat.h"
-#include "driver/twai.h"
+#include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/queue.h"
 #include "freertos/ringbuf.h"
 #include "esp_timer.h"
-#include "esp_heap_caps.h"
-#include "esp32_s3_touch_amoled_1_75.h"
+#include "esp_log.h"
+#include "driver/twai.h"
 
-/*Upgrade strategy : 
-- Use the FrameDispatcher to pass frames to a ringbuffer
-- Setup a write timer that flushes to the SD card every xx seconds
-- Set up a ringbuffer consumer that fires an SD write every xx elements using xRingbufferReceiveUpTo()
-*/
+// LVGL Globals
+char current_log_filename[64] = "None";
+uint32_t current_file_size = 0;
+uint32_t current_buffered_bytes = 0;
+bool is_logging = false;
 
-// -----------------------------
-// Shared config (from main)
-// -----------------------------
-// #define CAN_TX_PIN         GPIO_NUM_18
-// #define CAN_RX_PIN         GPIO_NUM_17
-#define CAN_TX_PIN GPIO_NUM_43
-#define CAN_RX_PIN GPIO_NUM_44
-#define CAN_QUEUE_LEN 480
-#define SD_QUEUE_LEN 1000
-#define BATCH_MAX_BYTES (64 * 1024)
-#define BATCH_MAX_MS 20
-#define FICTIONAL_START_TIME 1755839937.312293 // due to missing RTC
-
-static const char *TAG = "LOGGING_MODE";
-
-// -----------------------------
-// Log line structure
-// -----------------------------
 typedef struct
 {
-    uint16_t len;
-    char data[46];
-} LogLine;
+    uint32_t timestamp; // 4 bytes
+    uint16_t id;        // 2 bytes (Fits 0x7FF easily)
+    uint8_t dlc;        // 1 byte
+    uint8_t data[8];    // 8 bytes
+    uint8_t padding;    // 1 byte (Explicitly brings total to 16)
+} __attribute__((packed)) can_log_record_t;
 
-// -----------------------------
-// CAN message structure
-// -----------------------------
-typedef struct
+#define FRAMES_PER_BLOCK 512
+#define BLOCK_SIZE (FRAMES_PER_BLOCK * sizeof(can_log_record_t))
+#define RB_SIZE (32 * 1024)
+#define LAZY_FLUSH_MS 5000
+
+static RingbufHandle_t can_rb = NULL;
+
+// --- CAN Task: Drains the Hardware into the RingBuffer ---
+static void can_rx_task(void *arg)
 {
-    uint32_t id;
-    uint8_t len;
-    uint8_t buf[8];
-    double timestamp;
-} CANMessage_t;
+    twai_message_t rx_msg;
 
-// -----------------------------
-// Globals
-// -----------------------------
-static FILE *logFile = nullptr;
-static unsigned long messageCount = 0;
-static unsigned long lastSync = 0;
-
-static QueueHandle_t sdQueue = nullptr;
-static QueueHandle_t canQueue = nullptr;
-
-// Large batch buffer moved to heap/PSRAM to save internal DRAM for queues
-static uint8_t *g_batchBuf = nullptr;
-static size_t g_batchBufSize = BATCH_MAX_BYTES;
-
-// -----------------------------
-// Helpers
-// -----------------------------
-static unsigned long millis()
-{
-    return (unsigned long)(esp_timer_get_time() / 1000ULL);
-}
-
-static double get_unix_timestamp()
-{
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    return (double)tv.tv_sec + (tv.tv_usec / 1000000.0) + FICTIONAL_START_TIME;
-}
-
-// cleanup threshold (bytes)
-#define SD_LOW_LIMIT (2ULL * 1024 * 1024 * 1024)   // 2 GB
-#define SD_TARGET_FREE (4ULL * 1024 * 1024 * 1024) // 4 GB
-
-// -----------------------------
-// Next free filename (CANxxxxx.LOG) with cleanup
-// -----------------------------
-static void next_free_file_name(char *path, size_t path_size)
-{
-    int max_index = -1;
-    struct dirent *entry;
-
-    // Check free space
-    uint64_t out_total = 0, out_free = 0;
-    esp_err_t err = esp_vfs_fat_info(BSP_SD_MOUNT_POINT, &out_total, &out_free);
-    if (err == ESP_OK)
+    while (1)
     {
-        ESP_LOGI("SD", "Free space: %llu bytes", (unsigned long long)out_free);
-
-        if (out_free < SD_LOW_LIMIT)
+        // 1. Block until a hardware frame arrives
+        if (twai_receive(&rx_msg, pdMS_TO_TICKS(1000)) == ESP_OK)
         {
-            ESP_LOGW("SD", "Low free space (<2GB). Deleting old files...");
 
-            while (out_free < SD_TARGET_FREE)
+            // 2. Only process if logging is active
+            if (is_logging && can_rb)
             {
-                int min_index = -1;
-                DIR *d = opendir(BSP_SD_MOUNT_POINT);
-                if (!d)
-                    break;
+                can_log_record_t record;
 
-                while ((entry = readdir(d)) != nullptr)
-                {
-                    int idx;
-                    if (sscanf(entry->d_name, "CAN%05d.LOG", &idx) == 1)
-                    {
-                        if (min_index == -1 || idx < min_index)
-                        {
-                            min_index = idx;
-                        }
-                    }
-                }
-                closedir(d);
+                // 3. Pack the 16-byte struct manually
+                record.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+                record.id = (uint16_t)rx_msg.identifier; // Cast 32-bit ID to 16-bit
+                record.dlc = rx_msg.data_length_code;
+                record.padding = 0;
 
-                if (min_index == -1)
-                {
-                    ESP_LOGW("SD", "No CANxxxxx.LOG files to delete");
-                    break;
-                }
+                // Clear and copy data payload
+                memset(record.data, 0, 8);
+                uint8_t len = (record.dlc > 8) ? 8 : record.dlc;
+                memcpy(record.data, rx_msg.data, len);
 
-                char del_path[128];
-                snprintf(del_path, sizeof(del_path), BSP_SD_MOUNT_POINT "/CAN%05d.LOG", min_index);
-                ESP_LOGW("SD", "Deleting %s", del_path);
-                unlink(del_path);
-
-                if (esp_vfs_fat_info(BSP_SD_MOUNT_POINT, &out_total, &out_free) != ESP_OK)
-                    break;
+                // 4. Push to PSRAM Ring Buffer
+                // If the buffer is full (overflow), this returns immediately
+                xRingbufferSend(can_rb, &record, sizeof(can_log_record_t), 0);
             }
-
-            ESP_LOGI("SD", "Free space after cleanup: %llu bytes", (unsigned long long)out_free);
         }
     }
-    else
-    {
-        ESP_LOGW("SD", "esp_vfs_fat_info failed: %s", esp_err_to_name(err));
-    }
+}
 
-    // Find next free filename
-    DIR *dir = opendir(BSP_SD_MOUNT_POINT);
-    if (dir == nullptr)
+// --- SD Task: Drains the RingBuffer into the SD Card ---
+static void sd_writer_task(void *pvParameters)
+{
+    sprintf(current_log_filename, "/sdcard/log_%lld.bin", esp_timer_get_time());
+    current_file_size = 0;
+
+    FILE *f = fopen(current_log_filename, "wb");
+    if (!f)
     {
-        snprintf(path, path_size, BSP_SD_MOUNT_POINT "/CAN%05d.LOG", 0);
+        is_logging = false;
+        vTaskDelete(NULL);
         return;
     }
+    setvbuf(f, NULL, _IONBF, 0);
 
-    while ((entry = readdir(dir)) != nullptr)
+    can_log_record_t *batch_buffer = (can_log_record_t *)heap_caps_malloc(BLOCK_SIZE, MALLOC_CAP_DMA);
+    size_t items_in_batch = 0;
+    uint32_t last_flush_time = esp_timer_get_time() / 1000;
+
+    while (is_logging || items_in_batch > 0)
     {
-        int idx;
-        if (sscanf(entry->d_name, "CAN%05d.LOG", &idx) == 1)
+        size_t item_size;
+        can_log_record_t *item = (can_log_record_t *)xRingbufferReceive(can_rb, &item_size, pdMS_TO_TICKS(100));
+
+        current_buffered_bytes = items_in_batch * 16;
+
+        if (item)
         {
-            if (idx > max_index)
-                max_index = idx;
+            memcpy(&batch_buffer[items_in_batch++], item, sizeof(can_log_record_t));
+            vRingbufferReturnItem(can_rb, (void *)item);
+
+            while (items_in_batch < FRAMES_PER_BLOCK)
+            {
+                can_log_record_t *next = (can_log_record_t *)xRingbufferReceive(can_rb, &item_size, 0);
+                if (!next)
+                    break;
+                memcpy(&batch_buffer[items_in_batch++], next, sizeof(can_log_record_t));
+                vRingbufferReturnItem(can_rb, (void *)next);
+            }
+        }
+
+        uint32_t now = esp_timer_get_time() / 1000;
+        if (items_in_batch >= FRAMES_PER_BLOCK || (items_in_batch > 0 && (now - last_flush_time > LAZY_FLUSH_MS || !is_logging)))
+        {
+            size_t bytes_to_write = items_in_batch * sizeof(can_log_record_t);
+            fwrite(batch_buffer, 1, bytes_to_write, f);
+            fsync(fileno(f));
+
+            current_file_size += bytes_to_write; // Update for LVGL
+            items_in_batch = 0;
+            last_flush_time = now;
         }
     }
-    closedir(dir);
 
-    snprintf(path, path_size, BSP_SD_MOUNT_POINT "/CAN%05d.LOG", max_index + 1);
+    heap_caps_free(batch_buffer);
+    fclose(f);
+    vTaskDelete(NULL);
 }
 
-// -----------------------------
-// SD Card Init + File Open
-// -----------------------------
-static bool init_sd_card_and_open_file()
+bool init_can_logging()
 {
-    ESP_LOGI("SD", "SD card mounted");
-    char path[128];
-    next_free_file_name(path, sizeof(path));
-    logFile = fopen(path, "w");
-    if (!logFile)
-    {
-        ESP_LOGE("SD", "fopen failed: %s", path);
-        return false;
-    }
-    ESP_LOGI("SD", "Logging to: %s", path);
-    static char io_buf[8 * 1024];
-    setvbuf(logFile, io_buf, _IOFBF, sizeof(io_buf));
-    const char *header = "* CAN Bus Log Started\n";
-    fwrite(header, 1, strlen(header), logFile);
-    fflush(logFile);
-    fsync(fileno(logFile));
-    return true;
-}
-
-// -----------------------------
-// CAN Init
-// -----------------------------
-static bool init_can()
-{
-    twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(CAN_TX_PIN, CAN_RX_PIN, TWAI_MODE_LISTEN_ONLY);
+    // 1. TWAI Init
+    twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_43, GPIO_NUM_44, TWAI_MODE_LISTEN_ONLY);
     twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS();
     twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
     if (twai_driver_install(&g_config, &t_config, &f_config) != ESP_OK)
-    {
-        ESP_LOGE("CAN", "driver install failed");
         return false;
-    }
     if (twai_start() != ESP_OK)
-    {
-        ESP_LOGE("CAN", "start failed");
         return false;
-    }
-    ESP_LOGI("CAN", "Driver installed and started");
-    return true;
+
+    // 2. RingBuffer Init (PSRAM)
+    uint8_t *storage = (uint8_t *)heap_caps_malloc(RB_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    static StaticRingbuffer_t rb_struct;
+    if (storage)
+        can_rb = xRingbufferCreateStatic(RB_SIZE, RINGBUF_TYPE_NOSPLIT, storage, &rb_struct);
+
+    // 3. Start high-priority CAN listener
+    xTaskCreate(can_rx_task, "can_rx", 4096, NULL, 10, NULL);
+
+    return (can_rb != NULL);
 }
 
-// -----------------------------
-// Tasks
-// -----------------------------
-[[noreturn]] static void can_receiver_task(void *arg)
+void start_logging()
 {
-    twai_message_t message;
-    while (true)
+    if (!is_logging && can_rb)
     {
-        if (twai_receive(&message, pdMS_TO_TICKS(100)) == ESP_OK)
-        {
-            if (message.data_length_code > 0)
-            {
-                CANMessage_t msg;
-                msg.id = message.identifier;
-                msg.len = message.data_length_code;
-                memcpy(msg.buf, message.data, msg.len);
-                msg.timestamp = get_unix_timestamp();
-                if (xQueueSend(canQueue, &msg, 0) != pdTRUE)
-                {
-                    ESP_LOGW("CAN_RX", "canQueue full, dropped");
-                }
-            }
-        }
-        taskYIELD();
+        is_logging = true;
+        xTaskCreate(sd_writer_task, "sd_writer", 4096, NULL, 5, NULL);
+        ESP_LOGI(__func__, "Block size: %lu", BLOCK_SIZE);
     }
 }
 
-[[noreturn]] static void can_processor_task(void *arg)
+void stop_logging()
 {
-    CANMessage_t msg;
-    while (true)
-    {
-        if (xQueueReceive(canQueue, &msg, portMAX_DELAY) == pdTRUE)
-        {
-            LogLine line{};
-            int n = snprintf(line.data, sizeof(line.data), "(%.6lf) can %03lX#", msg.timestamp, (unsigned long)msg.id);
-            for (int i = 0; i < msg.len && n < (int)sizeof(line.data) - 2; i++)
-            {
-                n += snprintf(line.data + n, sizeof(line.data) - n, "%02X", msg.buf[i]);
-            }
-            if (n < (int)sizeof(line.data) - 1)
-            {
-                line.data[n++] = '\n';
-            }
-            else
-            {
-                line.data[sizeof(line.data) - 2] = '\n';
-                n = sizeof(line.data) - 1;
-            }
-            line.data[n] = '\0';
-            line.len = (uint16_t)n;
-
-            if (xQueueSend(sdQueue, &line, 0) != pdTRUE)
-            {
-                ESP_LOGW("CAN_Proc", "sdQueue full, dropped line");
-            }
-            else
-            {
-                messageCount++;
-            }
-        }
-    }
+    is_logging = false;
 }
 
-[[noreturn]] static void sd_writer_task(void *arg)
+static void mock_can_producer_task(void *pvParameters)
 {
-    while (true)
+    uint8_t count = 0;
+    uint16_t mock_id = 0x123;
+
+    ESP_LOGW("MOCK", "Starting dummy data generator @ 20 Hz");
+
+    while (is_logging)
     {
-        size_t used = 0;
-        LogLine line;
-        if (xQueueReceive(sdQueue, &line, pdMS_TO_TICKS(50)) == pdTRUE)
+        // 1. Manually pack the "Golden" 16-byte struct
+        can_log_record_t record;
+        record.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+        record.id = mock_id;
+        record.dlc = 8;
+        record.padding = 0; // Maintain 16-byte alignment
+
+        // 2. Fill data with incrementing counter for integrity checks
+        memset(record.data, 0xAA, 8);
+        record.data[0] = count++;
+
+        // 3. Push to Ring Buffer
+        if (can_rb)
         {
-            if (g_batchBuf && line.len <= g_batchBufSize)
-            {
-                memcpy(g_batchBuf, line.data, line.len);
-                used = line.len;
-            }
-            else if (logFile && line.len > 0)
-            {
-                // Fallback: write directly if no batch buffer
-                fwrite(line.data, 1, line.len, logFile);
-                fflush(logFile);
-            }
+            BaseType_t res = xRingbufferSend(can_rb, &record, sizeof(can_log_record_t), 0);
         }
 
-        TickType_t start = xTaskGetTickCount();
-        while (g_batchBuf && (used + sizeof(LogLine::data) < g_batchBufSize))
-        {
-            if ((xTaskGetTickCount() - start) * portTICK_PERIOD_MS >= BATCH_MAX_MS)
-                break;
-
-            LogLine more;
-            if (xQueueReceive(sdQueue, &more, 0) != pdTRUE)
-                break;
-            if (used + more.len > g_batchBufSize)
-                break;
-            memcpy(g_batchBuf + used, more.data, more.len);
-            used += more.len;
-        }
-
-        if (used > 0 && logFile && g_batchBuf)
-        {
-            size_t written = fwrite(g_batchBuf, 1, used, logFile);
-            if (written != used)
-            {
-                ESP_LOGE("SD", "fwrite failed: wrote %u of %u", (unsigned)written, (unsigned)used);
-            }
-            fflush(logFile);
-        }
-
-        // Only yield if we didn't write anything this iteration to keep draining the queue aggressively
-        if (used == 0)
-        {
-            vTaskDelay(pdMS_TO_TICKS(1));
-        }
+        // 20Hz = 50ms delay
+        vTaskDelay(pdMS_TO_TICKS(2));
     }
+
+    vTaskDelete(NULL);
 }
 
-// -----------------------------
-// Public API: start logging mode
-// -----------------------------
-void start_logging_mode()
+void start_logging_test()
 {
-    if (!init_sd_card_and_open_file())
+    if (!is_logging && can_rb)
     {
-        ESP_LOGE(TAG, "SD init/open failed for logging");
-        return;
+        is_logging = true;
+        // Start the SD Writer
+        xTaskCreate(sd_writer_task, "sd_writer", 4096, NULL, 5, NULL);
+        // Start the Dummy Generator
+        xTaskCreate(mock_can_producer_task, "mock_can", 2048, NULL, 5, NULL);
+        ESP_LOGI(__func__, "Block size: %lu", BLOCK_SIZE);
     }
-
-    if (!init_can())
-    {
-        ESP_LOGE(TAG, "CAN init failed!");
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        if (!init_can())
-        {
-            ESP_LOGE(TAG, "CAN init failed permanently!");
-            return;
-        }
-    }
-
-    canQueue = xQueueCreate(CAN_QUEUE_LEN, sizeof(CANMessage_t));
-    sdQueue = xQueueCreate(SD_QUEUE_LEN, sizeof(LogLine));
-    if (!canQueue || !sdQueue)
-    {
-        ESP_LOGE(TAG, "queue create failed");
-        return;
-    }
-
-    // Allocate batch buffer in PSRAM if available to preserve internal DRAM for queues
-    if (!g_batchBuf)
-    {
-        g_batchBuf = (uint8_t *)heap_caps_malloc(BATCH_MAX_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-        if (g_batchBuf)
-        {
-            g_batchBufSize = BATCH_MAX_BYTES;
-            ESP_LOGI("SD", "Batch buffer allocated in PSRAM: %u bytes", (unsigned)g_batchBufSize);
-        }
-        else
-        {
-            g_batchBuf = (uint8_t *)heap_caps_malloc(BATCH_MAX_BYTES, MALLOC_CAP_8BIT);
-            if (g_batchBuf)
-            {
-                g_batchBufSize = BATCH_MAX_BYTES;
-                ESP_LOGI("SD", "Batch buffer allocated in internal heap: %u bytes", (unsigned)g_batchBufSize);
-            }
-            else
-            {
-                g_batchBufSize = 0;
-                ESP_LOGW("SD", "Batch buffer allocation failed; will write line-by-line without batching");
-            }
-        }
-    }
-
-    xTaskCreate(can_receiver_task, "CAN_RX", 4096, nullptr, 5, nullptr);
-    xTaskCreate(can_processor_task, "CAN_Proc", 4096, nullptr, 4, nullptr);
-    if (logFile)
-    {
-        xTaskCreate(sd_writer_task, "SD_Writer", 8192, nullptr, 3, nullptr);
-    }
-
-    int stat_cnt = 0;
-    while (true)
-    {
-        if (millis() - lastSync >= 1000)
-        {
-            lastSync = millis();
-            if (logFile)
-                fsync(fileno(logFile));
-            if (stat_cnt++ >= 60)
-            {
-                ESP_LOGI(TAG, "Messages: %lu", messageCount);
-                stat_cnt = 0;
-            }
-        }
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-}
-
-long get_message_count()
-{
-    return messageCount;
 }
