@@ -10,6 +10,8 @@ extern "C" {
 
 // enum declarations
 
+
+
 // Flow global variables
 
 enum FlowGlobalVariables {
@@ -17,6 +19,8 @@ enum FlowGlobalVariables {
 };
 
 // Native global variables
+
+
 
 #ifdef __cplusplus
 }

@@ -7,22 +7,21 @@
 extern "C" {
 #endif
 
-// Screens
-
-enum ScreensEnum {
-    _SCREEN_ID_FIRST = 1,
-    SCREEN_ID_MAIN = 1,
-    _SCREEN_ID_LAST = 1
-};
-
 typedef struct _objects_t {
     lv_obj_t *main;
-    lv_obj_t *main_tabview;
-    lv_obj_t *main_tab;
-    lv_obj_t *settings_tab;
+    lv_obj_t *filename;
+    lv_obj_t *filesize;
+    lv_obj_t *buffered_size;
+    lv_obj_t *status;
+    lv_obj_t *start_stop_btn;
+    lv_obj_t *start_stop_lbl;
 } objects_t;
 
 extern objects_t objects;
+
+enum ScreensEnum {
+    SCREEN_ID_MAIN = 1,
+};
 
 void create_screen_main();
 void tick_screen_main();
@@ -31,6 +30,7 @@ void tick_screen_by_id(enum ScreensEnum screenId);
 void tick_screen(int screen_index);
 
 void create_screens();
+
 
 #ifdef __cplusplus
 }

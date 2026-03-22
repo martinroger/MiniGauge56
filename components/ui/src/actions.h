@@ -7,6 +7,10 @@
 extern "C" {
 #endif
 
+extern void action_start_stop_clicked(lv_event_t * e);
+extern void action_global_pressed(lv_event_t * e);
+
+
 #ifdef __cplusplus
 }
 #endif
