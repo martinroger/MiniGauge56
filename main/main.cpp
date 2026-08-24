@@ -55,8 +55,8 @@ extern "C" void action_start_stop_clicked(lv_event_t *e)
     }
     else
     {
-        // start_logging();
-        start_logging_test();
+        start_logging();
+        // start_logging_test();
     }
     wakeDisplay();
 }
