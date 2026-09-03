@@ -52,13 +52,18 @@ cmake_install.cmake
 install_manifest.txt
 CTestTestfile.cmake
 
-# Python environment files
-*.pyc
-*.pyo
-*.pyd
+# Python environment and cache files
+*.py[cod]
+*$py.class
 __pycache__/
+**/__pycache__/
 *.egg-info/
 dist/
+.cache/
+**/.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Virtual environment folders
 venv/

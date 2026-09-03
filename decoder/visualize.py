@@ -4,7 +4,8 @@ CAN Bus Signal Visualizer
 =========================
 Interactive browser-based visualization tool for MiniGauge CAN bus binary logs.
 Decodes .bin files using the DBC database and plots multiple signals against time
-with multi-axis auto-scaling, hover tooltips, and subplots/overlay views.
+with multi-axis auto-scaling, hover tooltips, range slider, manual Y-axis controls,
+2D X & Y panning, cursor-centered time zooming, independent Y-axis panning/scaling, and collapsible message groups.
 """
 
 import sys
@@ -27,7 +28,6 @@ if str(SCRIPT_DIR) not in sys.path:
 try:
     from decode import DbcDatabase, read_bin_file, CanFrame
 except ImportError:
-    # If decode.py is in current working directory
     from decode import DbcDatabase, read_bin_file, CanFrame
 
 
@@ -80,7 +80,6 @@ def load_and_decode_log(log_path: Path, db: DbcDatabase) -> Dict[str, Any]:
         return result
 
     duration_s = frames[-1].time_rel_s
-    # Extract signals
     signals_data: Dict[str, Dict[str, Any]] = {}
     message_meta: Dict[str, Dict[str, Any]] = {}
 
@@ -156,20 +155,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
     header {
       background: var(--card-bg);
       border-bottom: 1px solid var(--panel-border);
-      padding: 0.75rem 1.5rem;
+      padding: 0.5rem 1.25rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 1rem;
+      gap: 0.75rem;
+      flex-wrap: wrap;
     }
     .header-left {
       display: flex;
       align-items: center;
-      gap: 1rem;
+      gap: 0.8rem;
     }
     .logo {
       font-weight: 700;
-      font-size: 1.15rem;
+      font-size: 1.05rem;
       color: #60a5fa;
       display: flex;
       align-items: center;
@@ -186,36 +186,79 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .log-selector {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.4rem;
     }
-    select, input[type="text"] {
+    select, input[type="text"], input[type="number"] {
       background: var(--bg);
       color: var(--text);
       border: 1px solid var(--panel-border);
       border-radius: 6px;
-      padding: 0.4rem 0.75rem;
-      font-size: 0.9rem;
+      padding: 0.35rem 0.65rem;
+      font-size: 0.85rem;
       outline: none;
     }
-    select:focus, input[type="text"]:focus {
+    select:focus, input[type="text"]:focus, input[type="number"]:focus {
       border-color: var(--primary);
     }
     .header-controls {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+    }
+    .segmented-control {
+      display: flex;
+      background: var(--bg);
+      border-radius: 6px;
+      border: 1px solid var(--panel-border);
+      padding: 2px;
+    }
+    .segmented-control button {
+      border: none;
+      background: transparent;
+      padding: 0.25rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+    .segmented-control button:hover {
+      color: var(--text);
+    }
+    .segmented-control button.active {
+      background: var(--primary);
+      color: white;
+    }
+    .time-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: var(--bg);
+      padding: 2px 6px;
+      border-radius: 6px;
+      border: 1px solid var(--panel-border);
+    }
+    .time-controls label {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+    .time-input {
+      width: 65px;
+      padding: 0.25rem 0.4rem !important;
+      font-size: 0.8rem !important;
+      text-align: right;
     }
     button {
       background: var(--card-bg);
       color: var(--text);
       border: 1px solid var(--panel-border);
       border-radius: 6px;
-      padding: 0.4rem 0.8rem;
-      font-size: 0.85rem;
+      padding: 0.35rem 0.7rem;
+      font-size: 0.82rem;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 0.4rem;
+      gap: 0.35rem;
       transition: all 0.15s ease;
     }
     button:hover {
@@ -230,28 +273,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
     button.primary:hover {
       background: var(--primary-hover);
     }
-    .view-mode-toggle {
-      display: flex;
-      background: var(--bg);
-      border-radius: 6px;
-      border: 1px solid var(--panel-border);
-      padding: 2px;
+    .btn-icon {
+      padding: 0.35rem 0.55rem;
+      font-weight: bold;
     }
-    .view-mode-toggle button {
-      border: none;
-      background: transparent;
-      padding: 0.25rem 0.6rem;
-      border-radius: 4px;
-      font-size: 0.8rem;
-    }
-    .view-mode-toggle button.active {
-      background: var(--primary);
-      color: white;
+    .btn-active-toggle {
+      background: #1e3a8a;
+      border-color: #3b82f6;
+      color: #93c5fd;
     }
     .main-container {
       display: flex;
       flex: 1;
       overflow: hidden;
+      position: relative;
     }
     .sidebar {
       width: 320px;
@@ -295,6 +330,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-size: 0.78rem;
       color: var(--text-muted);
       padding: 0.25rem 0;
+      align-items: center;
     }
     .signal-actions a {
       color: var(--primary);
@@ -310,26 +346,65 @@ HTML_PAGE = r"""<!DOCTYPE html>
       padding: 0.5rem 0;
     }
     .msg-group {
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.25rem;
     }
     .msg-title {
-      padding: 0.35rem 1rem;
+      padding: 0.35rem 0.75rem;
       font-size: 0.75rem;
       font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.03em;
       color: var(--text-muted);
       background: rgba(255, 255, 255, 0.02);
       display: flex;
       justify-content: space-between;
       align-items: center;
       cursor: pointer;
+      user-select: none;
+      transition: background 0.1s;
     }
     .msg-title:hover {
       color: var(--text);
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .msg-title-left {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+    .chevron {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      display: inline-block;
+      width: 14px;
+      text-align: center;
+      transition: transform 0.15s ease;
+    }
+    .group-select-cb {
+      cursor: pointer;
+      margin-right: 2px;
+    }
+    .msg-count-badge {
+      font-size: 0.7rem;
+      background: var(--tag-bg);
+      padding: 1px 6px;
+      border-radius: 10px;
+      color: var(--text-muted);
+      font-weight: normal;
+    }
+    .msg-count-badge.has-selected {
+      background: #1e3a8a;
+      color: #93c5fd;
+      font-weight: 600;
+    }
+    .msg-sigs-container {
+      display: block;
     }
     .sig-item {
-      padding: 0.35rem 1rem 0.35rem 1.75rem;
+      padding: 0.3rem 0.75rem 0.3rem 2rem;
       display: flex;
       align-items: center;
       gap: 0.5rem;
@@ -387,14 +462,114 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .stats-footer {
       background: var(--card-bg);
       border-top: 1px solid var(--panel-border);
-      padding: 0.4rem 1rem;
+      padding: 0.35rem 1rem;
       display: flex;
       gap: 1.5rem;
       font-size: 0.78rem;
       color: var(--text-muted);
+      align-items: center;
     }
     .stats-footer span strong {
       color: var(--text);
+    }
+
+    /* Axis Scales Drawer Modal */
+    .modal-overlay {
+      display: none;
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 100;
+      justify-content: flex-end;
+    }
+    .modal-panel {
+      width: 420px;
+      height: 100%;
+      background: var(--card-bg);
+      border-left: 1px solid var(--panel-border);
+      display: flex;
+      flex-direction: column;
+      box-shadow: -4px 0 20px rgba(0, 0, 0, 0.4);
+    }
+    .modal-header {
+      padding: 0.9rem 1.25rem;
+      border-bottom: 1px solid var(--panel-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+    .axis-config-card {
+      background: var(--bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+    .axis-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .axis-card-title {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+    .color-pill {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .axis-quick-actions {
+      display: flex;
+      gap: 0.3rem;
+    }
+    .axis-btn-mini {
+      padding: 0.15rem 0.45rem;
+      font-size: 0.75rem;
+      background: var(--card-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 4px;
+    }
+    .axis-btn-mini:hover {
+      background: #2a313d;
+      border-color: var(--primary);
+    }
+    .axis-inputs-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .axis-inputs-row label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    .axis-inputs-row input {
+      width: 75px;
+    }
+    .modal-footer {
+      padding: 0.75rem 1rem;
+      border-top: 1px solid var(--panel-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
   </style>
 </head>
@@ -406,17 +581,46 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <span class="logo-badge">Visualizer</span>
       </div>
       <div class="log-selector">
-        <label for="logFileSelect" style="font-size: 0.85rem; color: var(--text-muted);">Log:</label>
+        <label for="logFileSelect" style="font-size: 0.82rem; color: var(--text-muted);">Log:</label>
         <select id="logFileSelect"></select>
       </div>
     </div>
 
     <div class="header-controls">
-      <div class="view-mode-toggle">
-        <button id="btnOverlay" class="active" title="Overlay multiple signals with dedicated Y-axes">Multi-Axis Overlay</button>
-        <button id="btnSubplots" title="Stack signals vertically sharing time axis">Stacked Subplots</button>
+      <!-- Mouse Drag Tool Switcher: Pan vs Box Zoom -->
+      <div class="segmented-control">
+        <button id="btnToolPan" class="active" title="Pan mode: click and drag anywhere to move X & Y freely">✋ Pan</button>
+        <button id="btnToolZoom" title="Box Zoom mode: click and drag to draw a zoom box">🔍 Zoom</button>
       </div>
-      <button id="btnResetZoom">Reset View</button>
+
+      <!-- Time interval zoom controls -->
+      <div class="time-controls">
+        <label>Time (s):</label>
+        <input type="number" id="timeFrom" class="time-input" placeholder="0.0" step="any">
+        <label>to</label>
+        <input type="number" id="timeTo" class="time-input" placeholder="max" step="any">
+        <button id="btnApplyTime" title="Set specific time window">Apply</button>
+        <button id="btnZoomIn" class="btn-icon" title="Zoom in 2x around center">+</button>
+        <button id="btnZoomOut" class="btn-icon" title="Zoom out 2x around center">&minus;</button>
+        <button id="btnResetZoom" title="Reset to full log duration">Fit</button>
+      </div>
+
+      <!-- Mode toggle -->
+      <div class="segmented-control">
+        <button id="btnOverlay" class="active" title="Overlay multiple signals with dedicated Y-axes">Multi-Axis</button>
+        <button id="btnSubplots" title="Stack signals vertically sharing time axis">Subplots</button>
+      </div>
+
+      <!-- Y Axis scale modal button -->
+      <button id="btnOpenAxisModal" title="Configure manual Min/Max scales and panning for Y-axes">
+        <span>Y Scales</span>
+      </button>
+
+      <!-- Range Slider Toggle -->
+      <button id="btnToggleSlider" title="Toggle bottom timeline range slider (when hidden, 2D Y-panning is fully unlocked)">
+        <span>⇋ Slider</span>
+      </button>
+
       <button id="btnExportPng">Export PNG</button>
     </div>
   </header>
@@ -434,7 +638,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div class="signal-actions">
           <span id="selectedCount">0 selected</span>
           <div>
-            <a id="btnSelectAll">Select All</a> &bull; <a id="btnClearAll">Clear</a>
+            <a id="btnSelectAll">All</a> &bull;
+            <a id="btnClearAll">Clear</a> &bull;
+            <a id="btnCollapseAll" title="Collapse all message groups">Collapse</a> &bull;
+            <a id="btnExpandAll" title="Expand all message groups">Expand</a>
           </div>
         </div>
       </div>
@@ -451,6 +658,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <p>No signals selected. Pick one or more signals from the left sidebar to plot.</p>
       </div>
     </div>
+
+    <!-- Axis Scales Drawer -->
+    <div class="modal-overlay" id="axisModal">
+      <div class="modal-panel">
+        <div class="modal-header">
+          <div class="modal-title">Y-Axis Scale & Pan Controls</div>
+          <button id="btnCloseAxisModal">&times;</button>
+        </div>
+        <div class="modal-body" id="axisModalBody">
+          <!-- Dynamically populated for each active axis/unit -->
+        </div>
+        <div class="modal-footer">
+          <button id="btnResetAllAxes">Auto All Axes</button>
+          <button class="primary" id="btnApplyAllAxes">Apply Changes</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="stats-footer">
@@ -459,6 +683,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <span>Duration: <strong id="statDuration">-</strong></span>
     <span>Size: <strong id="statSize">-</strong></span>
     <span>Plotted points: <strong id="statPoints">0</strong></span>
+    <span style="margin-left:auto; color: #64748b; font-size: 0.74rem;">
+      <strong>Pan:</strong> Drag anywhere &bull; <strong>Zoom Time:</strong> Wheel &bull; <strong>Pan Time:</strong> Shift+Wheel &bull; <strong>Pan Y:</strong> Alt+Wheel &bull; <strong>Zoom Y:</strong> Ctrl+Wheel
+    </span>
   </div>
 
   <script>
@@ -466,6 +693,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
     let availableSignals = {};
     let selectedSignals = new Set();
     let currentMode = "overlay"; // "overlay" or "subplots"
+    let currentDragTool = "pan"; // "pan" or "zoom"
+    let isRangeSliderVisible = false; // default false to allow free 2D Y-panning
+    let currentDuration = 0.0;
+    let customYRanges = {}; // { [unit]: { min: number|null, max: number|null, auto: boolean } }
+    let currentTimeRange = [0, null]; // [x0, x1]
+    let activeUnitsList = []; // active units and their assigned colors
+    let collapsedGroups = new Set();
+    let isSyncingAxes = false;
+    let lastBaseYRange = null;
 
     const COLORS = [
       '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -476,6 +712,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     async function init() {
       await loadLogs();
       setupEventListeners();
+      setupInteractiveWheelController();
     }
 
     async function loadLogs() {
@@ -490,7 +727,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           return;
         }
 
-        logs.forEach((log, idx) => {
+        logs.forEach((log) => {
           const opt = document.createElement('option');
           opt.value = log.filename;
           opt.textContent = `${log.filename} (${(log.size / 1024).toFixed(1)} KB, ${log.duration_s.toFixed(1)}s)`;
@@ -509,6 +746,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const res = await fetch(`/api/signals?file=${encodeURIComponent(filename)}`);
         const data = await res.json();
 
+        currentDuration = data.duration_s;
+        currentTimeRange = [0, currentDuration];
+        document.getElementById('timeFrom').value = "0.0";
+        document.getElementById('timeTo').value = currentDuration.toFixed(2);
+
         document.getElementById('statFile').textContent = data.filename;
         document.getElementById('statFrames').textContent = data.frame_count.toLocaleString();
         document.getElementById('statDuration').textContent = `${data.duration_s.toFixed(2)}s`;
@@ -517,7 +759,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         availableSignals = data.signals;
         renderSignalList();
         
-        // Retain selections if they exist in new log, or pick top 2 defaults
+        // Retain selections if they exist in new log, or pick default
         const validSelections = new Set([...selectedSignals].filter(s => availableSignals[s]));
         if (validSelections.size === 0) {
           const sigKeys = Object.keys(availableSignals);
@@ -539,7 +781,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
       container.innerHTML = '';
       const filter = document.getElementById('signalSearch').value.toLowerCase();
 
-      // Group signals by message
       const groups = {};
       for (const [name, info] of Object.entries(availableSignals)) {
         if (filter && !name.toLowerCase().includes(filter) && !info.message.toLowerCase().includes(filter)) {
@@ -554,20 +795,71 @@ HTML_PAGE = r"""<!DOCTYPE html>
       for (const [msgName, sigs] of Object.entries(groups)) {
         const groupEl = document.createElement('div');
         groupEl.className = 'msg-group';
+        const isCollapsed = collapsedGroups.has(msgName);
 
+        const selectedInGroup = sigs.filter(s => selectedSignals.has(s.name)).length;
+
+        // Group Header
         const titleEl = document.createElement('div');
         titleEl.className = 'msg-title';
-        titleEl.innerHTML = `<span>${msgName}</span> <span>${sigs.length}</span>`;
-        titleEl.onclick = () => {
-          const allInGroupSelected = sigs.every(s => selectedSignals.has(s.name));
+
+        // Left section of title (chevron, checkbox, name)
+        const leftEl = document.createElement('div');
+        leftEl.className = 'msg-title-left';
+
+        const chevron = document.createElement('span');
+        chevron.className = 'chevron';
+        chevron.textContent = isCollapsed ? '▶' : '▼';
+
+        const groupCb = document.createElement('input');
+        groupCb.type = 'checkbox';
+        groupCb.className = 'group-select-cb';
+        groupCb.checked = selectedInGroup === sigs.length && sigs.length > 0;
+        groupCb.indeterminate = selectedInGroup > 0 && selectedInGroup < sigs.length;
+        groupCb.title = 'Select/Deselect all signals in this message';
+        groupCb.onclick = (e) => {
+          e.stopPropagation();
+          const checkAll = e.target.checked;
           sigs.forEach(s => {
-            if (allInGroupSelected) selectedSignals.delete(s.name);
-            else selectedSignals.add(s.name);
+            if (checkAll) selectedSignals.add(s.name);
+            else selectedSignals.delete(s.name);
           });
           updateCheckboxes();
           updatePlot();
         };
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = msgName;
+
+        leftEl.appendChild(chevron);
+        leftEl.appendChild(groupCb);
+        leftEl.appendChild(nameSpan);
+
+        // Right badge
+        const badge = document.createElement('span');
+        badge.className = `msg-count-badge ${selectedInGroup > 0 ? 'has-selected' : ''}`;
+        badge.textContent = `${selectedInGroup}/${sigs.length}`;
+
+        titleEl.appendChild(leftEl);
+        titleEl.appendChild(badge);
+
+        // Clicking title row toggles collapse
+        titleEl.onclick = (e) => {
+          if (e.target === groupCb) return;
+          if (collapsedGroups.has(msgName)) {
+            collapsedGroups.delete(msgName);
+          } else {
+            collapsedGroups.add(msgName);
+          }
+          renderSignalList();
+        };
+
         groupEl.appendChild(titleEl);
+
+        // Signals container
+        const sigsContainer = document.createElement('div');
+        sigsContainer.className = 'msg-sigs-container';
+        sigsContainer.style.display = isCollapsed ? 'none' : 'block';
 
         sigs.forEach(sig => {
           const itemEl = document.createElement('label');
@@ -581,16 +873,17 @@ HTML_PAGE = r"""<!DOCTYPE html>
             if (e.target.checked) selectedSignals.add(sig.name);
             else selectedSignals.delete(sig.name);
             updateSelectedCount();
+            renderSignalList();
             updatePlot();
           };
 
-          const nameSpan = document.createElement('span');
-          nameSpan.className = 'sig-name';
-          nameSpan.textContent = sig.name;
-          nameSpan.title = sig.name;
+          const sName = document.createElement('span');
+          sName.className = 'sig-name';
+          sName.textContent = sig.name;
+          sName.title = sig.name;
 
           itemEl.appendChild(cb);
-          itemEl.appendChild(nameSpan);
+          itemEl.appendChild(sName);
 
           if (sig.unit) {
             const unitSpan = document.createElement('span');
@@ -599,9 +892,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
             itemEl.appendChild(unitSpan);
           }
 
-          groupEl.appendChild(itemEl);
+          sigsContainer.appendChild(itemEl);
         });
 
+        groupEl.appendChild(sigsContainer);
         container.appendChild(groupEl);
       }
       updateSelectedCount();
@@ -609,6 +903,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     function updateCheckboxes() {
       document.querySelectorAll('#signalList input[type="checkbox"]').forEach(cb => {
+        if (cb.classList.contains('group-select-cb')) return;
         cb.checked = selectedSignals.has(cb.value);
       });
       updateSelectedCount();
@@ -641,10 +936,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
         plot_bgcolor: '#16191f',
         margin: { t: 40, r: 60, b: 60, l: 60 },
         hovermode: 'x unified',
+        dragmode: currentDragTool, // 'pan' or 'zoom'
         showlegend: true,
         legend: {
           orientation: 'h',
-          y: 1.12,
+          y: 1.14,
           x: 0,
           font: { color: '#e2e8f0', size: 11 }
         },
@@ -652,47 +948,75 @@ HTML_PAGE = r"""<!DOCTYPE html>
           title: { text: 'Time (seconds)', font: { color: '#94a3b8' } },
           gridcolor: '#242a35',
           zerolinecolor: '#2c323d',
-          tickfont: { color: '#94a3b8' }
+          tickfont: { color: '#94a3b8' },
+          rangeslider: {
+            visible: isRangeSliderVisible,
+            thickness: 0.07,
+            bgcolor: '#16191f',
+            bordercolor: '#2c323d'
+          }
         }
       };
 
+      if (currentTimeRange[0] !== null && currentTimeRange[1] !== null) {
+        layout.xaxis.range = [currentTimeRange[0], currentTimeRange[1]];
+      }
+
+      activeUnitsList = [];
+
       if (currentMode === "overlay") {
-        // Multi-axis overlay
-        // Group signals by unit to share Y axes
+        // Multi-axis overlay mode
         const units = [];
         const unitToAxis = {};
 
-        Object.entries(data).forEach(([sigName, sigData], idx) => {
+        Object.entries(data).forEach(([sigName, sigData]) => {
           const unit = sigData.unit || 'raw';
           if (!unitToAxis[unit]) {
             units.push(unit);
             unitToAxis[unit] = units.length === 1 ? 'y' : `y${units.length}`;
+            activeUnitsList.push({
+              unit: unit,
+              color: COLORS[(units.length - 1) % COLORS.length],
+              axisKey: units.length === 1 ? 'yaxis' : `yaxis${units.length}`
+            });
           }
         });
 
-        // Configure axes in layout
+        // Configure Y axes in layout
         units.forEach((unit, idx) => {
           const axisKey = idx === 0 ? 'yaxis' : `yaxis${idx + 1}`;
           const isRight = idx > 0;
           const color = COLORS[idx % COLORS.length];
 
-          layout[axisKey] = {
+          const axisConfig = {
             title: { text: unit !== 'raw' ? unit : '', font: { color: color } },
             tickfont: { color: color },
             gridcolor: idx === 0 ? '#242a35' : 'transparent',
             zerolinecolor: idx === 0 ? '#2c323d' : 'transparent',
             overlaying: idx === 0 ? undefined : 'y',
             side: isRight ? 'right' : 'left',
-            position: isRight ? Math.max(0.85, 1.0 - (idx - 1) * 0.05) : undefined
+            position: isRight ? Math.max(0.85, 1.0 - (idx - 1) * 0.05) : undefined,
+            fixedrange: isRangeSliderVisible ? true : false // unfix when slider is off to allow free Y-pan
           };
+
+          if (customYRanges[unit] && !customYRanges[unit].auto) {
+            const rMin = customYRanges[unit].min;
+            const rMax = customYRanges[unit].max;
+            if (rMin !== null && rMax !== null && rMin < rMax) {
+              axisConfig.range = [rMin, rMax];
+              axisConfig.autorange = false;
+            }
+          }
+
+          layout[axisKey] = axisConfig;
         });
 
-        Object.entries(data).forEach(([sigName, sigData], idx) => {
+        Object.entries(data).forEach(([sigName, sigData]) => {
           totalPoints += sigData.times.length;
           const yaxis = unitToAxis[sigData.unit || 'raw'];
-          const color = COLORS[idx % COLORS.length];
+          const unitIdx = units.indexOf(sigData.unit || 'raw');
+          const color = COLORS[unitIdx % COLORS.length];
 
-          // Text tooltip values with enum state
           const hoverText = sigData.states.map((st, i) => {
             const v = sigData.values[i];
             const u = sigData.unit ? ` ${sigData.unit}` : '';
@@ -725,11 +1049,27 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const xaxisKey = axisNum === 1 ? 'xaxis' : `xaxis${axisNum}`;
           const color = COLORS[idx % COLORS.length];
 
-          layout[yaxisKey] = {
+          const unitKey = sigData.unit || sigName;
+          activeUnitsList.push({ unit: unitKey, color: color, axisKey: yaxisKey });
+
+          const yaxisConfig = {
             title: { text: sigData.unit || sigName, font: { color: color, size: 10 } },
             tickfont: { color: color, size: 9 },
-            gridcolor: '#242a35'
+            gridcolor: '#242a35',
+            fixedrange: isRangeSliderVisible ? true : false
           };
+
+          if (customYRanges[unitKey] && !customYRanges[unitKey].auto) {
+            const rMin = customYRanges[unitKey].min;
+            const rMax = customYRanges[unitKey].max;
+            if (rMin !== null && rMax !== null && rMin < rMax) {
+              yaxisConfig.range = [rMin, rMax];
+              yaxisConfig.autorange = false;
+            }
+          }
+
+          layout[yaxisKey] = yaxisConfig;
+
           if (axisNum > 1) {
             layout[xaxisKey] = {
               matches: 'x',
@@ -760,7 +1100,299 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
 
       document.getElementById('statPoints').textContent = totalPoints.toLocaleString();
-      Plotly.react(plotDiv, traces, layout, { responsive: true, displayModeBar: false });
+      await Plotly.react(plotDiv, traces, layout, { responsive: true, displayModeBar: false });
+
+      // Save initial base range
+      if (plotDiv._fullLayout && plotDiv._fullLayout.yaxis && plotDiv._fullLayout.yaxis.range) {
+        lastBaseYRange = [...plotDiv._fullLayout.yaxis.range];
+      }
+
+      // Synchronize relayout events (zoom/pan) with numeric inputs & secondary axes
+      plotDiv.removeAllListeners && plotDiv.removeAllListeners('plotly_relayout');
+      plotDiv.on('plotly_relayout', (eventData) => {
+        let x0 = null, x1 = null;
+        if (eventData['xaxis.range[0]'] !== undefined) {
+          x0 = Number(eventData['xaxis.range[0]']);
+          x1 = Number(eventData['xaxis.range[1]']);
+        } else if (eventData['xaxis.range'] !== undefined) {
+          x0 = Number(eventData['xaxis.range'][0]);
+          x1 = Number(eventData['xaxis.range'][1]);
+        } else if (eventData['xaxis.autorange'] === true) {
+          x0 = 0.0;
+          x1 = currentDuration;
+        }
+
+        if (x0 !== null && x1 !== null && !isNaN(x0) && !isNaN(x1)) {
+          currentTimeRange = [x0, x1];
+          document.getElementById('timeFrom').value = x0.toFixed(2);
+          document.getElementById('timeTo').value = x1.toFixed(2);
+        }
+
+        // Multi-axis 2D Pan synchronization:
+        // When the primary yaxis is panned/scaled, shift secondary axes proportionally
+        if (!isSyncingAxes && eventData['yaxis.range[0]'] !== undefined && lastBaseYRange) {
+          const newY0 = eventData['yaxis.range[0]'];
+          const newY1 = eventData['yaxis.range[1]'];
+          const oldSpan = lastBaseYRange[1] - lastBaseYRange[0];
+          const newSpan = newY1 - newY0;
+          const shiftFraction = ((newY0 + newY1) / 2 - (lastBaseYRange[0] + lastBaseYRange[1]) / 2) / (oldSpan || 1);
+          const spanRatio = newSpan / (oldSpan || 1);
+          lastBaseYRange = [newY0, newY1];
+
+          if (activeUnitsList.length > 1 && currentMode === "overlay") {
+            isSyncingAxes = true;
+            const syncUpdate = {};
+            activeUnitsList.slice(1).forEach(item => {
+              const axLayout = plotDiv._fullLayout[item.axisKey];
+              if (axLayout && axLayout.range) {
+                const [sy0, sy1] = axLayout.range;
+                const sSpan = sy1 - sy0;
+                const sCenter = (sy0 + sy1) / 2 + sSpan * shiftFraction;
+                const sNewSpan = sSpan * spanRatio;
+                const n0 = sCenter - sNewSpan / 2;
+                const n1 = sCenter + sNewSpan / 2;
+                syncUpdate[`${item.axisKey}.range`] = [n0, n1];
+                customYRanges[item.unit] = {
+                  min: Number(n0.toFixed(3)),
+                  max: Number(n1.toFixed(3)),
+                  auto: false
+                };
+              }
+            });
+            Plotly.relayout(plotDiv, syncUpdate).then(() => {
+              isSyncingAxes = false;
+            });
+          }
+        }
+
+        // Update customYRanges from relayout
+        activeUnitsList.forEach(item => {
+          const key0 = `${item.axisKey}.range[0]`;
+          const key1 = `${item.axisKey}.range[1]`;
+          if (eventData[key0] !== undefined && eventData[key1] !== undefined) {
+            customYRanges[item.unit] = {
+              min: Number(eventData[key0].toFixed(3)),
+              max: Number(eventData[key1].toFixed(3)),
+              auto: false
+            };
+          }
+        });
+      });
+    }
+
+    // Time Zoom helpers
+    function setTimeWindow(x0, x1) {
+      if (x0 < 0) x0 = 0;
+      if (x1 > currentDuration && currentDuration > 0) x1 = currentDuration;
+      if (x1 <= x0) x1 = x0 + 0.1;
+
+      currentTimeRange = [x0, x1];
+      document.getElementById('timeFrom').value = x0.toFixed(2);
+      document.getElementById('timeTo').value = x1.toFixed(2);
+
+      const plotDiv = document.getElementById('plot');
+      Plotly.relayout(plotDiv, {
+        'xaxis.range[0]': x0,
+        'xaxis.range[1]': x1
+      });
+    }
+
+    function zoomIn() {
+      let [x0, x1] = currentTimeRange;
+      if (x0 === null) x0 = 0;
+      if (x1 === null) x1 = currentDuration;
+      const center = (x0 + x1) / 2;
+      const span = (x1 - x0) / 2;
+      setTimeWindow(center - span / 2, center + span / 2);
+    }
+
+    function zoomOut() {
+      let [x0, x1] = currentTimeRange;
+      if (x0 === null) x0 = 0;
+      if (x1 === null) x1 = currentDuration;
+      const center = (x0 + x1) / 2;
+      const span = (x1 - x0) * 2;
+      setTimeWindow(center - span / 2, center + span / 2);
+    }
+
+    // Independent Axis Panning and Scaling
+    function nudgeAxis(unit, panDeltaPercent, zoomScaleFactor) {
+      const plotDiv = document.getElementById('plot');
+      if (!plotDiv._fullLayout) return;
+
+      const item = activeUnitsList.find(u => u.unit === unit);
+      if (!item) return;
+
+      const axisLayout = plotDiv._fullLayout[item.axisKey];
+      if (!axisLayout || !axisLayout.range) return;
+
+      let [y0, y1] = axisLayout.range;
+      const span = (y1 - y0);
+
+      if (panDeltaPercent !== 0) {
+        const shift = span * panDeltaPercent;
+        y0 += shift;
+        y1 += shift;
+      }
+
+      if (zoomScaleFactor !== 1) {
+        const center = (y0 + y1) / 2;
+        const newSpan = span * zoomScaleFactor;
+        y0 = center - newSpan / 2;
+        y1 = center + newSpan / 2;
+      }
+
+      customYRanges[unit] = {
+        min: Number(y0.toFixed(3)),
+        max: Number(y1.toFixed(3)),
+        auto: false
+      };
+
+      Plotly.relayout(plotDiv, {
+        [`${item.axisKey}.range`]: [y0, y1],
+        [`${item.axisKey}.autorange`]: false
+      });
+
+      renderAxisModal();
+    }
+
+    // Cursor-centered Wheel and Pan Controller
+    function setupInteractiveWheelController() {
+      const plotDiv = document.getElementById('plot');
+
+      plotDiv.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        if (!plotDiv._fullLayout) return;
+
+        const rect = plotDiv.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+
+        // Determine target axis based on horizontal cursor proximity
+        let targetItem = activeUnitsList[0];
+        if (activeUnitsList.length > 1) {
+          const rightMargin = rect.width * 0.85;
+          if (mouseX >= rightMargin) {
+            const rightIdx = Math.min(
+              activeUnitsList.length - 1,
+              1 + Math.floor(((mouseX - rightMargin) / (rect.width - rightMargin)) * (activeUnitsList.length - 1))
+            );
+            targetItem = activeUnitsList[rightIdx];
+          }
+        }
+
+        // Alt + Wheel: Pan Y-Scale up and down
+        if (e.altKey) {
+          const panPercent = e.deltaY < 0 ? 0.1 : -0.1;
+          if (targetItem) {
+            nudgeAxis(targetItem.unit, panPercent, 1.0);
+          }
+          return;
+        }
+
+        // Shift + Wheel: Pan Time horizontally
+        if (e.shiftKey) {
+          let [x0, x1] = currentTimeRange;
+          if (x0 === null) x0 = 0;
+          if (x1 === null) x1 = currentDuration;
+          const span = x1 - x0;
+          const shift = span * 0.1 * (e.deltaY < 0 ? -1 : 1);
+          setTimeWindow(x0 + shift, x1 + shift);
+          return;
+        }
+
+        // Ctrl + Wheel: Zoom Y-Axis Scale in/out
+        if (e.ctrlKey) {
+          const factor = e.deltaY < 0 ? 0.8 : 1.25;
+          if (targetItem) {
+            nudgeAxis(targetItem.unit, 0.0, factor);
+          }
+          return;
+        }
+
+        // Normal Wheel (no modifiers): Zoom Time (X) centered at mouse cursor!
+        let [x0, x1] = currentTimeRange;
+        if (x0 === null) x0 = 0;
+        if (x1 === null) x1 = currentDuration;
+
+        const plotWidth = rect.width - 120;
+        const plotLeft = 60;
+        const cursorRatio = Math.max(0, Math.min(1, (mouseX - plotLeft) / plotWidth));
+        const cursorTime = x0 + (x1 - x0) * cursorRatio;
+
+        const factor = e.deltaY < 0 ? 0.8 : 1.25;
+        const newSpan = (x1 - x0) * factor;
+        const newX0 = cursorTime - newSpan * cursorRatio;
+        const newX1 = cursorTime + newSpan * (1 - cursorRatio);
+
+        setTimeWindow(newX0, newX1);
+      }, { passive: false });
+
+      // Double-click resets view to full fit
+      plotDiv.addEventListener('dblclick', () => {
+        setTimeWindow(0, currentDuration);
+      });
+    }
+
+    function renderAxisModal() {
+      const container = document.getElementById('axisModalBody');
+      container.innerHTML = '';
+
+      if (activeUnitsList.length === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted);">No signals currently plotted.</p>';
+        return;
+      }
+
+      activeUnitsList.forEach(item => {
+        const u = item.unit;
+        const color = item.color;
+        const currentRange = customYRanges[u] || { min: '', max: '', auto: true };
+
+        const card = document.createElement('div');
+        card.className = 'axis-config-card';
+        card.innerHTML = `
+          <div class="axis-card-header">
+            <div class="axis-card-title">
+              <span class="color-pill" style="background:${color};"></span>
+              <span>Axis: <strong>${u}</strong></span>
+            </div>
+            <div class="axis-quick-actions">
+              <button class="axis-btn-mini btn-pan-up" title="Pan scale up 10%">▲ Up</button>
+              <button class="axis-btn-mini btn-pan-down" title="Pan scale down 10%">▼ Down</button>
+              <button class="axis-btn-mini btn-zoom-in" title="Zoom in scale 20%">+ In</button>
+              <button class="axis-btn-mini btn-zoom-out" title="Zoom out scale 20%">&minus; Out</button>
+            </div>
+          </div>
+          <div class="axis-inputs-row">
+            <label>Min:</label>
+            <input type="number" step="any" class="axis-min-input" data-unit="${u}" value="${currentRange.min !== null && currentRange.min !== undefined ? currentRange.min : ''}" ${currentRange.auto ? 'disabled' : ''}>
+            <label>Max:</label>
+            <input type="number" step="any" class="axis-max-input" data-unit="${u}" value="${currentRange.max !== null && currentRange.max !== undefined ? currentRange.max : ''}" ${currentRange.auto ? 'disabled' : ''}>
+            <label style="margin-left:auto; display:flex; align-items:center; gap:0.25rem;">
+              <input type="checkbox" class="axis-auto-cb" data-unit="${u}" ${currentRange.auto ? 'checked' : ''}> Auto
+            </label>
+          </div>
+        `;
+
+        card.querySelector('.btn-pan-up').onclick = () => nudgeAxis(u, 0.1, 1.0);
+        card.querySelector('.btn-pan-down').onclick = () => nudgeAxis(u, -0.1, 1.0);
+        card.querySelector('.btn-zoom-in').onclick = () => nudgeAxis(u, 0.0, 0.8);
+        card.querySelector('.btn-zoom-out').onclick = () => nudgeAxis(u, 0.0, 1.25);
+
+        const autoCb = card.querySelector('.axis-auto-cb');
+        const minInp = card.querySelector('.axis-min-input');
+        const maxInp = card.querySelector('.axis-max-input');
+
+        autoCb.addEventListener('change', (e) => {
+          const isAuto = e.target.checked;
+          minInp.disabled = isAuto;
+          maxInp.disabled = isAuto;
+          if (isAuto) {
+            customYRanges[u] = { min: null, max: null, auto: true };
+          }
+        });
+
+        container.appendChild(card);
+      });
     }
 
     function setupEventListeners() {
@@ -774,21 +1406,77 @@ HTML_PAGE = r"""<!DOCTYPE html>
       document.getElementById('btnSelectAll').addEventListener('click', () => {
         Object.keys(availableSignals).forEach(s => selectedSignals.add(s));
         updateCheckboxes();
+        renderSignalList();
         updatePlot();
       });
 
       document.getElementById('btnClearAll').addEventListener('click', () => {
         selectedSignals.clear();
         updateCheckboxes();
+        renderSignalList();
         updatePlot();
       });
 
+      document.getElementById('btnCollapseAll').addEventListener('click', () => {
+        for (const info of Object.values(availableSignals)) {
+          collapsedGroups.add(info.message);
+        }
+        renderSignalList();
+      });
+
+      document.getElementById('btnExpandAll').addEventListener('click', () => {
+        collapsedGroups.clear();
+        renderSignalList();
+      });
+
+      // Drag Tool Switcher: Pan vs Zoom
+      document.getElementById('btnToolPan').addEventListener('click', () => {
+        currentDragTool = "pan";
+        document.getElementById('btnToolPan').classList.add('active');
+        document.getElementById('btnToolZoom').classList.remove('active');
+        Plotly.relayout(document.getElementById('plot'), { dragmode: 'pan' });
+      });
+
+      document.getElementById('btnToolZoom').addEventListener('click', () => {
+        currentDragTool = "zoom";
+        document.getElementById('btnToolZoom').classList.add('active');
+        document.getElementById('btnToolPan').classList.remove('active');
+        Plotly.relayout(document.getElementById('plot'), { dragmode: 'zoom' });
+      });
+
+      // Range Slider Toggle
+      document.getElementById('btnToggleSlider').addEventListener('click', () => {
+        isRangeSliderVisible = !isRangeSliderVisible;
+        const btn = document.getElementById('btnToggleSlider');
+        if (isRangeSliderVisible) {
+          btn.classList.add('btn-active-toggle');
+        } else {
+          btn.classList.remove('btn-active-toggle');
+        }
+        updatePlot();
+      });
+
+      // Time Interval Controls
+      document.getElementById('btnApplyTime').addEventListener('click', () => {
+        const fromVal = parseFloat(document.getElementById('timeFrom').value);
+        const toVal = parseFloat(document.getElementById('timeTo').value);
+        if (!isNaN(fromVal) && !isNaN(toVal)) {
+          setTimeWindow(fromVal, toVal);
+        }
+      });
+
+      document.getElementById('timeFrom').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') document.getElementById('btnApplyTime').click();
+      });
+      document.getElementById('timeTo').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') document.getElementById('btnApplyTime').click();
+      });
+
+      document.getElementById('btnZoomIn').addEventListener('click', zoomIn);
+      document.getElementById('btnZoomOut').addEventListener('click', zoomOut);
+
       document.getElementById('btnResetZoom').addEventListener('click', () => {
-        const plotDiv = document.getElementById('plot');
-        Plotly.relayout(plotDiv, {
-          'xaxis.autorange': true,
-          'yaxis.autorange': true
-        });
+        setTimeWindow(0, currentDuration);
       });
 
       document.getElementById('btnExportPng').addEventListener('click', () => {
@@ -813,6 +1501,45 @@ HTML_PAGE = r"""<!DOCTYPE html>
         updatePlot();
       });
 
+      // Axis Scales Modal
+      document.getElementById('btnOpenAxisModal').addEventListener('click', () => {
+        renderAxisModal();
+        document.getElementById('axisModal').style.display = 'flex';
+      });
+
+      document.getElementById('btnCloseAxisModal').addEventListener('click', () => {
+        document.getElementById('axisModal').style.display = 'none';
+      });
+
+      document.getElementById('btnApplyAllAxes').addEventListener('click', () => {
+        document.querySelectorAll('#axisModalBody .axis-config-card').forEach(card => {
+          const autoCb = card.querySelector('.axis-auto-cb');
+          const minInp = card.querySelector('.axis-min-input');
+          const maxInp = card.querySelector('.axis-max-input');
+          const u = autoCb.getAttribute('data-unit');
+
+          if (autoCb.checked) {
+            customYRanges[u] = { min: null, max: null, auto: true };
+          } else {
+            const minV = parseFloat(minInp.value);
+            const maxV = parseFloat(maxInp.value);
+            customYRanges[u] = {
+              min: !isNaN(minV) ? minV : null,
+              max: !isNaN(maxV) ? maxV : null,
+              auto: false
+            };
+          }
+        });
+        document.getElementById('axisModal').style.display = 'none';
+        updatePlot();
+      });
+
+      document.getElementById('btnResetAllAxes').addEventListener('click', () => {
+        customYRanges = {};
+        renderAxisModal();
+        updatePlot();
+      });
+
       // Presets
       document.querySelectorAll('.preset-pill').forEach(pill => {
         pill.addEventListener('click', () => {
@@ -831,6 +1558,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           }
 
           updateCheckboxes();
+          renderSignalList();
           updatePlot();
         });
       });
@@ -845,7 +1573,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
 class VisualizerHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        # Silence default request spam
         pass
 
     def do_GET(self):
@@ -870,7 +1597,6 @@ class VisualizerHandler(BaseHTTPRequestHandler):
                 for p in candidates:
                     if p.stat().st_size == 0:
                         continue
-                    # Quick read duration
                     info = load_and_decode_log(p, db)
                     logs_meta.append({
                         "filename": p.name,
@@ -998,4 +1724,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -69,10 +69,36 @@ A browser-based interactive dashboard that decodes `.bin` files on-the-fly and p
 - **Quick Presets**: One-click filters for *Fuel & Power*, *Coolant & Temp*, *Speed & RPM*, and *Telltales*.
 - **Multi-Axis Overlay**: Automatically gives distinct, color-coded Y-axes to signals with different engineering units (`V`, `Hz`, `kph`, `Ohm`) so they don't distort each other.
 - **Stacked Subplots Mode**: Toggle between overlaid multi-axis view and vertically stacked synchronized subplots.
-- **Plotly.js Chart Controls**:
-  - Drag to zoom into any time range or box.
+- **Mouse Navigation & 2D Panning**:
+  - **Pan Mode (✋)** (default): Click and drag anywhere on the chart to freely pan in **both X (time) and Y (values) simultaneously**.
+  - **Box Zoom Mode (🔍)**: Click and drag to draw a rectangular zoom box.
+  - Switch between Pan and Zoom using the header toggle buttons.
+- **Intuitive Mouse Wheel Controls**:
+  - **Mouse Wheel**: Zooms Time (X-axis) centered directly around the mouse cursor position.
+  - **Shift + Mouse Wheel**: Horizontally pans/scrolls left and right through time.
+  - **Alt + Mouse Wheel**: Pans the Y-scale up and down smoothly.
+  - **Ctrl + Mouse Wheel**: Zooms in and out on the Y-axis scale (targets the specific axis closest to your cursor).
+  - **Double Click**: Resets view to full fit.
+- **Independent Y-Axis Controls**:
+  - **Y Scales Drawer**: Click `Y Scales` in the header to open per-axis controls.
+  - Each active unit/axis features individual nudge buttons:
+    - `▲ Up` / `▼ Down`: Pan that specific axis scale up or down by 10%.
+    - `+ In` / `− Out`: Zoom that specific axis scale in or out by 20%.
+    - `Min` and `Max` direct numeric inputs.
+    - `Auto` checkbox to toggle dynamic auto-scaling.
+- **Timeline Range Slider**:
+  - Click **⇋ Slider** in the header toolbar to show or hide the bottom timeline range slider.
+  - *(Note: Keeping the slider hidden unlocks full, unconstrained 2D mouse drag panning in both X and Y).*
+- **Time Window & Range Controls**:
+  - Enter exact numeric boundaries in `Time (s): [From] to [To]` and click **Apply**.
+  - Quick **Zoom In (+)** and **Zoom Out (−)** buttons (2x scale around center).
+  - One-click **Fit** button to restore full log duration.
+- **Collapsible Message Groups**:
+  - Click any message row in the sidebar to expand or collapse its signals.
+  - Checkbox on the message header quickly selects or deselects all signals in that message.
+  - Dedicated **Collapse** and **Expand** buttons in the sidebar header to toggle all groups at once.
+- **Plotly.js Chart Features**:
   - Hover tooltip displays exact timestamp, signal value, unit, and enum states (e.g. `1 (HI)` or `0 (Neutral)`).
-  - Reset view button.
   - One-click PNG export.
 
 ### Usage
@@ -90,3 +116,4 @@ python3 visualize.py
 | `--port, -p <port>` | HTTP server port (default: 8080, auto-increments if busy) |
 | `--dbc, -d <file.dbc>` | Custom DBC file path |
 | `--no-browser` | Do not launch the browser automatically |
+
