@@ -13,8 +13,11 @@
 *.bak
 *.tmp
 
-# Log files
+# Log files and CAN recordings
 *.log
+*.bin
+*.csv
+*.asc
 
 # Build artifacts and directories
 **/build/
