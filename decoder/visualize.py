@@ -15,6 +15,7 @@ import json
 import socket
 import argparse
 import webbrowser
+import re
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -35,6 +36,39 @@ except ImportError:
 LOG_CACHE: Dict[str, Dict[str, Any]] = {}
 DBC_INSTANCE: Optional[DbcDatabase] = None
 DBC_PATH: Optional[Path] = None
+INITIAL_LOG_FILE: Optional[Path] = None
+
+
+def natural_sort_key(p: Path):
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', p.name)]
+
+
+def find_bin_files(initial: Optional[Path] = None) -> List[Path]:
+    """Finds all *.bin files in SCRIPT_DIR and CWD, including files starting with numbers."""
+    seen = set()
+    files: List[Path] = []
+
+    # If an initial file was explicitly passed, make sure it is first
+    if initial and initial.is_file():
+        seen.add(initial.resolve())
+        files.append(initial)
+
+    # Search directories: SCRIPT_DIR and current directory
+    search_dirs = [SCRIPT_DIR]
+    cwd = Path(".").resolve()
+    if cwd != SCRIPT_DIR.resolve():
+        search_dirs.append(Path("."))
+
+    discovered = []
+    for d in search_dirs:
+        for p in d.glob("*.bin"):
+            if p.is_file() and p.resolve() not in seen:
+                seen.add(p.resolve())
+                discovered.append(p)
+
+    discovered.sort(key=natural_sort_key)
+    files.extend(discovered)
+    return files
 
 
 def get_dbc(path: Optional[Path] = None) -> DbcDatabase:
@@ -1589,9 +1623,7 @@ class VisualizerHandler(BaseHTTPRequestHandler):
 
             elif path == "/api/logs":
                 db = get_dbc()
-                candidates = sorted(SCRIPT_DIR.glob("log_*.bin"))
-                if not candidates:
-                    candidates = sorted(Path(".").glob("log_*.bin"))
+                candidates = find_bin_files(INITIAL_LOG_FILE)
 
                 logs_meta = []
                 for p in candidates:
@@ -1615,6 +1647,8 @@ class VisualizerHandler(BaseHTTPRequestHandler):
                 p = SCRIPT_DIR / filename
                 if not p.is_file():
                     p = Path(filename)
+                if not p.is_file() and INITIAL_LOG_FILE and INITIAL_LOG_FILE.name == filename:
+                    p = INITIAL_LOG_FILE
                 if not p.is_file():
                     self.send_error(404, f"File {filename} not found")
                     return
@@ -1642,6 +1676,8 @@ class VisualizerHandler(BaseHTTPRequestHandler):
                 p = SCRIPT_DIR / filename
                 if not p.is_file():
                     p = Path(filename)
+                if not p.is_file() and INITIAL_LOG_FILE and INITIAL_LOG_FILE.name == filename:
+                    p = INITIAL_LOG_FILE
                 if not p.is_file():
                     self.send_error(404, f"File {filename} not found")
                     return
@@ -1689,6 +1725,17 @@ def main():
     parser.add_argument("--port", "-p", type=int, default=8080, help="HTTP server port (default 8080)")
     parser.add_argument("--no-browser", action="store_true", help="Do not automatically launch web browser")
     args = parser.parse_args()
+
+    # Set initial log file if passed via CLI
+    global INITIAL_LOG_FILE
+    if args.log_file:
+        p = Path(args.log_file)
+        if p.is_file():
+            INITIAL_LOG_FILE = p.resolve()
+        elif (SCRIPT_DIR / args.log_file).is_file():
+            INITIAL_LOG_FILE = (SCRIPT_DIR / args.log_file).resolve()
+        else:
+            print(f"[-] Warning: Log file '{args.log_file}' not found.")
 
     # Pre-init DBC
     dbc_path = Path(args.dbc) if args.dbc else None

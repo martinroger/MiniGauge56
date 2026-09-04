@@ -465,7 +465,7 @@ def main():
     parser.add_argument(
         "inputs",
         nargs="*",
-        help="Input .bin log files (defaults to all log_*.bin files in decoder directory)",
+        help="Input .bin log files (defaults to all *.bin files in decoder directory)",
     )
     parser.add_argument(
         "--dbc",
@@ -538,10 +538,13 @@ def main():
             else:
                 print(f"[-] Warning: input path not found: {item}")
     else:
-        # Default: search in script dir or cwd
-        bin_files = sorted(script_dir.glob("log_*.bin"))
+        # Default: search in script dir or cwd for all *.bin files
+        def _nat_key(p: Path):
+            return [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', p.name)]
+
+        bin_files = sorted([p for p in script_dir.glob("*.bin") if p.is_file()], key=_nat_key)
         if not bin_files:
-            bin_files = sorted(Path(".").glob("log_*.bin"))
+            bin_files = sorted([p for p in Path(".").glob("*.bin") if p.is_file()], key=_nat_key)
 
     if not bin_files:
         print("[-] Error: No .bin log files found.")
