@@ -461,6 +461,7 @@
               "flagScrollDirection": "",
               "scrollSnapX": "",
               "scrollSnapY": "",
+              "checkedState": false,
               "checkedStateType": "literal",
               "disabledStateType": "literal",
               "states": "",

@@ -10,6 +10,8 @@
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "twai_daemon.h"
+#include <time.h>
+#include <sys/time.h>
 
 /**
  * @file logging.cpp
@@ -24,7 +26,13 @@ char current_log_filename[64] = "None";
 uint32_t current_file_size = 0;
 uint32_t current_buffered_bytes = 0;
 bool is_logging = false;
+bool is_gps_time_synced = false;
 static volatile bool sd_writer_running = false;
+
+void logging_set_gps_synced(bool synced)
+{
+    is_gps_time_synced = synced;
+}
 
 /**
  * @brief Packed 16-byte binary record representing a single logged CAN frame.
@@ -100,7 +108,22 @@ void log_can_frame_handler(const twai_frame_t *frame)
 static void sd_writer_task(void *pvParameters)
 {
     sd_writer_running = true;
-    sprintf(current_log_filename, "/sdcard/log_%lld.bin", esp_timer_get_time());
+
+    time_t now_epoch = time(NULL);
+    if (is_gps_time_synced && now_epoch > 1700000000)
+    {
+        struct tm tm_utc;
+        gmtime_r(&now_epoch, &tm_utc);
+        snprintf(current_log_filename, sizeof(current_log_filename),
+                 "/sdcard/%04d%02d%02d_log_%02d%02d%02d.bin",
+                 tm_utc.tm_year + 1900, tm_utc.tm_mon + 1, tm_utc.tm_mday,
+                 tm_utc.tm_hour, tm_utc.tm_min, tm_utc.tm_sec);
+    }
+    else
+    {
+        snprintf(current_log_filename, sizeof(current_log_filename),
+                 "/sdcard/log_%lld.bin", esp_timer_get_time());
+    }
     current_file_size = 0;
 
     FILE *f = fopen(current_log_filename, "wb");

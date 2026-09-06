@@ -40,6 +40,19 @@ extern uint32_t current_buffered_bytes;
 extern bool is_logging;
 
 /**
+ * @brief State flag indicating whether system time has been synchronized with GPS 3D fix.
+ */
+extern bool is_gps_time_synced;
+
+/**
+ * @brief Sets the GPS time synchronization status.
+ *
+ * @param[in] synced True if system time has been synchronized with valid GPS fix.
+ * @note Thread-safety: Thread-safe.
+ */
+void logging_set_gps_synced(bool synced);
+
+/**
  * @brief Initializes the PSRAM ringbuffer for buffering incoming CAN frames.
  *
  * @return bool True if PSRAM storage allocation and ringbuffer creation succeed, false otherwise.

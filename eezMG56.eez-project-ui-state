@@ -1001,10 +1001,10 @@
     "[eezMG56.eez-project]:/userPages/0[flow-state]": {
       "selection": {
         "0": {
-          "0": {
+          "0": {},
+          "4": {
             "$selected": true
-          },
-          "4": {}
+          }
         }
       },
       "transform": {

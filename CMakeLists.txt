@@ -15,3 +15,5 @@ add_compile_options(
 )
 
 project(MiniGauge56)
+
+idf_build_set_property(COMPILE_OPTIONS "-Wno-stringop-truncation" APPEND)

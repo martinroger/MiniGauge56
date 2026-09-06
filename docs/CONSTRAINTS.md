@@ -16,15 +16,22 @@
 ## 2. Software & Architectural Constraints
 
 ### 2.1 Unmodified Component Boundary
-- The `components/twai_daemon/` component was developed and tested across multiple projects. It must remain **strictly unmodified**.
-- Application code in `main/` adapts to the existing `twai_daemon` API (`initCAN`, `twai_transmit_msg`, `twai_transmit_frame`).
+- The `components/twai_daemon/`, `components/racebox_ble/`, and `components/racebox_twai/` components were developed and tested across other projects. They must remain **strictly unmodified**.
+- Application code in `main/` adapts to the existing component APIs without altering component source files.
+- Compiler warnings in external components (e.g. GCC 14 `-Wstringop-truncation`) are suppressed at the root project CMake level (`-Wno-stringop-truncation`) rather than modifying component code.
 
 ### 2.2 Real-Time Processing & Zero Dynamic Allocation in Hot Path
 - In the CAN frame reception and routing callback (`log_can_frame_handler`), no dynamic memory allocations (`malloc`, `calloc`, `new`) are permitted.
 - Records are copied by value into statically allocated stack structs and queued non-blocking into PSRAM `can_rb` with zero timeout (`0`).
 - If the ringbuffer is saturated, newest frames are dropped immediately rather than stalling the `CAN_RX_Task` thread.
 
-### 2.3 FreeRTOS Core Pinning
+### 2.3 RaceBox BLE & GPS Time Synchronization Constraints
+- **BLE Stack**: Apache NimBLE is configured in Central mode with GAP Service enabled (`CONFIG_BT_NIMBLE_GAP_SERVICE=y`) to support device name configuration.
+- **RTC Clock Sync**: Time synchronization via `settimeofday()` is strictly restricted to valid 3D GPS fixes (`fix_status >= 3`, `valid_date`, `valid_time`, `valid_fix`, `num_sv >= 4`) to prevent syncing against unstable or drifting 2D/no-fix data.
+- **Clock Drift & Monotonicity**: The RTC is synchronized only on the first valid 3D fix; subsequent time progression relies on the internal ESP32 RTC to avoid backward time jumps during active SD logging.
+- **CAN Broadcast Throughput**: RaceBox 25 Hz telemetry translates to 6 CAN frames (`0x600`-`0x605`) every 40 ms (150 frames/sec). Frames are dispatched via `twai_daemon`'s zero-copy TX descriptor pool.
+
+### 2.4 FreeRTOS Core Pinning
 - `CAN_RX_Task` is pinned to Core 1 via `CONFIG_CAN_CORE_AFFINITY` to prevent contention with display rendering on Core 0.
 - LVGL UI operations are synchronized using `bsp_display_lock()` mutex with bounded timeouts.
 
