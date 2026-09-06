@@ -374,9 +374,9 @@
               "objID": "c0ad7a04-ad4c-46a2-ee61-606137ab266d",
               "type": "LVGLButtonWidget",
               "left": 0,
-              "top": 42,
-              "width": 200,
-              "height": 200,
+              "top": 85,
+              "width": 288,
+              "height": 244,
               "customInputs": [],
               "customOutputs": [],
               "style": {
@@ -477,6 +477,58 @@
               },
               "group": "",
               "groupIndex": 0
+            },
+            {
+              "objID": "56330d9b-31a8-470d-a384-48e53444f7c0",
+              "type": "LVGLLabelWidget",
+              "left": 0,
+              "top": -65,
+              "width": 405,
+              "height": 27,
+              "customInputs": [],
+              "customOutputs": [],
+              "style": {
+                "objID": "626688cd-93ad-4cc8-d5c1-33f01ea7e704",
+                "useStyle": "default",
+                "conditionalStyles": [],
+                "childStyles": []
+              },
+              "timeline": [],
+              "eventHandlers": [],
+              "identifier": "rbx_status",
+              "leftUnit": "px",
+              "topUnit": "px",
+              "widthUnit": "px",
+              "heightUnit": "content",
+              "children": [],
+              "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+              "hiddenFlagType": "literal",
+              "clickableFlagType": "literal",
+              "flagScrollbarMode": "",
+              "flagScrollDirection": "",
+              "scrollSnapX": "",
+              "scrollSnapY": "",
+              "checkedStateType": "literal",
+              "disabledStateType": "literal",
+              "states": "",
+              "localStyles": {
+                "objID": "f44909d9-2537-4223-9d89-f9db97077d21",
+                "definition": {
+                  "MAIN": {
+                    "DEFAULT": {
+                      "align": "CENTER",
+                      "text_align": "CENTER",
+                      "text_font": "MONTSERRAT_24"
+                    }
+                  }
+                }
+              },
+              "group": "",
+              "groupIndex": 0,
+              "text": "rbx_status",
+              "textType": "literal",
+              "longMode": "SCROLL_CIRCULAR",
+              "recolor": false
             }
           ],
           "widgetFlags": "CLICKABLE|PRESS_LOCK|CLICK_FOCUSABLE|GESTURE_BUBBLE|SNAPPABLE|SCROLLABLE|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER",

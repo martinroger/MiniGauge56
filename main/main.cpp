@@ -76,6 +76,7 @@ void update_display(void *pvParameters)
             lv_label_set_text_fmt(objects.filesize, "%lu kB", current_file_size / 1024);
             lv_label_set_text_fmt(objects.buffered_size, "%lu B", current_buffered_bytes);
             lv_label_set_text_fmt(objects.start_stop_lbl, "%s", is_logging ? "STOP" : "START");
+            lv_obj_set_state(objects.start_stop_btn,LV_STATE_CHECKED,is_logging);
             lv_label_set_text_fmt(objects.status, "%s", is_logging ? "Logging" : "Paused");
             bsp_display_unlock();
         }

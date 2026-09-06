@@ -75,8 +75,8 @@ void create_screen_main() {
             // start_stop_btn
             lv_obj_t *obj = lv_button_create(parent_obj);
             objects.start_stop_btn = obj;
-            lv_obj_set_pos(obj, 0, 42);
-            lv_obj_set_size(obj, 200, 200);
+            lv_obj_set_pos(obj, 0, 85);
+            lv_obj_set_size(obj, 288, 244);
             lv_obj_add_event_cb(obj, action_start_stop_clicked, LV_EVENT_CLICKED, (void *)0);
             lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_radius(obj, 200, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -93,6 +93,18 @@ void create_screen_main() {
                     lv_label_set_text(obj, "START");
                 }
             }
+        }
+        {
+            // rbx_status
+            lv_obj_t *obj = lv_label_create(parent_obj);
+            objects.rbx_status = obj;
+            lv_obj_set_pos(obj, 0, -65);
+            lv_obj_set_size(obj, 405, LV_SIZE_CONTENT);
+            lv_label_set_long_mode(obj, LV_LABEL_LONG_SCROLL_CIRCULAR);
+            lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_text_font(obj, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_label_set_text(obj, "rbx_status");
         }
     }
     
