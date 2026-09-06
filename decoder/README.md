@@ -98,6 +98,15 @@ A browser-based interactive dashboard that decodes `.bin` files on-the-fly and p
   - Click any message row in the sidebar to expand or collapse its signals.
   - Checkbox on the message header quickly selects or deselects all signals in that message.
   - Dedicated **Collapse** and **Expand** buttons in the sidebar header to toggle all groups at once.
+- **GPS Track Map & Scope Synchronization**:
+  - **Collapsible & Resizable Split Panel**: Click **🗺 Map** in the header to open the right-hand map panel (powered by Leaflet.js and CartoDB Dark Matter tiles). Drag the border handle between the scope and the map to freely resize the panel width (double-click the border to reset to default width; width is persisted across sessions).
+  - **Speed Heatmap Trajectory**: The complete vehicle driving path is color-coded by velocity (turbo gradient from blue at standstill, through green and amber, to red at maximum speed).
+  - **Start & Finish Indicators**: Clear visual green and red markers showing course starting line and final point.
+  - **Vehicle Marker with Directional Heading Arrow**: Displays the car's exact position as a pulsed dot on the map with a directional indicator arrow rotating to match the RaceBox compass heading (`RBX_heading_deg`).
+  - **Bi-Directional Telemetry Cursor Sync**:
+    - **Scope → Map**: Hovering over signals on the Plotly telemetry graph moves the vehicle marker along the track in real-time ($O(\log N)$ binary search lookup).
+    - **Map → Scope**: Clicking anywhere along the map polyline track instantly centers the telemetry scope on that timestamp.
+  - **Live Telemetry Bar**: Floating statistics panel under the map displaying current Time, GPS Speed (km/h), Compass Heading (°), and MSL Altitude (m).
 - **Plotly.js Chart Features**:
   - Hover tooltip displays exact timestamp, signal value, unit, and interpreted value-table states (e.g. `Neutral (0)`, `3D_Fix (3)`, `HI (1)`).
   - One-click PNG export.

@@ -109,6 +109,12 @@ def load_and_decode_log(log_path: Path, db: DbcDatabase) -> Dict[str, Any]:
             "duration_s": 0.0,
             "signals": {},
             "messages": {},
+            "gps": {
+                "has_gps": False,
+                "points": [],
+                "max_speed": 0.0,
+                "min_speed": 0.0,
+            },
         }
         LOG_CACHE[key] = result
         return result
@@ -116,6 +122,11 @@ def load_and_decode_log(log_path: Path, db: DbcDatabase) -> Dict[str, Any]:
     duration_s = frames[-1].time_rel_s
     signals_data: Dict[str, Dict[str, Any]] = {}
     message_meta: Dict[str, Dict[str, Any]] = {}
+
+    current_gps_speed = 0.0
+    current_gps_heading = 0.0
+    current_gps_alt = 0.0
+    gps_points: List[Dict[str, Any]] = []
 
     for frame in frames:
         msg_def = db.get_message(frame.can_id)
@@ -130,6 +141,30 @@ def load_and_decode_log(log_path: Path, db: DbcDatabase) -> Dict[str, Any]:
 
         decoded = msg_def.decode(frame.data)
         t = round(frame.time_rel_s, 5)
+
+        # Extract GPS telemetry
+        if "RBX_speed_kph" in decoded:
+            current_gps_speed = float(decoded["RBX_speed_kph"]["value"])
+        if "RBX_heading_deg" in decoded:
+            current_gps_heading = float(decoded["RBX_heading_deg"]["value"])
+        if "RBX_msl_altitude_m" in decoded:
+            current_gps_alt = float(decoded["RBX_msl_altitude_m"]["value"])
+
+        lat_sig = next((k for k in decoded if "latitude" in k.lower()), None)
+        lon_sig = next((k for k in decoded if "longitude" in k.lower()), None)
+        if lat_sig and lon_sig:
+            lat = float(decoded[lat_sig]["value"])
+            lon = float(decoded[lon_sig]["value"])
+            if -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0 and (lat != 0.0 or lon != 0.0):
+                gps_points.append({
+                    "t": t,
+                    "lat": round(lat, 6),
+                    "lon": round(lon, 6),
+                    "speed": round(current_gps_speed, 1),
+                    "heading": round(current_gps_heading, 1),
+                    "alt": round(current_gps_alt, 1),
+                })
+
         for sig_name, info in decoded.items():
             if sig_name not in signals_data:
                 signals_data[sig_name] = {
@@ -143,6 +178,9 @@ def load_and_decode_log(log_path: Path, db: DbcDatabase) -> Dict[str, Any]:
             signals_data[sig_name]["values"].append(info["value"])
             signals_data[sig_name]["states"].append(info["choice"] or "")
 
+    max_gps_speed = max((p["speed"] for p in gps_points), default=0.0)
+    min_gps_speed = min((p["speed"] for p in gps_points), default=0.0)
+
     result = {
         "mtime": mtime,
         "filename": log_path.name,
@@ -151,6 +189,12 @@ def load_and_decode_log(log_path: Path, db: DbcDatabase) -> Dict[str, Any]:
         "duration_s": duration_s,
         "signals": signals_data,
         "messages": message_meta,
+        "gps": {
+            "has_gps": len(gps_points) > 0,
+            "points": gps_points,
+            "max_speed": max_gps_speed,
+            "min_speed": min_gps_speed,
+        },
     }
     LOG_CACHE[key] = result
     return result
@@ -163,6 +207,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MiniGauge CAN Signal Visualizer</title>
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     :root {
       --bg: #121417;
@@ -605,6 +651,188 @@ HTML_PAGE = r"""<!DOCTYPE html>
       justify-content: space-between;
       align-items: center;
     }
+
+    /* Map Resizer Handle */
+    .map-resizer {
+      width: 6px;
+      cursor: col-resize;
+      background: var(--panel-border);
+      display: none;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 20;
+      user-select: none;
+      transition: background 0.15s ease;
+    }
+    .map-resizer:hover, .map-resizer.dragging {
+      background: var(--primary);
+    }
+    .map-resizer.open {
+      display: block;
+    }
+
+    /* Collapsible GPS Track Map Panel */
+    .map-panel {
+      width: 440px;
+      min-width: 250px;
+      max-width: 85vw;
+      background: var(--card-bg);
+      border-left: 1px solid var(--panel-border);
+      display: none;
+      flex-direction: column;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 10;
+    }
+    .map-panel.open {
+      display: flex;
+    }
+    .map-header {
+      padding: 0.6rem 0.9rem;
+      border-bottom: 1px solid var(--panel-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card-bg);
+    }
+    .map-title {
+      font-weight: 600;
+      font-size: 0.88rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .map-points-badge {
+      font-size: 0.7rem;
+      background: #1e3a8a;
+      color: #93c5fd;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: normal;
+    }
+    .map-header-actions {
+      display: flex;
+      gap: 0.35rem;
+      align-items: center;
+    }
+    .map-btn-mini {
+      padding: 0.2rem 0.5rem;
+      font-size: 0.76rem;
+      line-height: 1.2;
+    }
+    .map-container-inner {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      min-height: 250px;
+      background: #0f172a;
+    }
+    .map-telemetry-bar {
+      background: var(--bg);
+      border-top: 1px solid var(--panel-border);
+      padding: 0.5rem 0.8rem;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      font-size: 0.76rem;
+    }
+    .map-telemetry-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .map-telemetry-label {
+      color: var(--text-muted);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .map-telemetry-val {
+      font-weight: 600;
+      color: var(--text);
+      font-family: monospace;
+      font-size: 0.82rem;
+    }
+    .vehicle-marker-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .vehicle-marker-pulse {
+      position: absolute;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(59, 130, 246, 0.45);
+      animation: pulseMarker 2s infinite ease-out;
+      pointer-events: none;
+    }
+    @keyframes pulseMarker {
+      0% { transform: scale(0.6); opacity: 0.9; }
+      100% { transform: scale(2.2); opacity: 0; }
+    }
+    .vehicle-marker-circle {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #3b82f6;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      z-index: 2;
+    }
+    .vehicle-marker-arrow {
+      font-size: 9px;
+      line-height: 1;
+      color: #ffffff;
+      transform-origin: center center;
+      transition: transform 0.1s linear;
+      user-select: none;
+    }
+    .map-marker-tooltip {
+      background: var(--card-bg) !important;
+      color: var(--text) !important;
+      border: 1px solid var(--panel-border) !important;
+      font-size: 0.74rem !important;
+      border-radius: 5px !important;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+      padding: 3px 6px !important;
+    }
+    .leaflet-container {
+      background: #0d1117 !important;
+      font-family: inherit !important;
+    }
+    .leaflet-bar {
+      border: 1px solid var(--panel-border) !important;
+      border-radius: 6px !important;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+    }
+    .leaflet-bar a {
+      background-color: var(--card-bg) !important;
+      color: var(--text) !important;
+      border-bottom: 1px solid var(--panel-border) !important;
+      width: 28px !important;
+      height: 28px !important;
+      line-height: 28px !important;
+    }
+    .leaflet-bar a:hover {
+      background-color: #28303d !important;
+      color: var(--primary) !important;
+    }
+    .leaflet-control-attribution {
+      background: rgba(18, 20, 23, 0.85) !important;
+      color: var(--text-muted) !important;
+      font-size: 0.65rem !important;
+    }
+    .leaflet-control-attribution a {
+      color: #60a5fa !important;
+    }
   </style>
 </head>
 <body>
@@ -655,6 +883,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <span>⇋ Slider</span>
       </button>
 
+      <!-- GPS Track Map Toggle Button -->
+      <button id="btnToggleMap" title="Toggle GPS Track Map panel">
+        <span>🗺 Map</span>
+      </button>
+
       <button id="btnExportPng">Export PNG</button>
     </div>
   </header>
@@ -691,6 +924,42 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <path d="M19 9l-5 5-4-4-3 3" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <p>No signals selected. Pick one or more signals from the left sidebar to plot.</p>
+      </div>
+    </div>
+
+    <!-- Map Split Resizer Handle -->
+    <div class="map-resizer" id="mapResizer" title="Drag to resize map panel (double-click to reset)"></div>
+
+    <!-- Collapsible GPS Track Map Panel -->
+    <div class="map-panel" id="mapPanel">
+      <div class="map-header">
+        <div class="map-title">
+          <span>🗺 GPS Vehicle Track</span>
+          <span class="map-points-badge" id="mapPointsCount">0 pts</span>
+        </div>
+        <div class="map-header-actions">
+          <button id="btnMapFit" class="map-btn-mini" title="Fit track to view">⛶ Fit</button>
+          <button id="btnCloseMap" class="map-btn-mini" title="Close map">&times;</button>
+        </div>
+      </div>
+      <div id="mapContainer" class="map-container-inner"></div>
+      <div class="map-telemetry-bar" id="mapTelemetryBar">
+        <div class="map-telemetry-item">
+          <span class="map-telemetry-label">Time</span>
+          <span class="map-telemetry-val" id="mapTeleTime">-</span>
+        </div>
+        <div class="map-telemetry-item">
+          <span class="map-telemetry-label">Speed</span>
+          <span class="map-telemetry-val" id="mapTeleSpeed">-</span>
+        </div>
+        <div class="map-telemetry-item">
+          <span class="map-telemetry-label">Heading</span>
+          <span class="map-telemetry-val" id="mapTeleHeading">-</span>
+        </div>
+        <div class="map-telemetry-item">
+          <span class="map-telemetry-label">Altitude</span>
+          <span class="map-telemetry-val" id="mapTeleAlt">-</span>
+        </div>
       </div>
     </div>
 
@@ -738,6 +1007,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
     let isSyncingAxes = false;
     let lastBaseYRange = null;
 
+    // GPS Map State
+    let gpsData = { has_gps: false, points: [], max_speed: 0.0, min_speed: 0.0 };
+    let leafletMap = null;
+    let trackPolylineLayer = null;
+    let hitPolylineLayer = null;
+    let vehicleMarker = null;
+    let startMarker = null;
+    let endMarker = null;
+    let isMapOpen = false;
+
     const COLORS = [
       '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
       '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#a855f7',
@@ -752,6 +1031,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
       await loadLogs();
       setupEventListeners();
       setupInteractiveWheelController();
+      setupMapResizer();
+
+      window.addEventListener('resize', () => {
+        const plotDiv = document.getElementById('plot');
+        if (plotDiv) Plotly.Plots.resize(plotDiv);
+        if (leafletMap) leafletMap.invalidateSize();
+      });
     }
 
     async function loadLogs() {
@@ -778,6 +1064,409 @@ HTML_PAGE = r"""<!DOCTYPE html>
       } catch (err) {
         console.error('Failed to load logs:', err);
       }
+    }
+
+    async function loadGpsData(filename) {
+      try {
+        const res = await fetch(`/api/gps?file=${encodeURIComponent(filename)}`);
+        gpsData = await res.json();
+
+        const btnMap = document.getElementById('btnToggleMap');
+        const badge = document.getElementById('mapPointsCount');
+
+        if (gpsData && gpsData.has_gps && gpsData.points && gpsData.points.length > 0) {
+          btnMap.disabled = false;
+          btnMap.style.opacity = '1';
+          btnMap.title = `Toggle GPS Track Map (${gpsData.points.length} points)`;
+          if (badge) badge.textContent = `${gpsData.points.length} pts`;
+          if (isMapOpen) {
+            initOrUpdateMap();
+          }
+        } else {
+          btnMap.disabled = true;
+          btnMap.style.opacity = '0.4';
+          btnMap.title = 'No GPS data in this log';
+          if (badge) badge.textContent = 'No GPS';
+          if (isMapOpen) {
+            initOrUpdateMap();
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load GPS data:', err);
+      }
+    }
+
+    function toggleMap(forceState) {
+      if (forceState !== undefined) {
+        isMapOpen = forceState;
+      } else {
+        isMapOpen = !isMapOpen;
+      }
+      const mapPanel = document.getElementById('mapPanel');
+      const resizer = document.getElementById('mapResizer');
+      const btnToggleMap = document.getElementById('btnToggleMap');
+      if (isMapOpen) {
+        mapPanel.classList.add('open');
+        if (resizer) resizer.classList.add('open');
+        btnToggleMap.classList.add('btn-active-toggle');
+        setTimeout(() => {
+          initOrUpdateMap();
+          const plotDiv = document.getElementById('plot');
+          if (plotDiv) Plotly.Plots.resize(plotDiv);
+        }, 50);
+      } else {
+        mapPanel.classList.remove('open');
+        if (resizer) resizer.classList.remove('open');
+        btnToggleMap.classList.remove('btn-active-toggle');
+        const plotDiv = document.getElementById('plot');
+        if (plotDiv) Plotly.Plots.resize(plotDiv);
+      }
+    }
+
+    function setupMapResizer() {
+      const resizer = document.getElementById('mapResizer');
+      const mapPanel = document.getElementById('mapPanel');
+      const mainContainer = document.querySelector('.main-container');
+      if (!resizer || !mapPanel || !mainContainer) return;
+
+      let isDragging = false;
+      let startX = 0;
+      let startWidth = 0;
+
+      // Restore saved width from localStorage if valid
+      const savedWidth = localStorage.getItem('minigauge_map_panel_width');
+      if (savedWidth) {
+        const w = parseInt(savedWidth, 10);
+        if (!isNaN(w) && w >= 250 && w <= window.innerWidth * 0.8) {
+          mapPanel.style.width = `${w}px`;
+        }
+      }
+
+      resizer.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        startX = e.clientX;
+        startWidth = mapPanel.getBoundingClientRect().width;
+        resizer.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const deltaX = startX - e.clientX;
+        let newWidth = startWidth + deltaX;
+
+        const minW = 250;
+        const maxW = Math.max(minW, mainContainer.getBoundingClientRect().width - 320);
+        newWidth = Math.max(minW, Math.min(maxW, newWidth));
+
+        mapPanel.style.width = `${newWidth}px`;
+
+        const plotDiv = document.getElementById('plot');
+        if (plotDiv) Plotly.Plots.resize(plotDiv);
+        if (leafletMap) leafletMap.invalidateSize();
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (isDragging) {
+          isDragging = false;
+          resizer.classList.remove('dragging');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+          localStorage.setItem('minigauge_map_panel_width', parseInt(mapPanel.style.width, 10));
+
+          const plotDiv = document.getElementById('plot');
+          if (plotDiv) Plotly.Plots.resize(plotDiv);
+          if (leafletMap) leafletMap.invalidateSize();
+        }
+      });
+
+      // Double-click to reset to default 440px
+      resizer.addEventListener('dblclick', () => {
+        mapPanel.style.width = '440px';
+        localStorage.setItem('minigauge_map_panel_width', 440);
+        const plotDiv = document.getElementById('plot');
+        if (plotDiv) Plotly.Plots.resize(plotDiv);
+        if (leafletMap) leafletMap.invalidateSize();
+      });
+    }
+
+    function getSpeedColor(speed, maxSpeed) {
+      if (maxSpeed <= 0) return '#3b82f6';
+      const ratio = Math.min(1.0, Math.max(0.0, speed / maxSpeed));
+      if (ratio < 0.25) {
+        const t = ratio / 0.25;
+        const r = Math.round(59 + (6 - 59) * t);
+        const g = Math.round(130 + (182 - 130) * t);
+        const b = Math.round(246 + (212 - 246) * t);
+        return `rgb(${r},${g},${b})`;
+      } else if (ratio < 0.5) {
+        const t = (ratio - 0.25) / 0.25;
+        const r = Math.round(6 + (16 - 6) * t);
+        const g = Math.round(182 + (185 - 182) * t);
+        const b = Math.round(212 + (129 - 212) * t);
+        return `rgb(${r},${g},${b})`;
+      } else if (ratio < 0.75) {
+        const t = (ratio - 0.5) / 0.25;
+        const r = Math.round(16 + (245 - 16) * t);
+        const g = Math.round(185 + (158 - 185) * t);
+        const b = Math.round(129 + (11 - 129) * t);
+        return `rgb(${r},${g},${b})`;
+      } else {
+        const t = (ratio - 0.75) / 0.25;
+        const r = Math.round(245 + (239 - 245) * t);
+        const g = Math.round(158 + (68 - 158) * t);
+        const b = Math.round(11 + (68 - 11) * t);
+        return `rgb(${r},${g},${b})`;
+      }
+    }
+
+    function initOrUpdateMap() {
+      if (typeof L === 'undefined') {
+        const container = document.getElementById('mapContainer');
+        if (container) {
+          container.innerHTML = '<div style="color:var(--text-muted);padding:2rem;text-align:center;">Leaflet map library could not be loaded.</div>';
+        }
+        return;
+      }
+
+      const container = document.getElementById('mapContainer');
+      if (!container) return;
+
+      if (!leafletMap) {
+        leafletMap = L.map('mapContainer', {
+          zoomControl: true,
+          attributionControl: true
+        }).setView([0, 0], 2);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+          subdomains: 'abcd',
+          maxZoom: 19
+        }).addTo(leafletMap);
+      }
+
+      leafletMap.invalidateSize();
+
+      if (trackPolylineLayer) {
+        leafletMap.removeLayer(trackPolylineLayer);
+        trackPolylineLayer = null;
+      }
+      if (hitPolylineLayer) {
+        leafletMap.removeLayer(hitPolylineLayer);
+        hitPolylineLayer = null;
+      }
+      if (vehicleMarker) {
+        leafletMap.removeLayer(vehicleMarker);
+        vehicleMarker = null;
+      }
+      if (startMarker) {
+        leafletMap.removeLayer(startMarker);
+        startMarker = null;
+      }
+      if (endMarker) {
+        leafletMap.removeLayer(endMarker);
+        endMarker = null;
+      }
+
+      if (!gpsData || !gpsData.has_gps || !gpsData.points || gpsData.points.length === 0) {
+        return;
+      }
+
+      const points = gpsData.points;
+      const maxSpeed = gpsData.max_speed || 1.0;
+
+      trackPolylineLayer = L.featureGroup().addTo(leafletMap);
+
+      // Group contiguous segments by speed bins for smooth GPU rendering
+      let currentBin = -1;
+      let currentChunk = [];
+      const numBins = 10;
+
+      for (let i = 0; i < points.length; i++) {
+        const pt = points[i];
+        const bin = Math.min(numBins - 1, Math.floor((pt.speed / (maxSpeed || 1.0)) * numBins));
+        const coord = [pt.lat, pt.lon];
+
+        if (bin === currentBin) {
+          currentChunk.push(coord);
+        } else {
+          if (currentChunk.length > 1) {
+            const binMidSpeed = ((currentBin + 0.5) / numBins) * maxSpeed;
+            const color = getSpeedColor(binMidSpeed, maxSpeed);
+            L.polyline(currentChunk, {
+              color: color,
+              weight: 4,
+              opacity: 0.85,
+              lineJoin: 'round',
+              lineCap: 'round'
+            }).addTo(trackPolylineLayer);
+          }
+          currentBin = bin;
+          currentChunk = (i > 0) ? [[points[i - 1].lat, points[i - 1].lon], coord] : [coord];
+        }
+      }
+      if (currentChunk.length > 1) {
+        const binMidSpeed = ((currentBin + 0.5) / numBins) * maxSpeed;
+        const color = getSpeedColor(binMidSpeed, maxSpeed);
+        L.polyline(currentChunk, {
+          color: color,
+          weight: 4,
+          opacity: 0.85,
+          lineJoin: 'round',
+          lineCap: 'round'
+        }).addTo(trackPolylineLayer);
+      }
+
+      // Invisible interactive polyline for clicking anywhere along the track
+      const allCoords = points.map(p => [p.lat, p.lon]);
+      hitPolylineLayer = L.polyline(allCoords, {
+        weight: 16,
+        opacity: 0.0,
+        interactive: true
+      }).addTo(leafletMap);
+
+      hitPolylineLayer.on('click', (e) => {
+        const closest = findClosestGpsPoint(e.latlng.lat, e.latlng.lng);
+        if (closest) {
+          jumpToTime(closest.t);
+        }
+      });
+
+      // Start & Finish markers
+      const startPt = points[0];
+      const endPt = points[points.length - 1];
+
+      startMarker = L.circleMarker([startPt.lat, startPt.lon], {
+        radius: 5,
+        fillColor: '#10b981',
+        color: '#ffffff',
+        weight: 1.5,
+        fillOpacity: 1
+      }).bindTooltip(`Start (t=0s)`).addTo(leafletMap);
+
+      endMarker = L.circleMarker([endPt.lat, endPt.lon], {
+        radius: 5,
+        fillColor: '#ef4444',
+        color: '#ffffff',
+        weight: 1.5,
+        fillOpacity: 1
+      }).bindTooltip(`End (t=${endPt.t.toFixed(1)}s)`).addTo(leafletMap);
+
+      // Vehicle dot marker with heading arrow and pulse effect
+      const vehicleIcon = L.divIcon({
+        className: 'vehicle-marker-wrapper',
+        html: `
+          <div class="vehicle-marker-pulse"></div>
+          <div class="vehicle-marker-circle">
+            <div class="vehicle-marker-arrow" id="vehicleMarkerArrow">▲</div>
+          </div>
+        `,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+      });
+
+      vehicleMarker = L.marker([startPt.lat, startPt.lon], {
+        icon: vehicleIcon,
+        zIndexOffset: 1000
+      }).addTo(leafletMap);
+
+      vehicleMarker.bindTooltip(`${startPt.speed.toFixed(1)} km/h`, {
+        permanent: false,
+        direction: 'top',
+        offset: [0, -14],
+        className: 'map-marker-tooltip'
+      });
+
+      leafletMap.fitBounds(trackPolylineLayer.getBounds(), { padding: [25, 25] });
+      updateTelemetryBar(startPt);
+    }
+
+    function findGpsPointAtTime(t) {
+      if (!gpsData || !gpsData.points || gpsData.points.length === 0) return null;
+      const pts = gpsData.points;
+      let low = 0;
+      let high = pts.length - 1;
+      if (t <= pts[0].t) return pts[0];
+      if (t >= pts[high].t) return pts[high];
+
+      while (low <= high) {
+        const mid = (low + high) >> 1;
+        if (pts[mid].t === t) return pts[mid];
+        if (pts[mid].t < t) {
+          low = mid + 1;
+        } else {
+          high = mid - 1;
+        }
+      }
+      if (low >= pts.length) return pts[pts.length - 1];
+      if (high < 0) return pts[0];
+      const dLow = Math.abs(pts[low].t - t);
+      const dHigh = Math.abs(pts[high].t - t);
+      return dLow < dHigh ? pts[low] : pts[high];
+    }
+
+    function findClosestGpsPoint(lat, lng) {
+      if (!gpsData || !gpsData.points || gpsData.points.length === 0) return null;
+      let minDist = Infinity;
+      let closest = gpsData.points[0];
+      for (let i = 0; i < gpsData.points.length; i++) {
+        const p = gpsData.points[i];
+        const dLat = p.lat - lat;
+        const dLon = p.lon - lng;
+        const dist = dLat * dLat + dLon * dLon;
+        if (dist < minDist) {
+          minDist = dist;
+          closest = p;
+        }
+      }
+      return closest;
+    }
+
+    function updateVehicleMarker(t) {
+      if (!gpsData || !gpsData.has_gps || !gpsData.points || gpsData.points.length === 0) return;
+      const pt = findGpsPointAtTime(t);
+      if (!pt) return;
+
+      if (vehicleMarker) {
+        vehicleMarker.setLatLng([pt.lat, pt.lon]);
+        const arrow = document.getElementById('vehicleMarkerArrow');
+        if (arrow) {
+          arrow.style.transform = `rotate(${pt.heading}deg)`;
+        }
+        vehicleMarker.setTooltipContent(`<b>${pt.speed.toFixed(1)} km/h</b><br>t: ${pt.t.toFixed(2)}s | hdg: ${pt.heading.toFixed(0)}°`);
+      }
+      updateTelemetryBar(pt);
+
+      if (leafletMap && isMapOpen) {
+        if (!leafletMap.getBounds().contains([pt.lat, pt.lon])) {
+          leafletMap.panTo([pt.lat, pt.lon], { animate: true, duration: 0.2 });
+        }
+      }
+    }
+
+    function updateTelemetryBar(pt) {
+      if (!pt) return;
+      const tEl = document.getElementById('mapTeleTime');
+      const sEl = document.getElementById('mapTeleSpeed');
+      const hEl = document.getElementById('mapTeleHeading');
+      const aEl = document.getElementById('mapTeleAlt');
+      if (tEl) tEl.textContent = `${pt.t.toFixed(2)} s`;
+      if (sEl) sEl.textContent = `${pt.speed.toFixed(1)} km/h`;
+      if (hEl) hEl.textContent = `${pt.heading.toFixed(0)}°`;
+      if (aEl) aEl.textContent = `${pt.alt.toFixed(1)} m`;
+    }
+
+    function jumpToTime(t) {
+      let [x0, x1] = currentTimeRange;
+      let span = 20;
+      if (x0 !== null && x1 !== null && x1 > x0) {
+        span = x1 - x0;
+      }
+      const newX0 = Math.max(0, t - span / 2);
+      const newX1 = newX0 + span;
+      setTimeWindow(newX0, newX1);
+      updateVehicleMarker(t);
     }
 
     async function loadSignals(filename) {
@@ -809,6 +1498,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         }
         selectedSignals = validSelections;
         updateCheckboxes();
+        await loadGpsData(filename);
         await updatePlot();
       } catch (err) {
         console.error('Failed to load signals:', err);
@@ -1271,6 +1961,27 @@ HTML_PAGE = r"""<!DOCTYPE html>
           }
         });
       });
+
+      // Synchronize vehicle position on map with Plotly hover and click
+      plotDiv.removeAllListeners && plotDiv.removeAllListeners('plotly_hover');
+      plotDiv.on('plotly_hover', (data) => {
+        if (data && data.points && data.points.length > 0) {
+          const hoverTime = data.points[0].x;
+          if (hoverTime !== undefined && hoverTime !== null) {
+            updateVehicleMarker(hoverTime);
+          }
+        }
+      });
+
+      plotDiv.removeAllListeners && plotDiv.removeAllListeners('plotly_click');
+      plotDiv.on('plotly_click', (data) => {
+        if (data && data.points && data.points.length > 0) {
+          const clickTime = data.points[0].x;
+          if (clickTime !== undefined && clickTime !== null) {
+            updateVehicleMarker(clickTime);
+          }
+        }
+      });
     }
 
     // Time Zoom helpers
@@ -1549,6 +2260,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
         updatePlot();
       });
 
+      // Map Panel Controls
+      document.getElementById('btnToggleMap').addEventListener('click', () => toggleMap());
+      document.getElementById('btnCloseMap').addEventListener('click', () => toggleMap(false));
+      document.getElementById('btnMapFit').addEventListener('click', () => {
+        if (leafletMap && trackPolylineLayer) {
+          leafletMap.fitBounds(trackPolylineLayer.getBounds(), { padding: [25, 25] });
+        }
+      });
+
       // Time Interval Controls
       document.getElementById('btnApplyTime').addEventListener('click', () => {
         const fromVal = parseFloat(document.getElementById('timeFrom').value);
@@ -1753,12 +2473,37 @@ class VisualizerHandler(BaseHTTPRequestHandler):
                     "size": decoded_info["size"],
                     "frame_count": decoded_info["frame_count"],
                     "duration_s": decoded_info["duration_s"],
+                    "has_gps": decoded_info.get("gps", {}).get("has_gps", False),
+                    "gps_count": len(decoded_info.get("gps", {}).get("points", [])),
                     "signals": {
                         name: {"message": data["message"], "unit": data["unit"]}
                         for name, data in decoded_info["signals"].items()
                     },
                 }
                 self.send_json(summary)
+
+            elif path == "/api/gps":
+                filename = query.get("file", [""])[0]
+                if not filename:
+                    self.send_error(400, "Missing 'file' parameter")
+                    return
+                p = SCRIPT_DIR / filename
+                if not p.is_file():
+                    p = Path(filename)
+                if not p.is_file() and INITIAL_LOG_FILE and INITIAL_LOG_FILE.name == filename:
+                    p = INITIAL_LOG_FILE
+                if not p.is_file():
+                    self.send_error(404, f"File {filename} not found")
+                    return
+
+                db = get_dbc()
+                decoded_info = load_and_decode_log(p, db)
+                self.send_json(decoded_info.get("gps", {
+                    "has_gps": False,
+                    "points": [],
+                    "max_speed": 0.0,
+                    "min_speed": 0.0
+                }))
 
             elif path == "/api/data":
                 filename = query.get("file", [""])[0]
