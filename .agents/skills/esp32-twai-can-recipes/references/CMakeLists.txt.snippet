@@ -1,0 +1,6 @@
+# Add TWAI / CAN driver dependencies
+idf_component_register(
+    SRCS "twai_can_daemon.c"
+    INCLUDE_DIRS "include"
+    REQUIRES driver esp_driver_twai freertos
+)

@@ -15,6 +15,7 @@ typedef struct _objects_t {
     lv_obj_t *status;
     lv_obj_t *start_stop_btn;
     lv_obj_t *start_stop_lbl;
+    lv_obj_t *rbx_status;
 } objects_t;
 
 extern objects_t objects;

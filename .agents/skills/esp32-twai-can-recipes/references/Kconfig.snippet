@@ -1,0 +1,29 @@
+menu "TWAI / CAN Controller Configuration"
+
+    config CAN_TX
+        int "CAN Transmit (TX) GPIO Pin"
+        default 2
+        help
+            GPIO pin connected to the CAN transceiver TX pin.
+            Avoid strapping pins (GPIO 0, 3, 45, 46 on ESP32-S3).
+
+    config CAN_RX
+        int "CAN Receive (RX) GPIO Pin"
+        default 3
+        help
+            GPIO pin connected to the CAN transceiver RX pin.
+
+    config CAN_CORE_AFFINITY
+        int "CAN RX Task Core Affinity"
+        range 0 1
+        default 1
+        help
+            CPU core for CAN RX interrupt worker task (Core 0 or Core 1).
+
+    config CAN_BAUDRATE_500K
+        bool "500 kbps Baud Rate"
+        default y
+        help
+            Select standard 500 kbps high-speed CAN baud rate.
+
+endmenu

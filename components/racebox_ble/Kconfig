@@ -1,0 +1,70 @@
+menu "RaceBox BLE Configuration"
+
+    config RACEBOX_BLE_TARGET_NAME_PREFIX
+        string "Advertised Device Name Prefix"
+        default "RaceBox "
+        help
+            Prefix of the BLE device name advertised by the receiver.
+            Matches "RaceBox Mini ", "RaceBox Mini S ", or "RaceBox Micro ".
+
+    config RACEBOX_BLE_SINGLE_TARGET_MODE
+        bool "Enable Single Target Bond Mode"
+        default n
+        help
+            When enabled, the central only connects to a specific locked RaceBox
+            device rather than any discovered RaceBox.
+
+    choice RACEBOX_BLE_TARGET_LOCK_TYPE
+        prompt "Single Target Lock Mechanism"
+        depends on RACEBOX_BLE_SINGLE_TARGET_MODE
+        default RACEBOX_BLE_LOCK_BY_SERIAL
+        help
+            Method used to identify and verify the target RaceBox device.
+
+        config RACEBOX_BLE_LOCK_BY_SERIAL
+            bool "Lock by 10-digit Serial Number"
+            help
+                Matches the 10-digit serial number in the device name (e.g. "1234567890").
+
+        config RACEBOX_BLE_LOCK_BY_MAC
+            bool "Lock by Bluetooth MAC Address"
+            help
+                Matches the 6-byte Bluetooth device address.
+    endchoice
+
+    config RACEBOX_BLE_LOCKED_SERIAL
+        string "Locked RaceBox Serial Number"
+        depends on RACEBOX_BLE_LOCK_BY_SERIAL
+        default ""
+        help
+            10-digit serial number of the designated RaceBox device.
+
+    config RACEBOX_BLE_LOCKED_MAC
+        string "Locked Bluetooth MAC Address"
+        depends on RACEBOX_BLE_LOCK_BY_MAC
+        default "00:00:00:00:00:00"
+        help
+            Target BLE MAC address in xx:xx:xx:xx:xx:xx format.
+
+    config RACEBOX_BLE_PREFERRED_MTU
+        int "Preferred GATT MTU Size (bytes)"
+        default 512
+        range 23 512
+        help
+            GATT Maximum Transmission Unit requested during connection.
+
+    config RACEBOX_BLE_CONN_ITVL_MIN
+        int "Minimum Connection Interval (in 1.25 ms units)"
+        default 6
+        range 6 3200
+        help
+            Minimum connection interval (6 = 7.5 ms).
+
+    config RACEBOX_BLE_CONN_ITVL_MAX
+        int "Maximum Connection Interval (in 1.25 ms units)"
+        default 12
+        range 6 3200
+        help
+            Maximum connection interval (12 = 15 ms).
+
+endmenu
