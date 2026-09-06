@@ -18,4 +18,13 @@ menu "TWAI Daemon"
     config CAN_CORE_AFFINITY
         int "Core affinity for the TWAI daemon"
         default 1
+
+    config CAN_ENABLE_LOOPBACK
+        bool "Enable hardware loopback (self-reception of transmitted frames)"
+        default n
+        help
+            When enabled, the TWAI controller transmits frames onto the physical bus
+            and simultaneously receives them back into the hardware RX FIFO. This
+            allows local loggers and frame dispatchers to monitor self-sent frames
+            with accurate hardware timestamps.
 endmenu

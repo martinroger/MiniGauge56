@@ -26,6 +26,15 @@ bool display_off = false;
 /** @brief Software timer handle for display inactivity sleep timeout */
 static TimerHandle_t sleepDisplayTimer = NULL;
 
+/** @brief Indicates whether a BLE connection with a RaceBox is currently established */
+static bool s_rbx_connected = false;
+
+/** @brief Latest GPS fix status reported by RaceBox PVT telemetry (0=None, 2=2D, 3=3D, etc.) */
+static uint8_t s_rbx_fix_status = 0;
+
+/** @brief Latest number of satellites used in GPS navigational solution */
+static uint8_t s_rbx_num_sv = 0;
+
 /**
  * @brief Converts UTC calendar time fields to Unix epoch seconds.
  *
@@ -50,9 +59,9 @@ static time_t utc_tm_to_epoch(const struct tm *tm)
 /**
  * @brief Callback invoked whenever a 25 Hz RaceBox PVT telemetry frame is decoded.
  *
- * Upon receiving the first valid 3D GPS fix, updates the ESP32 internal POSIX RTC
- * system clock via settimeofday() so that SD file creation dates and log filenames
- * reflect the accurate UTC time.
+ * Updates current fix status and satellite count, and upon receiving the first
+ * valid 3D GPS fix, updates the ESP32 internal POSIX RTC system clock via settimeofday()
+ * so that SD file creation dates and log filenames reflect the accurate UTC time.
  *
  * @param[in] pvt Pointer to canonical decoded RaceBox PVT telemetry struct.
  * @param[in] user_data User context pointer passed during callback registration (unused).
@@ -65,6 +74,10 @@ static void on_racebox_telemetry(const racebox_pvt_t *pvt, void *user_data)
     {
         return;
     }
+
+    // Cache latest GPS fix status and satellite count for UI display
+    s_rbx_fix_status = pvt->fix_status;
+    s_rbx_num_sv = pvt->num_sv;
 
     // Synchronize system clock upon acquiring the first valid 3D GPS fix
     if (!is_gps_time_synced && pvt->valid_date && pvt->valid_time && pvt->valid_fix &&
@@ -107,18 +120,24 @@ static void on_racebox_ble_event(racebox_ble_event_t event, const racebox_ble_ev
     switch (event)
     {
     case RACEBOX_BLE_EVT_SCAN_STARTED:
+        s_rbx_connected = false;
         ESP_LOGI("RaceBox_BLE", "Scanning for RaceBox peripherals...");
         break;
     case RACEBOX_BLE_EVT_DISCOVERED:
         ESP_LOGI("RaceBox_BLE", "Discovered: '%s'", data ? data->discovered.device.name : "");
         break;
     case RACEBOX_BLE_EVT_CONNECTED:
+        s_rbx_connected = true;
         ESP_LOGI("RaceBox_BLE", "Connected to RaceBox (conn_handle: %d)", data ? data->connected.conn_handle : 0);
         break;
     case RACEBOX_BLE_EVT_SUBSCRIBED:
+        s_rbx_connected = true;
         ESP_LOGI("RaceBox_BLE", "Subscribed to NUS notifications — streaming telemetry and broadcasting to CAN");
         break;
     case RACEBOX_BLE_EVT_DISCONNECTED:
+        s_rbx_connected = false;
+        s_rbx_fix_status = 0;
+        s_rbx_num_sv = 0;
         ESP_LOGW("RaceBox_BLE", "Disconnected (reason: %d). Central will auto-reconnect.", data ? data->disconnected.reason : 0);
         break;
     default:
@@ -246,6 +265,28 @@ void update_display(void *pvParameters)
             lv_label_set_text_fmt(objects.start_stop_lbl, "%s", is_logging ? "STOP" : "START");
             lv_obj_set_state(objects.start_stop_btn, LV_STATE_CHECKED, is_logging);
             lv_label_set_text_fmt(objects.status, "%s", is_logging ? "Logging" : "Paused");
+
+            if (objects.rbx_status != NULL)
+            {
+                if (!s_rbx_connected)
+                {
+                    lv_label_set_text(objects.rbx_status, "RBX: Scanning...");
+                }
+                else if (s_rbx_fix_status == 0)
+                {
+                    lv_label_set_text_fmt(objects.rbx_status, "RBX: Connected (No Fix, %d Sats)", s_rbx_num_sv);
+                }
+                else if (s_rbx_fix_status == 2)
+                {
+                    lv_label_set_text_fmt(objects.rbx_status, "RBX: 2D Fix (%d Sats)", s_rbx_num_sv);
+                }
+                else
+                {
+                    lv_label_set_text_fmt(objects.rbx_status, "RBX: 3D Fix (%d Sats)%s",
+                                          s_rbx_num_sv, is_gps_time_synced ? " [UTC]" : "");
+                }
+            }
+
             bsp_display_unlock();
         }
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -334,7 +375,7 @@ extern "C" void app_main(void)
     while (true)
     {
         vTaskDelay(pdMS_TO_TICKS(1000));
-        ESP_LOGI("STATUS", "File: %s | Size: %lu kB | Buffered: %lu B",
+        ESP_LOGD("STATUS", "File: %s | Size: %lu kB | Buffered: %lu B",
                  current_log_filename, current_file_size / 1024, current_buffered_bytes);
     }
 }

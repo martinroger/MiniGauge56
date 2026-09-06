@@ -31,7 +31,11 @@
 - **Clock Drift & Monotonicity**: The RTC is synchronized only on the first valid 3D fix; subsequent time progression relies on the internal ESP32 RTC to avoid backward time jumps during active SD logging.
 - **CAN Broadcast Throughput**: RaceBox 25 Hz telemetry translates to 6 CAN frames (`0x600`-`0x605`) every 40 ms (150 frames/sec). Frames are dispatched via `twai_daemon`'s zero-copy TX descriptor pool.
 
-### 2.4 FreeRTOS Core Pinning
+### 2.4 Hardware Loopback & Self-Reception Constraints
+- **Loopback Mode**: Enabled via `CONFIG_CAN_ENABLE_LOOPBACK=y` in `twai_daemon`. Transmitted frames are driven onto the physical CAN bus with standard ACK/arbitration rules, while simultaneously entering the local RX FIFO to ensure unified, timestamped logging of self-generated traffic.
+- **RX Queue Sizing**: The hardware loopback doubles peak reception load when actively broadcasting (150 frames/s from RaceBox plus incoming bus traffic). The static RX queue and PSRAM ringbuffer must sustain these burst rates without buffer exhaustion.
+
+### 2.5 FreeRTOS Core Pinning & UI Thread-Safety
 - `CAN_RX_Task` is pinned to Core 1 via `CONFIG_CAN_CORE_AFFINITY` to prevent contention with display rendering on Core 0.
-- LVGL UI operations are synchronized using `bsp_display_lock()` mutex with bounded timeouts.
+- LVGL UI operations (including periodic telemetry and `objects.rbx_status` label updates) are synchronized using `bsp_display_lock()` mutex with bounded timeouts (100 ms).
 

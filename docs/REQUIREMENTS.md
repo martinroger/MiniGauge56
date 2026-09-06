@@ -41,6 +41,8 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN logger, a
 | **REQ-RB-02** | GPS 3D Fix Clock Sync | Update ESP32 RTC system clock via `settimeofday()` on first valid 3D GPS fix (`num_sv >= 4`). |
 | **REQ-RB-03** | Timestamped Log Filenames | Switch log file naming to `/sdcard/YYYYMMDD_log_HHMMSS.bin` when GPS time is synchronized. |
 | **REQ-RB-04** | RaceBox CAN Broadcasting | Broadcast 25 Hz messages `0x600`-`0x605` onto CAN bus via `racebox_twai` and `twai_daemon`. |
+| **REQ-CAN-05** | Hardware Loopback for Self-Transmission Logging | Enable hardware loopback in `twai_daemon` via `CONFIG_CAN_ENABLE_LOOPBACK` so self-transmitted frames are received and logged. |
+| **REQ-UI-01** | RaceBox Connection & Fix Status Display | Update `objects.rbx_status` label with real-time BLE connection state and satellite count during fix. |
 | **REQ-DOC-01** | Doxygen Compliance | All exported functions and file headers in `main/` include Doxygen docstrings. |
 
 ---
@@ -60,5 +62,7 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN logger, a
 | **REQ-RB-02** | [`main/main.cpp`](../main/main.cpp) | `on_racebox_telemetry()`, `settimeofday()` | 3D fix clock sync logic check |
 | **REQ-RB-03** | [`main/logging.cpp`](../main/logging.cpp)<br>[`main/logging.h`](../main/logging.h) | `is_gps_time_synced`, `current_log_filename` | Filename format verification |
 | **REQ-RB-04** | [`components/racebox_twai/racebox_twai.c`](../components/racebox_twai/racebox_twai.c) | `racebox_twai_broadcast_pvt()`, `0x600` | Telemetry CAN broadcast review |
+| **REQ-CAN-05** | [`components/twai_daemon/Kconfig`](../components/twai_daemon/Kconfig)<br>[`components/twai_daemon/src/twai_daemon.cpp`](../components/twai_daemon/src/twai_daemon.cpp) | `CONFIG_CAN_ENABLE_LOOPBACK`, `enable_loopback` | Hardware loopback self-reception review |
+| **REQ-UI-01** | [`main/main.cpp`](../main/main.cpp)<br>[`components/ui/src/screens.h`](../components/ui/src/screens.h) | `update_display()`, `objects.rbx_status` | UI label formatting and rendering check |
 | **REQ-DOC-01** | [`main/logging.h`](../main/logging.h)<br>[`main/logging.cpp`](../main/logging.cpp)<br>[`main/main.cpp`](../main/main.cpp) | `@file`, `@brief`, `@param`, `@note` | Doxygen syntax compliance review |
 

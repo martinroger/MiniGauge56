@@ -151,6 +151,9 @@ esp_err_t initCAN(frameDispatcher_t *frameDispatcher)
     node_config.bit_timing.bitrate = 500000;
     node_config.fail_retry_cnt = -1; // Retransmit until success or bus-off
     node_config.tx_queue_depth = TWAI_TX_POOL_SIZE;
+#if CONFIG_CAN_ENABLE_LOOPBACK
+    node_config.flags.enable_loopback = 1;
+#endif
 
     esp_err_t ret = twai_new_node_onchip(&node_config, &g_twai_node_hdl);
     if (ret != ESP_OK)
