@@ -142,14 +142,22 @@ A bespoke browser-based calibration and tuning dashboard engineered specifically
 ### Key Capabilities
 
 #### 1. ⚙️ Gear Position Estimator Tab
-- **Gated EMA Formulation**: Computes transmission gear ratio as:
-  $$\text{Ratio} = \frac{\text{DBG\_speed\_freq}}{\text{DBG\_RPM\_freq}}$$
-- **5-Speed Transmission Support**: Calibrates 5 forward gears + Neutral. (Reverse cannot be directly inferred from CAN bus logs and defaults to Neutral/Uncertain).
-- **Interactive Gating Controls**:
-  - **Min Speed Freq (Hz)**: Disregards low-speed noise and standstill division-by-zero.
-  - **Min RPM Freq (Hz)**: Disregards engine idle or stall states.
-  - **Stability Gate ($|d\text{Ratio}/dt|$)**: Rejects clutch disengagement transients, gear shifts, and wheel slip.
-- **Smoothing Filter**: Tunable Exponential Moving Average ($\alpha \in [0.01, 1.00]$).
+- **Mathematical Pipeline & Architecture**:
+  1. *Instantaneous Ratio Calculation*:
+     $$r_{\text{inst}}(t) = \frac{f_{\text{speed}}(t)}{f_{\text{RPM}}(t)}$$
+     Computed continuously from 0x300 `DBG_speed_freq` and 0x301 `DBG_RPM_freq`.
+  2. *Triple Gating (Clutch / Slip Rejection)*:
+     - Min Speed Gate: $f_{\text{speed}} \ge f_{\text{min}}$ (rejects stationary roll).
+     - Min RPM Gate: $f_{\text{RPM}} \ge f_{\text{min}}$ (rejects engine stall or zero denominator).
+     - Derivative Stability Gate: $|r_{\text{inst}}(t) - r_{\text{inst}}(t - \Delta t)| \le \Delta r_{\text{max}}$ (strictly rejects clutch slip, free-revving, and gear change transients).
+  3. *Ratio-Domain Smoothing (EMA on Ratio)*:
+     $$r_{\text{EMA}}(t) = \alpha \cdot r_{\text{inst}}(t) + (1 - \alpha) \cdot r_{\text{EMA}}(t - \Delta t)$$
+     **Crucial physical principle**: The EMA filter is strictly applied to the **ratio**, *not* to the individual source signals ($f_{\text{speed}}$, $f_{\text{RPM}}$). Filtering speed and RPM separately would introduce severe differential phase lag during throttle changes due to disparate rotational inertias, creating large artificial ratio spikes.
+  4. *Tolerance Classification Corridor*:
+     Classifies 5 forward gears ($i \in \{1, 2, 3, 4, 5\}$) if $|r_{\text{EMA}} - R_i| \le \text{Tol} \cdot R_i$. Fails tolerance or gate $\rightarrow$ Neutral (N / 0). (Reverse cannot be directly inferred from CAN bus logs and defaults to Neutral/Uncertain).
+- **Synchronized Vehicle Dynamics Timeline**:
+  - Displays a synchronized dual-axis time-series of `ITF_speed_kph` (km/h, left axis) and `ITF_rpm` (RPM, right axis) alongside the ratio and classified gear trace.
+  - Zooming, panning, and hovering are fully synchronized across both timelines and the GPS track map.
 - **Gear Ratio Distribution Histogram**:
   - Real-time sample histogram revealing discrete cluster peaks corresponding to physical gear ratios.
   - Shaded tolerance window bands ($\pm \text{Tol}\%$) projected over both the histogram and the time-series scope.
@@ -186,6 +194,20 @@ A bespoke browser-based calibration and tuning dashboard engineered specifically
 - **Signal Value & Slew Rate Dispersion**:
   - Collapsible child rows under each message displaying sample count, engineering unit, minimum, maximum, average, median, standard deviation, and maximum slew rate ($|dx/dt|_{\max}$).
 - **Interactive Table & Export**: Live search filter, sortable column headers, Expand/Collapse All controls, and a 1-click **Export Analytics CSV** button.
+
+#### 5. 🗺 GPS Track Map Drawer
+- **Collapsible & Resizable Drawer**:
+  - Click **🗺 Map** in the header to open the right-side Leaflet GPS track drawer.
+  - Draggable border handle between the algorithm viewport and map drawer with persistent width saved in `localStorage` (double-click resets to default 440px).
+- **Speed-Colored Trajectory & Heading Arrow**:
+  - Displays GPS driving trajectory color-coded with a 10-bin velocity gradient (turbo colormap).
+  - Start (green) and Finish (red) pins, with a pulsed vehicle marker displaying dynamic compass heading (`▲` rotated by `RBX_heading_deg`).
+- **Bi-Directional Hover & Click Synchronization**:
+  - **Scope → Map**: Hovering over any Plotly timeline (`plot-gear-dynamics`, `plot-gear-time`, `plot-fuel-main`, `plot-speed-main`) moves the vehicle marker along the track in real-time.
+  - **Map → Scope**: Clicking anywhere along the track polyline immediately jumps and centers the active algorithm time window around that timestamp.
+- **Telemetry Bar & Independent Map Tile Themes**:
+  - Live readout of current Time, Speed (km/h), Heading (°), and MSL Altitude (m).
+  - Independent **Map Tiles** switcher toggling between CartoDB Dark Matter and Positron base maps.
 
 ### Usage
 
