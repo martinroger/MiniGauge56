@@ -64,9 +64,9 @@ A browser-based interactive dashboard that decodes `.bin` files on-the-fly and p
 ### Features
 - **Zero Configuration**: Starts a local web server on `http://localhost:8080` and opens your default browser automatically.
 - **On-the-Fly Decoding**: Reads directly from `.bin` files using `binocan.dbc`.
-- **Log Switcher**: Dropdown in the header allows switching between log files instantly.
+- **Log Switcher & Default Signals**: Dropdown in the header allows switching between log files instantly. When opening a log, the dashboard automatically initializes with the primary automotive dynamics baseline (`ITF_speed_kph` and `ITF_rpm`).
 - **Searchable Multi-Select**: Filter signals by name, unit, or CAN message group.
-- **Quick Presets**: One-click filters for *Speed & RPM*, *Coolant & Temp*, *Fuel & Power*, *Telltales*, and *GPS & IMU*.
+- **Quick Presets**: One-click filters for *Speed & RPM*, *Coolant & Temp*, *Fuel & Power*, *Telltales*, *GPS & IMU*, and *G-Forces & Dynamics* (lateral acceleration, longitudinal acceleration, yaw rate, and speed).
 - **Distinct Signal Colors**: Every signal trace is assigned its own unique distinct color, eliminating collisions even when multiple signals share the same engineering unit.
 - **Multi-Axis Overlay**: Automatically gives distinct, color-coded Y-axes to signals with different engineering units (`V`, `Hz`, `kph`, `Ohm`) so they don't distort each other.
 - **Stacked Subplots Mode**: Toggle between overlaid multi-axis view and vertically stacked synchronized subplots. In subplots mode, the range slider sits cleanly at the bottom of all scopes, and discrete value-table signals label their Y-axes with human-readable state names.
@@ -107,6 +107,12 @@ A browser-based interactive dashboard that decodes `.bin` files on-the-fly and p
     - **Scope → Map**: Hovering over signals on the Plotly telemetry graph moves the vehicle marker along the track in real-time ($O(\log N)$ binary search lookup).
     - **Map → Scope**: Clicking anywhere along the map polyline track instantly centers the telemetry scope on that timestamp.
   - **Live Telemetry Bar**: Floating statistics panel under the map displaying current Time, GPS Speed (km/h), Compass Heading (°), and MSL Altitude (m).
+- **Automatic & Manual Light / Dark Theme**:
+  - **OS / Browser Detection**: Automatically detects and adapts to system light or dark preferences (`prefers-color-scheme`).
+  - **Header Toggle Override**: Click **🌓 Theme** in the header to cycle between `Auto`, `☀️ Light`, and `🌙 Dark`.
+  - **Dynamic Theme Synchronization**: Seamlessly updates all CSS design tokens, Plotly background/grid colors, and switches Leaflet map tiles between CartoDB Dark Matter and CartoDB Positron. Selection is saved in browser `localStorage`.
+- **Alphabetically Sorted Message Browser**:
+  - All CAN message groups in the left sidebar are automatically sorted alphabetically from A to Z for fast and predictable navigation.
 - **Plotly.js Chart Features**:
   - Hover tooltip displays exact timestamp, signal value, unit, and interpreted value-table states (e.g. `Neutral (0)`, `3D_Fix (3)`, `HI (1)`).
   - One-click PNG export.

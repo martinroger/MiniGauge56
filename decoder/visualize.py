@@ -210,7 +210,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
-    :root {
+    :root, [data-theme="dark"] {
       --bg: #121417;
       --card-bg: #1a1d23;
       --panel-border: #2c323d;
@@ -221,6 +221,24 @@ HTML_PAGE = r"""<!DOCTYPE html>
       --accent: #10b981;
       --danger: #ef4444;
       --tag-bg: #222731;
+      --badge-bg: #1e3a8a;
+      --badge-text: #93c5fd;
+      --hover-bg: rgba(255, 255, 255, 0.04);
+    }
+    [data-theme="light"] {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --panel-border: #cbd5e1;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --accent: #059669;
+      --danger: #dc2626;
+      --tag-bg: #f1f5f9;
+      --badge-bg: #dbeafe;
+      --badge-text: #1e40af;
+      --hover-bg: rgba(0, 0, 0, 0.04);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -231,6 +249,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       flex-direction: column;
       height: 100vh;
       overflow: hidden;
+      transition: background-color 0.2s ease, color 0.2s ease;
     }
     header {
       background: var(--card-bg);
@@ -250,15 +269,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .logo {
       font-weight: 700;
       font-size: 1.05rem;
-      color: #60a5fa;
+      color: var(--primary);
       display: flex;
       align-items: center;
       gap: 0.5rem;
     }
     .logo-badge {
       font-size: 0.7rem;
-      background: #1e3a8a;
-      color: #93c5fd;
+      background: var(--badge-bg);
+      color: var(--badge-text);
       padding: 2px 6px;
       border-radius: 4px;
       font-weight: normal;
@@ -342,7 +361,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       transition: all 0.15s ease;
     }
     button:hover {
-      background: #28303d;
+      background: var(--tag-bg);
       border-color: var(--primary);
     }
     button.primary {
@@ -358,9 +377,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-weight: bold;
     }
     .btn-active-toggle {
-      background: #1e3a8a;
-      border-color: #3b82f6;
-      color: #93c5fd;
+      background: var(--badge-bg);
+      border-color: var(--primary);
+      color: var(--badge-text);
     }
     .main-container {
       display: flex;
@@ -434,7 +453,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-weight: 600;
       letter-spacing: 0.03em;
       color: var(--text-muted);
-      background: rgba(255, 255, 255, 0.02);
+      background: var(--hover-bg);
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -444,7 +463,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
     .msg-title:hover {
       color: var(--text);
-      background: rgba(255, 255, 255, 0.05);
+      background: var(--tag-bg);
     }
     .msg-title-left {
       display: flex;
@@ -476,8 +495,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
       font-weight: normal;
     }
     .msg-count-badge.has-selected {
-      background: #1e3a8a;
-      color: #93c5fd;
+      background: var(--badge-bg);
+      color: var(--badge-text);
       font-weight: 600;
     }
     .msg-sigs-container {
@@ -493,7 +512,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       transition: background 0.1s;
     }
     .sig-item:hover {
-      background: rgba(255, 255, 255, 0.04);
+      background: var(--hover-bg);
     }
     .sig-item input[type="checkbox"] {
       cursor: pointer;
@@ -704,8 +723,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
     .map-points-badge {
       font-size: 0.7rem;
-      background: #1e3a8a;
-      color: #93c5fd;
+      background: var(--badge-bg);
+      color: var(--badge-text);
       padding: 1px 6px;
       border-radius: 4px;
       font-weight: normal;
@@ -725,7 +744,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       width: 100%;
       height: 100%;
       min-height: 250px;
-      background: #0f172a;
+      background: var(--bg);
     }
     .map-telemetry-bar {
       background: var(--bg);
@@ -804,7 +823,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       padding: 3px 6px !important;
     }
     .leaflet-container {
-      background: #0d1117 !important;
+      background: var(--bg) !important;
       font-family: inherit !important;
     }
     .leaflet-bar {
@@ -822,16 +841,17 @@ HTML_PAGE = r"""<!DOCTYPE html>
       line-height: 28px !important;
     }
     .leaflet-bar a:hover {
-      background-color: #28303d !important;
+      background-color: var(--tag-bg) !important;
       color: var(--primary) !important;
     }
     .leaflet-control-attribution {
-      background: rgba(18, 20, 23, 0.85) !important;
+      background: var(--card-bg) !important;
       color: var(--text-muted) !important;
       font-size: 0.65rem !important;
+      opacity: 0.9;
     }
     .leaflet-control-attribution a {
-      color: #60a5fa !important;
+      color: var(--primary) !important;
     }
   </style>
 </head>
@@ -889,6 +909,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </button>
 
       <button id="btnExportPng">Export PNG</button>
+
+      <!-- Theme Toggle (Auto / Light / Dark) -->
+      <button id="btnThemeToggle" title="Theme: Auto (follows OS). Click to toggle Light / Dark / Auto">
+        <span id="themeIcon">🌓</span>
+        <span id="themeLabel">Auto</span>
+      </button>
     </div>
   </header>
 
@@ -902,6 +928,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div class="preset-pill" data-preset="fuel">Fuel & Power</div>
           <div class="preset-pill" data-preset="telltales">Telltales</div>
           <div class="preset-pill" data-preset="gps">GPS & IMU</div>
+          <div class="preset-pill" data-preset="dynamics">G-Forces & Dynamics</div>
         </div>
         <div class="signal-actions">
           <span id="selectedCount">0 selected</span>
@@ -1027,7 +1054,85 @@ HTML_PAGE = r"""<!DOCTYPE html>
       '#38bdf8', '#fbbf24'
     ];
 
+    // Theme State (auto / light / dark)
+    let currentThemePref = localStorage.getItem('minigauge_theme_pref') || 'auto';
+    const DARK_TILES = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+    const LIGHT_TILES = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+    let leafletTileLayer = null;
+
+    function getEffectiveTheme() {
+      if (currentThemePref === 'light') return 'light';
+      if (currentThemePref === 'dark') return 'dark';
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+
+    function getThemeColors() {
+      const isDark = getEffectiveTheme() === 'dark';
+      return {
+        isDark,
+        paper_bgcolor: isDark ? '#121417' : '#f8fafc',
+        plot_bgcolor: isDark ? '#16191f' : '#ffffff',
+        text: isDark ? '#e2e8f0' : '#0f172a',
+        text_muted: isDark ? '#94a3b8' : '#64748b',
+        gridcolor: isDark ? '#242a35' : '#e2e8f0',
+        zerolinecolor: isDark ? '#2c323d' : '#cbd5e1',
+        slider_bg: isDark ? '#16191f' : '#f1f5f9',
+        slider_border: isDark ? '#2c323d' : '#cbd5e1'
+      };
+    }
+
+    function applyTheme(pref) {
+      currentThemePref = pref;
+      localStorage.setItem('minigauge_theme_pref', pref);
+
+      const effective = getEffectiveTheme();
+      document.documentElement.setAttribute('data-theme', effective);
+
+      const btn = document.getElementById('btnThemeToggle');
+      const icon = document.getElementById('themeIcon');
+      const label = document.getElementById('themeLabel');
+
+      if (btn && icon && label) {
+        if (pref === 'auto') {
+          icon.textContent = '🌓';
+          label.textContent = `Auto`;
+          btn.title = `Theme: Auto (${effective} active). Click to toggle.`;
+        } else if (pref === 'light') {
+          icon.textContent = '☀️';
+          label.textContent = 'Light';
+          btn.title = 'Theme: Light. Click to toggle.';
+        } else {
+          icon.textContent = '🌙';
+          label.textContent = 'Dark';
+          btn.title = 'Theme: Dark. Click to toggle.';
+        }
+      }
+
+      updateMapTheme();
+      const plotDiv = document.getElementById('plot');
+      if (plotDiv && plotDiv.data && plotDiv.data.length > 0) {
+        updatePlot();
+      }
+    }
+
+    function updateMapTheme() {
+      if (leafletTileLayer) {
+        const isDark = getEffectiveTheme() === 'dark';
+        leafletTileLayer.setUrl(isDark ? DARK_TILES : LIGHT_TILES);
+      }
+    }
+
     async function init() {
+      applyTheme(currentThemePref);
+
+      if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+          if (currentThemePref === 'auto') {
+            applyTheme('auto');
+          }
+        });
+      }
+
       await loadLogs();
       setupEventListeners();
       setupInteractiveWheelController();
@@ -1239,11 +1344,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
           attributionControl: true
         }).setView([0, 0], 2);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        const isDark = getEffectiveTheme() === 'dark';
+        leafletTileLayer = L.tileLayer(isDark ? DARK_TILES : LIGHT_TILES, {
           attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
           subdomains: 'abcd',
           maxZoom: 19
         }).addTo(leafletMap);
+      } else {
+        updateMapTheme();
       }
 
       leafletMap.invalidateSize();
@@ -1487,13 +1595,19 @@ HTML_PAGE = r"""<!DOCTYPE html>
         availableSignals = data.signals;
         renderSignalList();
         
-        // Retain selections if they exist in new log, or pick default
+        // Retain selections if they exist in new log, or pick default signal pair
         const validSelections = new Set([...selectedSignals].filter(s => availableSignals[s]));
         if (validSelections.size === 0) {
-          const sigKeys = Object.keys(availableSignals);
-          if (sigKeys.length > 0) {
-            validSelections.add(sigKeys[0]);
-            if (sigKeys.length > 1) validSelections.add(sigKeys[1]);
+          const defaultPair = ['ITF_speed_kph', 'ITF_rpm'];
+          const matched = defaultPair.filter(s => availableSignals[s]);
+          if (matched.length > 0) {
+            matched.forEach(s => validSelections.add(s));
+          } else {
+            const sigKeys = Object.keys(availableSignals);
+            if (sigKeys.length > 0) {
+              validSelections.add(sigKeys[0]);
+              if (sigKeys.length > 1) validSelections.add(sigKeys[1]);
+            }
           }
         }
         selectedSignals = validSelections;
@@ -1521,7 +1635,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
         groups[info.message].push({ name, ...info });
       }
 
-      for (const [msgName, sigs] of Object.entries(groups)) {
+      const sortedMsgNames = Object.keys(groups).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+      for (const msgName of sortedMsgNames) {
+        const sigs = groups[msgName];
         const groupEl = document.createElement('div');
         groupEl.className = 'msg-group';
         const isCollapsed = collapsedGroups.has(msgName);
@@ -1660,9 +1776,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
       let totalPoints = 0;
       const traces = [];
+      const themeColors = getThemeColors();
       const layout = {
-        paper_bgcolor: '#121417',
-        plot_bgcolor: '#16191f',
+        paper_bgcolor: themeColors.paper_bgcolor,
+        plot_bgcolor: themeColors.plot_bgcolor,
         margin: { t: 40, r: 60, b: 60, l: 60 },
         hovermode: 'x unified',
         dragmode: currentDragTool, // 'pan' or 'zoom'
@@ -1671,18 +1788,18 @@ HTML_PAGE = r"""<!DOCTYPE html>
           orientation: 'h',
           y: 1.14,
           x: 0,
-          font: { color: '#e2e8f0', size: 11 }
+          font: { color: themeColors.text, size: 11 }
         },
         xaxis: {
-          title: { text: 'Time (seconds)', font: { color: '#94a3b8' } },
-          gridcolor: '#242a35',
-          zerolinecolor: '#2c323d',
-          tickfont: { color: '#94a3b8' },
+          title: { text: 'Time (seconds)', font: { color: themeColors.text_muted } },
+          gridcolor: themeColors.gridcolor,
+          zerolinecolor: themeColors.zerolinecolor,
+          tickfont: { color: themeColors.text_muted },
           rangeslider: {
             visible: isRangeSliderVisible,
             thickness: 0.07,
-            bgcolor: '#16191f',
-            bordercolor: '#2c323d'
+            bgcolor: themeColors.slider_bg,
+            bordercolor: themeColors.slider_border
           }
         }
       };
@@ -1720,8 +1837,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const axisConfig = {
             title: { text: unit !== 'raw' ? unit : '', font: { color: axisColor } },
             tickfont: { color: axisColor },
-            gridcolor: idx === 0 ? '#242a35' : 'transparent',
-            zerolinecolor: idx === 0 ? '#2c323d' : 'transparent',
+            gridcolor: idx === 0 ? themeColors.gridcolor : 'transparent',
+            zerolinecolor: idx === 0 ? themeColors.zerolinecolor : 'transparent',
             overlaying: idx === 0 ? undefined : 'y',
             side: isRight ? 'right' : 'left',
             position: isRight ? Math.max(0.85, 1.0 - (idx - 1) * 0.05) : undefined,
@@ -1781,8 +1898,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
         // Top subplot xaxis rangeslider must be disabled when multiple subplots exist
         if (count > 1) {
           layout.xaxis = {
-            gridcolor: '#242a35',
-            tickfont: { color: '#94a3b8' },
+            gridcolor: themeColors.gridcolor,
+            tickfont: { color: themeColors.text_muted },
             showticklabels: false,
             rangeslider: { visible: false }
           };
@@ -1806,7 +1923,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const yaxisConfig = {
             title: { text: sigData.unit || sigName, font: { color: color, size: 10 } },
             tickfont: { color: color, size: 9 },
-            gridcolor: '#242a35',
+            gridcolor: themeColors.gridcolor,
             fixedrange: isRangeSliderVisible ? true : false
           };
 
@@ -1840,15 +1957,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
           // X-axis configuration: only bottommost scope gets the tick labels, title, and slider
           layout[xaxisKey] = {
             matches: axisNum > 1 ? 'x' : undefined,
-            gridcolor: '#242a35',
-            tickfont: { color: '#94a3b8' },
+            gridcolor: themeColors.gridcolor,
+            tickfont: { color: themeColors.text_muted },
             showticklabels: isBottom,
-            title: isBottom ? { text: 'Time (seconds)', font: { color: '#94a3b8' } } : undefined,
+            title: isBottom ? { text: 'Time (seconds)', font: { color: themeColors.text_muted } } : undefined,
             rangeslider: {
               visible: isBottom ? isRangeSliderVisible : false,
               thickness: 0.08,
-              bgcolor: '#16191f',
-              bordercolor: '#2c323d'
+              bgcolor: themeColors.slider_bg,
+              bordercolor: themeColors.slider_border
             }
           };
 
@@ -2300,6 +2417,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
         });
       });
 
+      // Theme toggle click handler: cycles auto -> light -> dark -> auto
+      document.getElementById('btnThemeToggle').addEventListener('click', () => {
+        if (currentThemePref === 'auto') applyTheme('light');
+        else if (currentThemePref === 'light') applyTheme('dark');
+        else applyTheme('auto');
+      });
+
       document.getElementById('btnOverlay').addEventListener('click', () => {
         currentMode = "overlay";
         document.getElementById('btnOverlay').classList.add('active');
@@ -2400,6 +2524,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
               matched.forEach(s => selectedSignals.add(s));
             } else {
               all.filter(s => s.startsWith('RBX_') && !s.includes('accuracy') && !s.includes('valid_') && !s.includes('counter'))
+                 .forEach(s => selectedSignals.add(s));
+            }
+          } else if (preset === 'dynamics') {
+            // Track dynamics: Lateral & longitudinal G-forces, yaw rate, and vehicle speed
+            const preferred = ['RBX_accel_Y_g', 'RBX_accel_X_g', 'RBX_rot_rate_Z', 'RBX_speed_kph', 'ITF_speed_kph'];
+            const matched = all.filter(s => preferred.includes(s));
+            if (matched.length > 0) {
+              matched.forEach(s => selectedSignals.add(s));
+            } else {
+              all.filter(s => s.toLowerCase().includes('accel') || s.toLowerCase().includes('rot_rate') || s.toLowerCase().includes('gyro'))
                  .forEach(s => selectedSignals.add(s));
             }
           }
