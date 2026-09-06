@@ -664,10 +664,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="sidebar-header">
         <input type="text" id="signalSearch" class="search-box" placeholder="Search signals (e.g. rpm, temp)...">
         <div class="presets-row">
-          <div class="preset-pill" data-preset="fuel">Fuel & Power</div>
-          <div class="preset-pill" data-preset="coolant">Coolant & Temp</div>
           <div class="preset-pill" data-preset="speed">Speed & RPM</div>
-          <div class="preset-pill" data-preset="all_active">Telltales</div>
+          <div class="preset-pill" data-preset="coolant">Coolant & Temp</div>
+          <div class="preset-pill" data-preset="fuel">Fuel & Power</div>
+          <div class="preset-pill" data-preset="telltales">Telltales</div>
+          <div class="preset-pill" data-preset="gps">GPS & IMU</div>
         </div>
         <div class="signal-actions">
           <span id="selectedCount">0 selected</span>
@@ -739,8 +740,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     const COLORS = [
       '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
-      '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#a855f7',
-      '#14b8a6', '#6366f1', '#eab308', '#d946ef', '#64748b'
+      '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#a855f7',
+      '#14b8a6', '#6366f1', '#e11d48', '#d946ef', '#eab308',
+      '#22c55e', '#0284c7', '#f43f5e', '#38bdf8', '#4ade80',
+      '#fb923c', '#c084fc', '#2dd4bf', '#fb7185', '#a3e635',
+      '#818cf8', '#facc15', '#34d399', '#f472b6', '#60a5fa',
+      '#38bdf8', '#fbbf24'
     ];
 
     async function init() {
@@ -1020,11 +1025,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
         units.forEach((unit, idx) => {
           const axisKey = idx === 0 ? 'yaxis' : `yaxis${idx + 1}`;
           const isRight = idx > 0;
-          const color = COLORS[idx % COLORS.length];
+          const axisColor = COLORS[idx % COLORS.length];
 
           const axisConfig = {
-            title: { text: unit !== 'raw' ? unit : '', font: { color: color } },
-            tickfont: { color: color },
+            title: { text: unit !== 'raw' ? unit : '', font: { color: axisColor } },
+            tickfont: { color: axisColor },
             gridcolor: idx === 0 ? '#242a35' : 'transparent',
             zerolinecolor: idx === 0 ? '#2c323d' : 'transparent',
             overlaying: idx === 0 ? undefined : 'y',
@@ -1045,16 +1050,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
           layout[axisKey] = axisConfig;
         });
 
-        Object.entries(data).forEach(([sigName, sigData]) => {
+        // Configure traces with distinct color per signal
+        const sigNames = Object.keys(data);
+        sigNames.forEach((sigName, sigIdx) => {
+          const sigData = data[sigName];
           totalPoints += sigData.times.length;
           const yaxis = unitToAxis[sigData.unit || 'raw'];
-          const unitIdx = units.indexOf(sigData.unit || 'raw');
-          const color = COLORS[unitIdx % COLORS.length];
+          // Use sigIdx to guarantee every signal gets a distinct color
+          const color = COLORS[sigIdx % COLORS.length];
 
-          const hoverText = sigData.states.map((st, i) => {
+          // Format hover values showing interpreted enum states when available
+          const hoverDisplay = sigData.states.map((st, i) => {
             const v = sigData.values[i];
             const u = sigData.unit ? ` ${sigData.unit}` : '';
-            return st ? `${v}${u} (${st})` : `${v}${u}`;
+            if (st && st.trim() !== '') {
+              return `${st} (${v}${u})`;
+            }
+            return `${v}${u}`;
           });
 
           traces.push({
@@ -1062,8 +1074,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
             x: sigData.times,
             y: sigData.values,
             yaxis: yaxis,
-            text: hoverText,
-            hovertemplate: `%{text}<extra>${sigName}</extra>`,
+            customdata: hoverDisplay,
+            text: hoverDisplay,
+            hovertemplate: '%{fullData.name}: %{customdata}<extra></extra>',
             mode: 'lines',
             line: { width: 1.8, color: color },
             type: 'scatter'
@@ -1075,6 +1088,19 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const count = sigKeys.length;
         layout.grid = { rows: count, columns: 1, pattern: 'independent' };
 
+        // Top subplot xaxis rangeslider must be disabled when multiple subplots exist
+        if (count > 1) {
+          layout.xaxis = {
+            gridcolor: '#242a35',
+            tickfont: { color: '#94a3b8' },
+            showticklabels: false,
+            rangeslider: { visible: false }
+          };
+          if (currentTimeRange[0] !== null && currentTimeRange[1] !== null) {
+            layout.xaxis.range = [currentTimeRange[0], currentTimeRange[1]];
+          }
+        }
+
         sigKeys.forEach((sigName, idx) => {
           const sigData = data[sigName];
           totalPoints += sigData.times.length;
@@ -1082,6 +1108,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           const yaxisKey = axisNum === 1 ? 'yaxis' : `yaxis${axisNum}`;
           const xaxisKey = axisNum === 1 ? 'xaxis' : `xaxis${axisNum}`;
           const color = COLORS[idx % COLORS.length];
+          const isBottom = axisNum === count;
 
           const unitKey = sigData.unit || sigName;
           activeUnitsList.push({ unit: unitKey, color: color, axisKey: yaxisKey });
@@ -1092,6 +1119,22 @@ HTML_PAGE = r"""<!DOCTYPE html>
             gridcolor: '#242a35',
             fixedrange: isRangeSliderVisible ? true : false
           };
+
+          // If signal has discrete states/value table, show tick labels on Y axis
+          const uniqueStatesMap = new Map();
+          for (let i = 0; i < sigData.values.length; i++) {
+            const v = sigData.values[i];
+            const st = sigData.states[i];
+            if (st && st.trim() !== '' && !uniqueStatesMap.has(v)) {
+              uniqueStatesMap.set(v, st);
+            }
+          }
+          if (uniqueStatesMap.size > 0 && uniqueStatesMap.size <= 16) {
+            const sortedVals = Array.from(uniqueStatesMap.keys()).sort((a,b) => a - b);
+            yaxisConfig.tickmode = 'array';
+            yaxisConfig.tickvals = sortedVals;
+            yaxisConfig.ticktext = sortedVals.map(v => uniqueStatesMap.get(v));
+          }
 
           if (customYRanges[unitKey] && !customYRanges[unitKey].auto) {
             const rMin = customYRanges[unitKey].min;
@@ -1104,18 +1147,33 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
           layout[yaxisKey] = yaxisConfig;
 
-          if (axisNum > 1) {
-            layout[xaxisKey] = {
-              matches: 'x',
-              gridcolor: '#242a35',
-              tickfont: { color: '#94a3b8' }
-            };
+          // X-axis configuration: only bottommost scope gets the tick labels, title, and slider
+          layout[xaxisKey] = {
+            matches: axisNum > 1 ? 'x' : undefined,
+            gridcolor: '#242a35',
+            tickfont: { color: '#94a3b8' },
+            showticklabels: isBottom,
+            title: isBottom ? { text: 'Time (seconds)', font: { color: '#94a3b8' } } : undefined,
+            rangeslider: {
+              visible: isBottom ? isRangeSliderVisible : false,
+              thickness: 0.08,
+              bgcolor: '#16191f',
+              bordercolor: '#2c323d'
+            }
+          };
+
+          if (axisNum === 1 && currentTimeRange[0] !== null && currentTimeRange[1] !== null) {
+            layout[xaxisKey].range = [currentTimeRange[0], currentTimeRange[1]];
           }
 
-          const hoverText = sigData.states.map((st, i) => {
+          // Format hover values showing interpreted enum states when available
+          const hoverDisplay = sigData.states.map((st, i) => {
             const v = sigData.values[i];
             const u = sigData.unit ? ` ${sigData.unit}` : '';
-            return st ? `${v}${u} (${st})` : `${v}${u}`;
+            if (st && st.trim() !== '') {
+              return `${st} (${v}${u})`;
+            }
+            return `${v}${u}`;
           });
 
           traces.push({
@@ -1124,8 +1182,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
             y: sigData.values,
             xaxis: axisNum === 1 ? 'x' : `x${axisNum}`,
             yaxis: axisNum === 1 ? 'y' : `y${axisNum}`,
-            text: hoverText,
-            hovertemplate: `%{text}<extra>${sigName}</extra>`,
+            customdata: hoverDisplay,
+            text: hoverDisplay,
+            hovertemplate: '<b>%{fullData.name}</b>: %{customdata}<extra></extra>',
             mode: 'lines',
             line: { width: 1.8, color: color },
             type: 'scatter'
@@ -1581,14 +1640,48 @@ HTML_PAGE = r"""<!DOCTYPE html>
           selectedSignals.clear();
           const all = Object.keys(availableSignals);
 
-          if (preset === 'fuel') {
-            all.filter(s => s.toLowerCase().includes('fuel') || s.toLowerCase().includes('volt') || s.toLowerCase().includes('12v')).forEach(s => selectedSignals.add(s));
+          if (preset === 'speed') {
+            const preferred = ['ITF_speed_kph', 'ITF_rpm', 'ITF_gear_position_ST', 'RBX_speed_kph', 'DBG_speed_freq', 'DBG_RPM_freq'];
+            const matched = all.filter(s => preferred.includes(s));
+            if (matched.length > 0) {
+              matched.forEach(s => selectedSignals.add(s));
+            } else {
+              all.filter(s => (s.toLowerCase().includes('speed') || s.toLowerCase().includes('rpm') || s.toLowerCase().includes('gear'))
+                && !s.toLowerCase().includes('pulse')
+                && !s.toLowerCase().includes('accuracy')).forEach(s => selectedSignals.add(s));
+            }
           } else if (preset === 'coolant') {
-            all.filter(s => s.toLowerCase().includes('coolant') || s.toLowerCase().includes('temp')).forEach(s => selectedSignals.add(s));
-          } else if (preset === 'speed') {
-            all.filter(s => s.toLowerCase().includes('speed') || s.toLowerCase().includes('rpm') || s.toLowerCase().includes('gear')).forEach(s => selectedSignals.add(s));
-          } else if (preset === 'all_active') {
-            all.filter(s => s.toLowerCase().includes('itf_') && (s.toLowerCase().includes('_ah') || s.toLowerCase().includes('_al') || s.toLowerCase().includes('_st'))).slice(0, 8).forEach(s => selectedSignals.add(s));
+            const preferred = ['ITF_coolant_temp', 'EXT_oil_temperature', 'ITF_MCU_temp', 'EXT_charge_coolant_temp_in', 'EXT_charge_coolant_temp_out', 'DBG_coolant_freq', 'DBG_coolant_duty'];
+            const matched = all.filter(s => preferred.includes(s));
+            if (matched.length > 0) {
+              matched.forEach(s => selectedSignals.add(s));
+            } else {
+              all.filter(s => (s.toLowerCase().includes('coolant') || s.toLowerCase().includes('temp'))
+                && !s.endsWith('_TT') && !s.includes('_TT_')).forEach(s => selectedSignals.add(s));
+            }
+          } else if (preset === 'fuel') {
+            const preferred = ['ITF_fuel_level_pc', 'ITF_lv_voltage_v', 'DBG_12V_raw_v', 'DBG_3V3_raw_v', 'DBG_fuel_r', 'DBG_fuel_raw_v', 'RBX_battery_pc'];
+            const matched = all.filter(s => preferred.includes(s));
+            if (matched.length > 0) {
+              matched.forEach(s => selectedSignals.add(s));
+            } else {
+              all.filter(s => (s.toLowerCase().includes('fuel') || s.toLowerCase().includes('volt') || s.toLowerCase().includes('12v'))
+                && !s.endsWith('_TT') && !s.includes('_TT_')).forEach(s => selectedSignals.add(s));
+            }
+          } else if (preset === 'telltales' || preset === 'all_active') {
+            // Select all warning telltales and status indicators
+            all.filter(s => s.endsWith('_TT') || s.includes('_TT') || s === 'ITF_alarm_AH' || s === 'ITF_backlight_AH' || s === 'ITF_ignition_AH_ST')
+               .forEach(s => selectedSignals.add(s));
+          } else if (preset === 'gps') {
+            // RaceBox GPS and IMU motion telemetry
+            const preferred = ['RBX_speed_kph', 'RBX_accel_X_g', 'RBX_accel_Y_g', 'RBX_accel_Z_g', 'RBX_rot_rate_Z', 'RBX_fix_ST'];
+            const matched = all.filter(s => preferred.includes(s));
+            if (matched.length > 0) {
+              matched.forEach(s => selectedSignals.add(s));
+            } else {
+              all.filter(s => s.startsWith('RBX_') && !s.includes('accuracy') && !s.includes('valid_') && !s.includes('counter'))
+                 .forEach(s => selectedSignals.add(s));
+            }
           }
 
           updateCheckboxes();

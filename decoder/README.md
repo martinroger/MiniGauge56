@@ -66,9 +66,10 @@ A browser-based interactive dashboard that decodes `.bin` files on-the-fly and p
 - **On-the-Fly Decoding**: Reads directly from `.bin` files using `binocan.dbc`.
 - **Log Switcher**: Dropdown in the header allows switching between log files instantly.
 - **Searchable Multi-Select**: Filter signals by name, unit, or CAN message group.
-- **Quick Presets**: One-click filters for *Fuel & Power*, *Coolant & Temp*, *Speed & RPM*, and *Telltales*.
+- **Quick Presets**: One-click filters for *Speed & RPM*, *Coolant & Temp*, *Fuel & Power*, *Telltales*, and *GPS & IMU*.
+- **Distinct Signal Colors**: Every signal trace is assigned its own unique distinct color, eliminating collisions even when multiple signals share the same engineering unit.
 - **Multi-Axis Overlay**: Automatically gives distinct, color-coded Y-axes to signals with different engineering units (`V`, `Hz`, `kph`, `Ohm`) so they don't distort each other.
-- **Stacked Subplots Mode**: Toggle between overlaid multi-axis view and vertically stacked synchronized subplots.
+- **Stacked Subplots Mode**: Toggle between overlaid multi-axis view and vertically stacked synchronized subplots. In subplots mode, the range slider sits cleanly at the bottom of all scopes, and discrete value-table signals label their Y-axes with human-readable state names.
 - **Mouse Navigation & 2D Panning**:
   - **Pan Mode (✋)** (default): Click and drag anywhere on the chart to freely pan in **both X (time) and Y (values) simultaneously**.
   - **Box Zoom Mode (🔍)**: Click and drag to draw a rectangular zoom box.
@@ -98,7 +99,7 @@ A browser-based interactive dashboard that decodes `.bin` files on-the-fly and p
   - Checkbox on the message header quickly selects or deselects all signals in that message.
   - Dedicated **Collapse** and **Expand** buttons in the sidebar header to toggle all groups at once.
 - **Plotly.js Chart Features**:
-  - Hover tooltip displays exact timestamp, signal value, unit, and enum states (e.g. `1 (HI)` or `0 (Neutral)`).
+  - Hover tooltip displays exact timestamp, signal value, unit, and interpreted value-table states (e.g. `Neutral (0)`, `3D_Fix (3)`, `HI (1)`).
   - One-click PNG export.
 
 ### Usage
