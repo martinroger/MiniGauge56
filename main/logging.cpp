@@ -9,68 +9,97 @@
 #include "freertos/ringbuf.h"
 #include "esp_timer.h"
 #include "esp_log.h"
-#include "driver/twai.h"
+#include "twai_daemon.h"
+
+/**
+ * @file logging.cpp
+ * @brief Implementation of high-throughput CAN frame logging to SD card.
+ *
+ * Receives TWAI frames from the twai_daemon dispatcher callback, buffers them in a 32 KB
+ * PSRAM ringbuffer, and flushes blocks of 512 frames (8 KB) to the SD card via sd_writer_task.
+ */
 
 // LVGL Globals
 char current_log_filename[64] = "None";
 uint32_t current_file_size = 0;
 uint32_t current_buffered_bytes = 0;
 bool is_logging = false;
+static volatile bool sd_writer_running = false;
 
+/**
+ * @brief Packed 16-byte binary record representing a single logged CAN frame.
+ */
 typedef struct
 {
-    uint32_t timestamp; // 4 bytes
-    uint16_t id;        // 2 bytes (Fits 0x7FF easily)
-    uint8_t dlc;        // 1 byte
-    uint8_t data[8];    // 8 bytes
-    uint8_t padding;    // 1 byte (Explicitly brings total to 16)
+    uint32_t timestamp; /**< Milliseconds timestamp since boot (4 bytes) */
+    uint16_t id;        /**< Standard 11-bit CAN frame identifier (2 bytes) */
+    uint8_t dlc;        /**< Data length code (1 byte, 0-8) */
+    uint8_t data[8];    /**< Frame payload data (8 bytes) */
+    uint8_t padding;    /**< Explicit padding byte to maintain 16-byte alignment */
 } __attribute__((packed)) can_log_record_t;
 
+/** @brief Number of 16-byte frame records per DMA block written to SD */
 #define FRAMES_PER_BLOCK 512
+
+/** @brief Total size in bytes of a single block write to SD card (8 KB) */
 #define BLOCK_SIZE (FRAMES_PER_BLOCK * sizeof(can_log_record_t))
+
+/** @brief Size in bytes of the intermediate PSRAM ringbuffer (32 KB) */
 #define RB_SIZE (32 * 1024)
+
+/** @brief Maximum period in milliseconds before partially filled block is flushed to SD */
 #define LAZY_FLUSH_MS 5000
 
+/** @brief Handle to the statically allocated PSRAM ringbuffer */
 static RingbufHandle_t can_rb = NULL;
 
-// --- CAN Task: Drains the Hardware into the RingBuffer ---
-static void can_rx_task(void *arg)
+/**
+ * @brief Frame ingestion callback registered with the CAN frame routing pipeline.
+ *
+ * Packs incoming TWAI frames into 16-byte records and pushes them non-blocking
+ * to the PSRAM ringbuffer if logging is active.
+ *
+ * @param[in] frame Pointer to received TWAI frame descriptor.
+ * @note Thread-safety: Thread-safe across FreeRTOS tasks.
+ * @note Side effects: Copies frame into can_rb if is_logging is true; drops on overflow.
+ */
+void log_can_frame_handler(const twai_frame_t *frame)
 {
-    twai_message_t rx_msg;
-
-    while (1)
+    if (frame == NULL || !is_logging || can_rb == NULL)
     {
-        // 1. Block until a hardware frame arrives
-        if (twai_receive(&rx_msg, pdMS_TO_TICKS(1000)) == ESP_OK)
-        {
-
-            // 2. Only process if logging is active
-            if (is_logging && can_rb)
-            {
-                can_log_record_t record;
-
-                // 3. Pack the 16-byte struct manually
-                record.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
-                record.id = (uint16_t)rx_msg.identifier; // Cast 32-bit ID to 16-bit
-                record.dlc = rx_msg.data_length_code;
-                record.padding = 0;
-
-                // Clear and copy data payload
-                memset(record.data, 0, 8);
-                uint8_t len = (record.dlc > 8) ? 8 : record.dlc;
-                memcpy(record.data, rx_msg.data, len);
-
-                // 4. Push to PSRAM Ring Buffer
-                // If the buffer is full (overflow), this returns immediately
-                xRingbufferSend(can_rb, &record, sizeof(can_log_record_t), 0);
-            }
-        }
+        return;
     }
+
+    can_log_record_t record;
+
+    // Pack the 16-byte struct
+    record.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+    record.id = (uint16_t)frame->header.id;
+    record.dlc = frame->header.dlc;
+    record.padding = 0;
+
+    // Clear and copy data payload
+    memset(record.data, 0, sizeof(record.data));
+    uint8_t len = (record.dlc > 8) ? 8 : record.dlc;
+    if (frame->buffer != NULL && len > 0)
+    {
+        memcpy(record.data, frame->buffer, len);
+    }
+
+    // Push to PSRAM Ring Buffer with zero-wait non-blocking semantics
+    xRingbufferSend(can_rb, &record, sizeof(can_log_record_t), 0);
 }
 
-// --- SD Task: Drains the RingBuffer into the SD Card ---
+/**
+ * @brief FreeRTOS task that drains the PSRAM ringbuffer and writes batch blocks to SD card.
+ *
+ * @param[in] pvParameters Task parameters passed by FreeRTOS (unused).
+ * @note Thread-safety: Runs as an independent worker task.
+ * @note Side effects: Opens log file on /sdcard, performs block DMA writes, and updates LVGL metrics.
+ */
 static void sd_writer_task(void *pvParameters)
 {
+    sd_writer_running = true;
     sprintf(current_log_filename, "/sdcard/log_%lld.bin", esp_timer_get_time());
     current_file_size = 0;
 
@@ -78,21 +107,31 @@ static void sd_writer_task(void *pvParameters)
     if (!f)
     {
         is_logging = false;
+        sd_writer_running = false;
         vTaskDelete(NULL);
         return;
     }
     setvbuf(f, NULL, _IONBF, 0);
 
     can_log_record_t *batch_buffer = (can_log_record_t *)heap_caps_malloc(BLOCK_SIZE, MALLOC_CAP_DMA);
-    size_t items_in_batch = 0;
-    uint32_t last_flush_time = esp_timer_get_time() / 1000;
+    if (!batch_buffer)
+    {
+        fclose(f);
+        is_logging = false;
+        sd_writer_running = false;
+        vTaskDelete(NULL);
+        return;
+    }
 
-    while (is_logging || items_in_batch > 0)
+    size_t items_in_batch = 0;
+    uint32_t last_flush_time = (uint32_t)(esp_timer_get_time() / 1000);
+
+    while (true)
     {
         size_t item_size;
-        can_log_record_t *item = (can_log_record_t *)xRingbufferReceive(can_rb, &item_size, pdMS_TO_TICKS(100));
-
-        current_buffered_bytes = items_in_batch * 16;
+        // Wait up to 100ms while active; poll immediately (0ms) once stopping to drain remaining items
+        TickType_t wait_ticks = is_logging ? pdMS_TO_TICKS(100) : 0;
+        can_log_record_t *item = (can_log_record_t *)xRingbufferReceive(can_rb, &item_size, wait_ticks);
 
         if (item)
         {
@@ -109,8 +148,14 @@ static void sd_writer_task(void *pvParameters)
             }
         }
 
-        uint32_t now = esp_timer_get_time() / 1000;
-        if (items_in_batch >= FRAMES_PER_BLOCK || (items_in_batch > 0 && (now - last_flush_time > LAZY_FLUSH_MS || !is_logging)))
+        current_buffered_bytes = items_in_batch * 16;
+
+        uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+        bool flush_due_to_time = (items_in_batch > 0 && (now - last_flush_time > LAZY_FLUSH_MS));
+        bool flush_due_to_stop = (items_in_batch > 0 && !is_logging);
+        bool block_full = (items_in_batch >= FRAMES_PER_BLOCK);
+
+        if (block_full || flush_due_to_time || flush_due_to_stop)
         {
             size_t bytes_to_write = items_in_batch * sizeof(can_log_record_t);
             fwrite(batch_buffer, 1, bytes_to_write, f);
@@ -119,63 +164,81 @@ static void sd_writer_task(void *pvParameters)
             current_file_size += bytes_to_write; // Update for LVGL
             items_in_batch = 0;
             last_flush_time = now;
+            current_buffered_bytes = 0;
+        }
+
+        // Exit once logging has stopped, no items remain in the current batch, and ringbuffer is drained
+        if (!is_logging && item == NULL && items_in_batch == 0)
+        {
+            break;
         }
     }
 
     heap_caps_free(batch_buffer);
     fclose(f);
+    current_buffered_bytes = 0;
+    sd_writer_running = false;
     vTaskDelete(NULL);
 }
 
-bool init_can_logging()
+bool init_can_logging(void)
 {
-    // 1. TWAI Init
-    twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_43, GPIO_NUM_44, TWAI_MODE_LISTEN_ONLY);
-    twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS();
-    twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+    if (can_rb != NULL)
+    {
+        return true;
+    }
 
-    if (twai_driver_install(&g_config, &t_config, &f_config) != ESP_OK)
-        return false;
-    if (twai_start() != ESP_OK)
-        return false;
-
-    // 2. RingBuffer Init (PSRAM)
+    // RingBuffer Init (PSRAM)
     uint8_t *storage = (uint8_t *)heap_caps_malloc(RB_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     static StaticRingbuffer_t rb_struct;
-    if (storage)
+    if (storage != NULL)
+    {
         can_rb = xRingbufferCreateStatic(RB_SIZE, RINGBUF_TYPE_NOSPLIT, storage, &rb_struct);
-
-    // 3. Start high-priority CAN listener
-    xTaskCreate(can_rx_task, "can_rx", 4096, NULL, 10, NULL);
+    }
 
     return (can_rb != NULL);
 }
 
-void start_logging()
+void start_logging(void)
 {
-    if (!is_logging && can_rb)
+    if (!is_logging && !sd_writer_running && can_rb)
     {
+        // Purge any stale records from previous session to guarantee a fresh start
+        size_t stale_size;
+        void *stale_item;
+        while ((stale_item = xRingbufferReceive(can_rb, &stale_size, 0)) != NULL)
+        {
+            vRingbufferReturnItem(can_rb, stale_item);
+        }
+
         is_logging = true;
         xTaskCreate(sd_writer_task, "sd_writer", 4096, NULL, 5, NULL);
         ESP_LOGI(__func__, "Block size: %lu", BLOCK_SIZE);
     }
 }
 
-void stop_logging()
+void stop_logging(void)
 {
     is_logging = false;
 }
 
+/**
+ * @brief FreeRTOS task generating synthetic CAN records to test SD write throughput.
+ *
+ * @param[in] pvParameters Task parameters passed by FreeRTOS (unused).
+ * @note Thread-safety: Runs as an independent worker task.
+ * @note Side effects: Pushes synthetic 16-byte records into can_rb every 2 ms (500 Hz).
+ */
 static void mock_can_producer_task(void *pvParameters)
 {
     uint8_t count = 0;
     uint16_t mock_id = 0x123;
 
-    ESP_LOGW("MOCK", "Starting dummy data generator @ 20 Hz");
+    ESP_LOGW("MOCK", "Starting dummy data generator @ 500 Hz");
 
     while (is_logging)
     {
-        // 1. Manually pack the "Golden" 16-byte struct
+        // 1. Manually pack the 16-byte struct
         can_log_record_t record;
         record.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
         record.id = mock_id;
@@ -189,20 +252,28 @@ static void mock_can_producer_task(void *pvParameters)
         // 3. Push to Ring Buffer
         if (can_rb)
         {
-            BaseType_t res = xRingbufferSend(can_rb, &record, sizeof(can_log_record_t), 0);
+            xRingbufferSend(can_rb, &record, sizeof(can_log_record_t), 0);
         }
 
-        // 20Hz = 50ms delay
+        // 500Hz = 2ms delay
         vTaskDelay(pdMS_TO_TICKS(2));
     }
 
     vTaskDelete(NULL);
 }
 
-void start_logging_test()
+void start_logging_test(void)
 {
-    if (!is_logging && can_rb)
+    if (!is_logging && !sd_writer_running && can_rb)
     {
+        // Purge any stale records from previous session to guarantee a fresh start
+        size_t stale_size;
+        void *stale_item;
+        while ((stale_item = xRingbufferReceive(can_rb, &stale_size, 0)) != NULL)
+        {
+            vRingbufferReturnItem(can_rb, stale_item);
+        }
+
         is_logging = true;
         // Start the SD Writer
         xTaskCreate(sd_writer_task, "sd_writer", 4096, NULL, 5, NULL);

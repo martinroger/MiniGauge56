@@ -1,0 +1,30 @@
+# MiniGauge56 — Platform & Architecture Constraints
+
+## 1. Hardware & Target Constraints
+
+| Parameter | Specification / Constraint | Rationale / Mitigation |
+| :--- | :--- | :--- |
+| **Target SoC** | ESP32-S3 (Xtensa Dual-Core, 240 MHz) | Required for Octal SPI PSRAM, DMA, and AMOLED driver. |
+| **Framework Version** | ESP-IDF v5.5.5 | Selected build toolchain installed in `~/.espressif/v5.5.5`. |
+| **CAN Transceiver TX** | GPIO 43 | Hardwired on board transceiver path. |
+| **CAN Transceiver RX** | GPIO 44 | Hardwired on board transceiver path. |
+| **Display Controller** | RM69090 / AMOLED 1.75" | Managed via `waveshare/esp32_s3_touch_amoled_1_75`. |
+| **SD Storage** | MicroSD via 4-wire SDMMC / SPI | Mounted to `/sdcard` via BSP FATFS driver. |
+
+---
+
+## 2. Software & Architectural Constraints
+
+### 2.1 Unmodified Component Boundary
+- The `components/twai_daemon/` component was developed and tested across multiple projects. It must remain **strictly unmodified**.
+- Application code in `main/` adapts to the existing `twai_daemon` API (`initCAN`, `twai_transmit_msg`, `twai_transmit_frame`).
+
+### 2.2 Real-Time Processing & Zero Dynamic Allocation in Hot Path
+- In the CAN frame reception and routing callback (`log_can_frame_handler`), no dynamic memory allocations (`malloc`, `calloc`, `new`) are permitted.
+- Records are copied by value into statically allocated stack structs and queued non-blocking into PSRAM `can_rb` with zero timeout (`0`).
+- If the ringbuffer is saturated, newest frames are dropped immediately rather than stalling the `CAN_RX_Task` thread.
+
+### 2.3 FreeRTOS Core Pinning
+- `CAN_RX_Task` is pinned to Core 1 via `CONFIG_CAN_CORE_AFFINITY` to prevent contention with display rendering on Core 0.
+- LVGL UI operations are synchronized using `bsp_display_lock()` mutex with bounded timeouts.
+

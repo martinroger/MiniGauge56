@@ -1,0 +1,21 @@
+menu "TWAI Daemon"
+    config CAN_TX
+        int "CAN Transceiver TX GPIO"
+        default 39
+
+    config CAN_RX
+        int "CAN Transceiver RX GPIO"
+        default 38
+
+    config CAN_TX_POLLING_RATE_MS
+        int "TX Queue polling interval in ms"
+        default 5 
+
+    config CAN_RX_TIMEOUT_MS
+        int "RX Timeout in milliseconds"
+        default 3000 
+
+    config CAN_CORE_AFFINITY
+        int "Core affinity for the TWAI daemon"
+        default 1
+endmenu
