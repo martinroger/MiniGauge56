@@ -383,18 +383,18 @@ def build_aggregated_dataset() -> Dict[str, Any]:
     fitted = fit_gear_clusters(all_driving_ratios, initial_seeds)
     A = compute_empirical_transition_matrix(logs_data, fitted["means"])
 
-    # Build histogram (bins 1.0 to 7.0)
+    # Build histogram (bins 0.0 to 7.0)
     bin_width = 0.04
     hist_bins = []
-    b_val = 1.0
+    b_val = 0.0
     while b_val <= 7.0:
         hist_bins.append(round(b_val, 2))
         b_val += bin_width
 
     hist_counts = [0] * len(hist_bins)
     for r in all_driving_ratios:
-        if 1.0 <= r < 7.0:
-            idx = int((r - 1.0) / bin_width)
+        if 0.0 <= r < 7.0:
+            idx = int(r / bin_width)
             if 0 <= idx < len(hist_counts):
                 hist_counts[idx] += 1
 
@@ -1437,7 +1437,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
       // Overlay Gaussian bell curves
       const xDense = [];
-      for (let v = 1.0; v <= 6.5; v += 0.02) xDense.push(v);
+      for (let v = 0.0; v <= 6.5; v += 0.02) xDense.push(v);
 
       const maxCount = Math.max(...hist.counts);
       for (let gi = 0; gi < 5; gi++) {
@@ -1461,7 +1461,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         ...theme,
         margin: { t: 25, b: 30, l: 45, r: 25 },
         title: { text: 'Global Ratio Histogram & Fitted Gaussian Distributions (All Logs Combined)', font: { size: 11 } },
-        xaxis: { title: 'Speed / RPM Frequency Ratio', gridcolor: theme.gridcolor, range: [1.0, 6.5] },
+        xaxis: { title: 'Speed / RPM Frequency Ratio', gridcolor: theme.gridcolor, range: [0.0, 6.5] },
         yaxis: { title: 'Sample Count', gridcolor: theme.gridcolor },
         legend: { orientation: 'h', y: 1.15, x: 0 },
         showlegend: true

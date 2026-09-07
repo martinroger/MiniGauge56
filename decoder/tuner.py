@@ -2492,7 +2492,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const binSize = 0.04;
       const bins = {};
       validRatios.forEach(v => {
-        if (v >= 1.0 && v <= 8.0) {
+        if (v >= 0.2 && v <= 8.0) {
           const b = Math.round(v / binSize) * binSize;
           bins[b] = (bins[b] || 0) + 1;
         }
@@ -2805,7 +2805,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         ...theme,
         margin: { t: 30, b: 35, l: 50, r: 25 },
         title: { text: 'Gear Ratio Distribution & Calibrated Bands (5 Forward Gears + N)', font: { size: 12 } },
-        xaxis: { title: 'Speed Freq / RPM Freq Ratio', gridcolor: theme.gridcolor, range: [1.0, 7.0] },
+        xaxis: { title: 'Speed Freq / RPM Freq Ratio', gridcolor: theme.gridcolor, range: [0.0, 7.0] },
         yaxis: { title: 'Samples', gridcolor: theme.gridcolor },
         shapes: histShapes,
         showlegend: false
