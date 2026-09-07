@@ -25,7 +25,10 @@ import csv
 import io
 import re
 from pathlib import Path
-from http.server import HTTPServer, BaseHTTPRequestHandler
+try:
+    from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+except ImportError:
+    from http.server import HTTPServer as ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from typing import Dict, List, Any, Optional
 
@@ -2179,12 +2182,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
     async function loadLogData(filename) {
       showLoading(`Decoding ${filename}...`);
       try {
-        const [resAlgo, resAnalytics] = await Promise.all([
-          fetch(`/api/algo_data?file=${encodeURIComponent(filename)}`),
-          fetch(`/api/analytics?file=${encodeURIComponent(filename)}`)
-        ]);
+        const resAlgo = await fetch(`/api/algo_data?file=${encodeURIComponent(filename)}`);
         algoData = await resAlgo.json();
-        analyticsData = await resAnalytics.json();
 
         timeRange = [0, algoData.duration_s];
         document.getElementById('time-from').value = 0;
@@ -2217,6 +2216,18 @@ HTML_PAGE = r"""<!DOCTYPE html>
       } finally {
         hideLoading();
       }
+
+      // Pre-fetch analytics in background without blocking UI
+      analyticsData = null;
+      fetch(`/api/analytics?file=${encodeURIComponent(filename)}`)
+        .then(res => res.json())
+        .then(data => {
+          analyticsData = data;
+          if (activeTabId === 'tab-analytics') {
+            renderAnalyticsTable();
+          }
+        })
+        .catch(err => console.warn('Background analytics error:', err));
     }
 
     function renderActiveTabPlots() {
@@ -2228,7 +2239,22 @@ HTML_PAGE = r"""<!DOCTYPE html>
       } else if (activeTabId === 'tab-speed') {
         computeAndRenderSpeed();
       } else if (activeTabId === 'tab-analytics') {
-        renderAnalyticsTable();
+        if (!analyticsData && currentLog) {
+          showLoading('Analyzing bus frames...');
+          fetch(`/api/analytics?file=${encodeURIComponent(currentLog)}`)
+            .then(r => r.json())
+            .then(d => {
+              analyticsData = d;
+              hideLoading();
+              renderAnalyticsTable();
+            })
+            .catch(e => {
+              hideLoading();
+              console.error(e);
+            });
+        } else {
+          renderAnalyticsTable();
+        }
       }
     }
 
@@ -3028,7 +3054,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }, { responsive: true });
 
       const dynEl = document.getElementById('plot-gear-dynamics');
-      if (dynEl && !dynEl._hasListeners) {
+      if (dynEl && typeof dynEl.on === 'function' && !dynEl._hasListeners) {
         dynEl._hasListeners = true;
         dynEl.on('plotly_relayout', handlePlotRelayout);
         dynEl.on('plotly_hover', handlePlotHover);
@@ -3126,11 +3152,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }, { responsive: true });
 
       const timeEl = document.getElementById('plot-gear-time');
-      if (timeEl && !timeEl._hasListeners) {
+      if (timeEl && typeof timeEl.on === 'function' && !timeEl._hasListeners) {
         timeEl._hasListeners = true;
         timeEl.on('plotly_relayout', handlePlotRelayout);
         timeEl.on('plotly_hover', handlePlotHover);
       }
+      attachTunerReplayerClickListeners();
 
       currentGearData = {
         times: filteredTimes,
@@ -3344,17 +3371,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
       });
     }
 
-    ['plot-gear-dynamics', 'plot-gear-time'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) {
-        el.on('plotly_click', (d) => {
-          if (d && d.points && d.points[0] && d.points[0].x !== undefined) {
-            stopTunerPlayback();
-            updateTunerReplayDisplay(d.points[0].x);
-          }
-        });
-      }
-    });
+    function attachTunerReplayerClickListeners() {
+      ['plot-gear-dynamics', 'plot-gear-time'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && typeof el.on === 'function' && !el._replayerClickAttached) {
+          el._replayerClickAttached = true;
+          el.on('plotly_click', (d) => {
+            if (d && d.points && d.points[0] && d.points[0].x !== undefined) {
+              stopTunerPlayback();
+              updateTunerReplayDisplay(d.points[0].x);
+            }
+          });
+        }
+      });
+    }
 
     // TAB 2: FUEL LEVEL FILTERING LOGIC
     const fuelParams = {
@@ -4284,7 +4314,7 @@ def main():
             print(f"Warning: Initial file {args.log_file} not found.")
 
     port = find_available_port(args.port)
-    server = HTTPServer(("0.0.0.0", port), TunerHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", port), TunerHandler)
     url = f"http://localhost:{port}"
 
     print("=" * 70)

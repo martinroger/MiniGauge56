@@ -29,7 +29,10 @@ import sys
 import time
 import urllib.parse
 import webbrowser
-from http.server import HTTPServer, BaseHTTPRequestHandler
+try:
+    from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+except ImportError:
+    from http.server import HTTPServer as ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Dict, List, Tuple, Any, Optional
 
@@ -208,7 +211,19 @@ def read_bin_file(filepath: Path) -> List[CanFrame]:
 def find_bin_files(specific: Optional[Path] = None) -> List[Path]:
     if specific and specific.is_file():
         return [specific]
-    return sorted(SCRIPT_DIR.glob("*.bin"))
+    seen = set()
+    files: List[Path] = []
+    search_dirs = [SCRIPT_DIR]
+    cwd = Path(".").resolve()
+    if cwd != SCRIPT_DIR.resolve():
+        search_dirs.append(cwd)
+    for d in search_dirs:
+        for p in d.glob("*.bin"):
+            if p.is_file() and p.resolve() not in seen:
+                seen.add(p.resolve())
+                files.append(p)
+    files.sort(key=lambda p: [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', p.name)])
+    return files
 
 # Global DBC instance
 _GLOBAL_DBC: Optional[DbcDatabase] = None
@@ -2405,7 +2420,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const dynEl = document.getElementById('plot-dynamics');
       const compEl = document.getElementById('plot-models-compare');
 
-      if (dynEl && !dynEl._syncAttached) {
+      if (dynEl && typeof dynEl.on === 'function' && !dynEl._syncAttached) {
         dynEl._syncAttached = true;
         dynEl.on('plotly_relayout', (ed) => {
           if (ed['xaxis.range[0]'] !== undefined) {
@@ -2416,7 +2431,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           }
         });
       }
-      if (compEl && !compEl._syncAttached) {
+      if (compEl && typeof compEl.on === 'function' && !compEl._syncAttached) {
         compEl._syncAttached = true;
         compEl.on('plotly_relayout', (ed) => {
           if (ed['xaxis.range[0]'] !== undefined) {
@@ -2427,6 +2442,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
           }
         });
       }
+
+      attachReplayerClickListeners();
 
       // Initialize or update replayer
       if (datasetData.timeseries && datasetData.timeseries.times && datasetData.timeseries.times.length > 0) {
@@ -2695,17 +2712,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     // Synchronize hover / click from plots to replayer when paused
-    ['plot-dynamics', 'plot-models-compare'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) {
-        el.on('plotly_click', (d) => {
-          if (d && d.points && d.points[0] && d.points[0].x !== undefined) {
-            stopPlayback();
-            updateReplayDisplay(d.points[0].x);
-          }
-        });
-      }
-    });
+    function attachReplayerClickListeners() {
+      ['plot-dynamics', 'plot-models-compare'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && typeof el.on === 'function' && !el._replayerClickAttached) {
+          el._replayerClickAttached = true;
+          el.on('plotly_click', (d) => {
+            if (d && d.points && d.points[0] && d.points[0].x !== undefined) {
+              stopPlayback();
+              updateReplayDisplay(d.points[0].x);
+            }
+          });
+        }
+      });
+    }
 
     // =========================================================================
     // AUTO-OPTIMIZER & SHARED CALIBRATION HANDLERS
@@ -3058,7 +3078,7 @@ def main():
     server = None
     for attempt in range(10):
         try:
-            server = HTTPServer(("127.0.0.1", port), GearLabHandler)
+            server = ThreadingHTTPServer(("127.0.0.1", port), GearLabHandler)
             break
         except OSError:
             port += 1
