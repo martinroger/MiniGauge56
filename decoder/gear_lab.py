@@ -43,7 +43,7 @@ CAN_FRAME_STRUCT = struct.Struct("<IHB8sx")
 class DbcSignal:
     def __init__(self, name: str, start_bit: int, length: int, is_little: bool,
                  is_signed: bool, factor: float, offset: float, min_val: float,
-                 max_val: float, unit: str, value_table: Dict[int, str]):
+                 max_val: float, unit: str, value_table: Dict[int, str], valtype: int = 0):
         self.name = name
         self.start_bit = start_bit
         self.length = length
@@ -55,6 +55,7 @@ class DbcSignal:
         self.max_val = max_val
         self.unit = unit
         self.value_table = value_table
+        self.valtype = valtype
 
     def decode(self, data_bytes: bytes) -> Optional[float]:
         val_int = 0
@@ -62,7 +63,7 @@ class DbcSignal:
             data_int = int.from_bytes(data_bytes, byteorder="little")
             mask = (1 << self.length) - 1
             raw = (data_int >> self.start_bit) & mask
-            if self.is_signed and (raw & (1 << (self.length - 1))):
+            if self.is_signed and not self.valtype and (raw & (1 << (self.length - 1))):
                 raw -= (1 << self.length)
             val_int = raw
         else:
@@ -76,9 +77,19 @@ class DbcSignal:
                 else:
                     pos += 1
             raw = int("".join(extracted), 2)
-            if self.is_signed and (raw & (1 << (self.length - 1))):
+            if self.is_signed and not self.valtype and (raw & (1 << (self.length - 1))):
                 raw -= (1 << self.length)
             val_int = raw
+
+        if self.valtype == 1:
+            raw_bytes = (val_int & 0xFFFFFFFF).to_bytes(4, "little")
+            raw_float = struct.unpack("<f", raw_bytes)[0]
+            return raw_float * self.factor + self.offset
+        elif self.valtype == 2:
+            raw_bytes = (val_int & 0xFFFFFFFFFFFFFFFF).to_bytes(8, "little")
+            raw_double = struct.unpack("<d", raw_bytes)[0]
+            return raw_double * self.factor + self.offset
+
         return val_int * self.factor + self.offset
 
 
@@ -118,6 +129,11 @@ class DbcDatabase:
                 mapping[int(entry.group(1))] = entry.group(2)
             db.value_tables[tname] = mapping
 
+        valtype_re = re.compile(r"^SIG_VALTYPE_\s+(\d+)\s+(\w+)\s*:\s*(\d+)\s*;", re.MULTILINE)
+        valtypes = {}
+        for m in valtype_re.finditer(content):
+            valtypes[(int(m.group(1)), m.group(2))] = int(m.group(3))
+
         msg_pattern = re.compile(r"^BO_\s+(\d+)\s+(\w+)\s*:\s*(\d+)", re.MULTILINE)
         sig_pattern = re.compile(
             r'^\s*SG_\s+(\w+)\s*:\s*(\d+)\|(\d+)@([01])([+-])\s*\(([^,]+),([^)]+)\)\s*\[([^|]+)\|([^\]]+)\]\s*"([^"]*)"',
@@ -149,8 +165,9 @@ class DbcDatabase:
                 min_v = float(s_match.group(8))
                 max_v = float(s_match.group(9))
                 unit = s_match.group(10)
+                vtype = valtypes.get((can_id, sname), 0)
                 msg.signals[sname] = DbcSignal(
-                    sname, start_bit, length, is_little, is_signed, factor, offset, min_v, max_v, unit, {}
+                    sname, start_bit, length, is_little, is_signed, factor, offset, min_v, max_v, unit, {}, vtype
                 )
 
             db.messages[can_id] = msg
@@ -404,8 +421,53 @@ def build_aggregated_dataset() -> Dict[str, Any]:
             if 0 <= idx < len(hist_counts):
                 hist_counts[idx] += 1
 
+    # Build concatenated timeline with session offset and boundaries
+    concat_times = []
+    concat_speed_freq = []
+    concat_rpm_freq = []
+    concat_speed_kph = []
+    concat_rpm = []
+    concat_ground_truth = []
+    session_boundaries = []
+    cur_offset = 0.0
+
+    for ldata in logs_data:
+        t_arr = ldata["times"]
+        if not t_arr:
+            continue
+        t0 = cur_offset
+        t_shifted = [round(t + cur_offset, 4) for t in t_arr]
+        t1 = t_shifted[-1]
+        session_boundaries.append({
+            "name": ldata["filename"],
+            "start_time": round(t0, 2),
+            "end_time": round(t1, 2),
+            "duration": round(t1 - t0, 2),
+        })
+        concat_times.extend(t_shifted)
+        concat_speed_freq.extend(ldata["speed_freq"])
+        concat_rpm_freq.extend(ldata["rpm_freq"])
+        concat_speed_kph.extend(ldata["speed_kph"])
+        concat_rpm.extend(ldata["rpm"])
+        concat_ground_truth.extend(ldata["ground_truth"])
+        cur_offset = round(t1 + 5.0, 2)  # 5-second buffer gap between consecutive logs
+
+    concat_timeline = {
+        "filename": "All Combined Logs (Concatenated)",
+        "duration_s": round(concat_times[-1] if concat_times else 0.0, 2),
+        "total_frames": len(concat_times),
+        "times": concat_times,
+        "speed_freq": concat_speed_freq,
+        "rpm_freq": concat_rpm_freq,
+        "speed_kph": concat_speed_kph,
+        "rpm": concat_rpm,
+        "ground_truth": concat_ground_truth,
+        "session_boundaries": session_boundaries,
+    }
+
     return {
         "logs": logs_data,
+        "concat_timeline": concat_timeline,
         "total_driving_samples": len(all_driving_ratios),
         "fitted": fitted,
         "transition_matrix": A,
@@ -419,7 +481,7 @@ def build_aggregated_dataset() -> Dict[str, Any]:
 # 3 EMBEDDED MODEL INFERENCE ALGORITHMS (Python reference & evaluation)
 # ==============================================================================
 
-def run_model_1_heuristic(g: Dict[str, Any], means: List[float], latch_ms: float = 200.0) -> List[int]:
+def run_model_1_heuristic(g: Dict[str, Any], means: List[float], alpha: float = 0.15, tol: float = 0.25, latch_ms: float = 200.0) -> List[int]:
     """Model 1: Calibrated Gated Heuristic Baseline with ratio EMA and temporal latching."""
     n = len(g["times"])
     out = [0] * n
@@ -449,14 +511,14 @@ def run_model_1_heuristic(g: Dict[str, Any], means: List[float], latch_ms: float
             if current_ema is None:
                 current_ema = ratio
             else:
-                current_ema = 0.15 * ratio + 0.85 * current_ema
+                current_ema = alpha * ratio + (1.0 - alpha) * current_ema
         else:
             current_ema = None
 
         cand = 0
         if current_ema is not None:
             for gi, nom in enumerate(means):
-                max_tol = 0.25
+                max_tol = tol
                 if gi > 0:
                     max_tol = min(max_tol, (nom - means[gi - 1]) * 0.48)
                 if gi < len(means) - 1:
@@ -481,7 +543,7 @@ def run_model_1_heuristic(g: Dict[str, Any], means: List[float], latch_ms: float
     return out
 
 
-def run_model_2_bayesian(g: Dict[str, Any], means: List[float], vars_: List[float], decay: float = 0.88) -> List[int]:
+def run_model_2_bayesian(g: Dict[str, Any], means: List[float], vars_: List[float], decay: float = 0.88, p0: float = 0.12, conf_thresh: float = 0.40) -> List[int]:
     """Model 2: Recursive Bayesian Classifier with Gaussian likelihoods and temporal prior decay."""
     n = len(g["times"])
     out = [0] * n
@@ -498,7 +560,7 @@ def run_model_2_bayesian(g: Dict[str, Any], means: List[float], vars_: List[floa
 
         r = sf / rf
         lik = [0.0] * 6
-        lik[0] = 0.06 # neutral uniform likelihood
+        lik[0] = p0 # neutral uniform likelihood
 
         for gi in range(5):
             diff = r - means[gi]
@@ -506,23 +568,32 @@ def run_model_2_bayesian(g: Dict[str, Any], means: List[float], vars_: List[floa
             lik[gi + 1] = math.exp(-0.5 * (diff * diff) / v) / math.sqrt(2 * math.pi * v)
 
         # Bayes update with temporal forgetting factor
-        post = [lik[k] * (decay * prior[k] + (1.0 - decay) * 0.166) for k in range(6)]
+        post = [lik[k] * (decay * prior[k] + (1.0 - decay) * (1.0 / 6.0)) for k in range(6)]
         tot = sum(post)
         if tot > 0:
             post = [p / tot for p in post]
         prior = post
 
         best_k = post.index(max(post))
-        out[i] = best_k if post[best_k] >= 0.40 else 0
+        out[i] = best_k if post[best_k] >= conf_thresh else 0
 
     return out
 
 
-def run_model_3_hmm(g: Dict[str, Any], means: List[float], vars_: List[float], A: List[List[float]]) -> List[int]:
+def run_model_3_hmm(g: Dict[str, Any], means: List[float], vars_: List[float], A: List[List[float]], inertia: float = 0.97, clutch_decel: float = -40.0) -> List[int]:
     """Model 3: Hidden Markov Model with physical transition matrix & engine deceleration conditioning."""
     n = len(g["times"])
     out = [0] * n
     alpha = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    A_eff = [row[:] for row in A]
+    if inertia > 0.0:
+        for i in range(6):
+            A_eff[i][i] = inertia
+            rem = (1.0 - inertia) / 5.0
+            for j in range(6):
+                if j != i:
+                    A_eff[i][j] = rem
 
     for i in range(n):
         t = g["times"][i]
@@ -538,7 +609,7 @@ def run_model_3_hmm(g: Dict[str, Any], means: List[float], vars_: List[float], A
         prev_rf = g["rpm_freq"][i - 1] if i > 0 else rf
         dt = max(0.01, t - g["times"][i - 1]) if i > 0 else 0.1
         drpm = (rf - prev_rf) / dt
-        is_clutch_drop = (drpm < -40.0) # Engine dropping fast during shift/coast
+        is_clutch_drop = (drpm < clutch_decel)
 
         prev_g = out[i - 1] if i > 0 else 0
         emiss = [0.0] * 6
@@ -548,7 +619,6 @@ def run_model_3_hmm(g: Dict[str, Any], means: List[float], vars_: List[float], A
             diff = r - means[gi]
             v = vars_[gi]
             density = math.exp(-0.5 * (diff * diff) / v) / math.sqrt(2 * math.pi * v)
-            # Asymmetric suppression of upward phantom shifts during engine rev-down
             if is_clutch_drop and (gi + 1) > prev_g and prev_g > 0:
                 density *= 0.0001
             emiss[gi + 1] = density
@@ -556,7 +626,7 @@ def run_model_3_hmm(g: Dict[str, Any], means: List[float], vars_: List[float], A
         # HMM forward step
         new_alpha = [0.0] * 6
         for j in range(6):
-            s = sum(alpha[k] * A[k][j] for k in range(6))
+            s = sum(alpha[k] * A_eff[k][j] for k in range(6))
             new_alpha[j] = s * emiss[j]
 
         tot = sum(new_alpha)
@@ -570,11 +640,11 @@ def run_model_3_hmm(g: Dict[str, Any], means: List[float], vars_: List[float], A
     return out
 
 
-def evaluate_glitches(times: List[float], speeds: List[float], rpms: List[float], gears: List[int]) -> Dict[str, Any]:
-    """Computes standardized glitch evaluation metrics: Dropouts, Chatter, Phantoms, and Glitch Score."""
+def evaluate_glitches(times: List[float], speeds: List[float], rpms: List[float], gears: List[int], max_events: int = 150) -> Dict[str, Any]:
+    """Computes standardized glitch evaluation metrics: Dropouts, Chatter, Phantoms, Glitch Score, and event coordinates."""
     n = len(gears)
     if n < 3:
-        return {"dropouts": 0, "chatter": 0, "phantoms": 0, "glitch_score": 100, "active_pct": "0.0"}
+        return {"dropouts": 0, "chatter": 0, "phantoms": 0, "glitch_score": 100, "active_pct": "0.0", "events": []}
 
     # Group into contiguous gear segments
     segments = []
@@ -602,6 +672,7 @@ def evaluate_glitches(times: List[float], speeds: List[float], rpms: List[float]
     chatter = 0
     phantoms = 0
     forward_samples = 0
+    events = []
 
     for s in range(len(segments)):
         seg = segments[s]
@@ -610,6 +681,13 @@ def evaluate_glitches(times: List[float], speeds: List[float], rpms: List[float]
             # Chatter: dwell < 300 ms in forward gear
             if seg["duration"] < 0.30:
                 chatter += 1
+                if len(events) < max_events:
+                    events.append({
+                        "type": "chatter",
+                        "time": round(times[seg["start"]], 2),
+                        "gear": seg["gear"],
+                        "desc": f"Chatter: {seg['gear']}G dwell only {(seg['duration']*1000):.0f}ms"
+                    })
 
         # Neutral dropout: k -> 0 -> k within 450 ms while rolling
         if seg["gear"] == 0 and 0 < s < len(segments) - 1:
@@ -619,6 +697,13 @@ def evaluate_glitches(times: List[float], speeds: List[float], rpms: List[float]
                 avg_v = (speeds[seg["start"]] + speeds[seg["end"]]) / 2.0
                 if avg_v >= 20.0:
                     dropouts += 1
+                    if len(events) < max_events:
+                        events.append({
+                            "type": "dropout",
+                            "time": round(times[seg["start"]], 2),
+                            "gear": 0,
+                            "desc": f"Dropout: {p['gear']}G -> N -> {nxt['gear']}G in {(seg['duration']*1000):.0f}ms @ {avg_v:.1f} km/h"
+                        })
 
     # Phantom upward shifts during coasting
     for s in range(1, len(segments)):
@@ -633,6 +718,13 @@ def evaluate_glitches(times: List[float], speeds: List[float], rpms: List[float]
                 dspeed = (speeds[idx] - speeds[back_idx]) / dt
                 if drpm < -1200.0 and dspeed < 1.0:
                     phantoms += 1
+                    if len(events) < max_events:
+                        events.append({
+                            "type": "phantom",
+                            "time": round(times[idx], 2),
+                            "gear": cur_s["gear"],
+                            "desc": f"Phantom Shift: {prev_s['gear']}G -> {cur_s['gear']}G during engine drop ({drpm:.0f} RPM/s)"
+                        })
 
     score = max(0, min(100, round(100 - (2.5 * dropouts + 1.0 * chatter + 5.0 * phantoms))))
     active_pct = f"{(forward_samples / n * 100):.1f}"
@@ -643,6 +735,7 @@ def evaluate_glitches(times: List[float], speeds: List[float], rpms: List[float]
         "phantoms": phantoms,
         "glitch_score": score,
         "active_pct": active_pct,
+        "events": events,
     }
 
 # ==============================================================================
@@ -1191,6 +1284,92 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
       </div>
 
+      <!-- Collapsible: Model Theory & Assumptions -->
+      <div class="card" style="padding:0.75rem;">
+        <div class="card-title" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;" id="btn-toggle-theory">
+          <span>🧠 Model Theory & Assumptions</span>
+          <span id="theory-arrow" style="font-size:0.75rem; color:var(--text-muted);">▶ Expand</span>
+        </div>
+        <div id="theory-body" style="display:none; margin-top:0.6rem; font-size:0.74rem; color:var(--text-muted); line-height:1.45;">
+          <div style="margin-bottom:0.6rem;">
+            <strong style="color:#3b82f6;">M1: Gated Heuristic</strong><br>
+            • <em>Assumptions</em>: Rigid mechanical coupling; discrete step shifts; zero ratio phase lag.<br>
+            • <em>Mechanics</em>: Physical gating (speed&ge;5Hz, RPM&ge;25Hz, |&Delta;r/&Delta;t|&le;0.05), ratio EMA (&alpha;), constant tolerance window (&plusmn;tol<sub>abs</sub>) with Voronoi collision protection, and temporal latching debounce.
+          </div>
+          <div style="margin-bottom:0.6rem;">
+            <strong style="color:#f59e0b;">M2: Recursive Bayes</strong><br>
+            • <em>Assumptions</em>: 1D Gaussian emissions &Nu;(&mu;<sub>i</sub>, &sigma;<sub>i</sub><sup>2</sup>) per gear; Markovian temporal prior decay; Neutral background prior.<br>
+            • <em>Mechanics</em>: Posterior P(G<sub>i</sub>|r) &prop; &Nu;(r;&mu;<sub>i</sub>,&sigma;<sub>i</sub><sup>2</sup>) &middot; P<sub>prior</sub>(G<sub>i</sub>), with temporal forgetting factor &lambda;P<sub>t-1</sub> + (1-&lambda;)P<sub>0</sub>, outputting MAP state if confidence &ge; threshold.
+          </div>
+          <div>
+            <strong style="color:#10b981;">M3: HMM State-Space</strong><br>
+            • <em>Assumptions</em>: First-order Markov chain with empirical shift matrix A<sub>6&times;6</sub>; self-inertia (~97%); asymmetric engine braking physics.<br>
+            • <em>Mechanics</em>: Forward Viterbi belief update with directional clutch-drop suppression (&Delta;f<sub>RPM</sub> &lt; cutoff): upward gear emissions are suppressed during coast-down engine deceleration, eliminating phantom upshifts.
+          </div>
+        </div>
+      </div>
+
+      <!-- Collapsible: Interactive Model Parameter Tuning Drawer -->
+      <div class="card" style="padding:0.75rem;">
+        <div class="card-title" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;" id="btn-toggle-tuning">
+          <span>🎛️ Interactive Model Tuning</span>
+          <span id="tuning-arrow" style="font-size:0.75rem; color:var(--text-muted);">▼ Collapse</span>
+        </div>
+        <div id="tuning-body" style="display:block; margin-top:0.6rem; font-size:0.74rem; color:var(--text-muted); line-height:1.45;">
+          <!-- Model 1 Params -->
+          <div style="border-left:2px solid #3b82f6; padding-left:0.5rem; margin-bottom:0.5rem;">
+            <strong style="color:#3b82f6;">M1: Gated Heuristic</strong>
+            <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
+              <span>EMA &alpha;:</span><span class="ctrl-val" id="val-m1-alpha">0.15</span>
+            </div>
+            <input type="range" id="slider-m1-alpha" min="0.05" max="0.50" step="0.01" value="0.15" style="width:100%;">
+            <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
+              <span>Abs Tolerance:</span><span class="ctrl-val" id="val-m1-tol">&plusmn;0.25</span>
+            </div>
+            <input type="range" id="slider-m1-tol" min="0.10" max="0.45" step="0.01" value="0.25" style="width:100%;">
+            <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
+              <span>Latch Debounce:</span><span class="ctrl-val" id="val-m1-latch">200 ms</span>
+            </div>
+            <input type="range" id="slider-m1-latch" min="50" max="500" step="25" value="200" style="width:100%;">
+          </div>
+
+          <!-- Model 2 Params -->
+          <div style="border-left:2px solid #f59e0b; padding-left:0.5rem; margin-bottom:0.5rem;">
+            <strong style="color:#f59e0b;">M2: Recursive Bayes</strong>
+            <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
+              <span>Prior Decay &lambda;:</span><span class="ctrl-val" id="val-m2-decay">0.88</span>
+            </div>
+            <input type="range" id="slider-m2-decay" min="0.70" max="0.99" step="0.01" value="0.88" style="width:100%;">
+            <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
+              <span>Neutral Prior Floor:</span><span class="ctrl-val" id="val-m2-p0">0.12</span>
+            </div>
+            <input type="range" id="slider-m2-p0" min="0.02" max="0.35" step="0.01" value="0.12" style="width:100%;">
+            <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
+              <span>Min Confidence:</span><span class="ctrl-val" id="val-m2-conf">0.40</span>
+            </div>
+            <input type="range" id="slider-m2-conf" min="0.20" max="0.60" step="0.02" value="0.40" style="width:100%;">
+          </div>
+
+          <!-- Model 3 Params -->
+          <div style="border-left:2px solid #10b981; padding-left:0.5rem; margin-bottom:0.5rem;">
+            <strong style="color:#10b981;">M3: HMM State-Space</strong>
+            <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
+              <span>Self-Inertia A<sub>ii</sub>:</span><span class="ctrl-val" id="val-m3-inertia">0.970</span>
+            </div>
+            <input type="range" id="slider-m3-inertia" min="0.85" max="0.999" step="0.005" value="0.97" style="width:100%;">
+            <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
+              <span>Clutch Decel Cutoff:</span><span class="ctrl-val" id="val-m3-decel">-40 Hz/s</span>
+            </div>
+            <input type="range" id="slider-m3-decel" min="-80" max="-15" step="5" value="-40" style="width:100%;">
+          </div>
+
+          <div style="display:flex; gap:0.4rem; margin-top:0.5rem;">
+            <button id="btn-apply-tuning" class="btn-primary" style="flex:1; padding:0.25rem 0.5rem; font-size:0.72rem;">⚡ Apply & Evaluate</button>
+            <button id="btn-reset-tuning" style="padding:0.25rem 0.5rem; font-size:0.72rem;">↺ Reset</button>
+          </div>
+        </div>
+      </div>
+
       <div class="card" style="border-left:3px solid var(--accent);">
         <div class="card-title" style="color:var(--accent);">ESP32 Deployment Notes</div>
         <div style="font-size:0.75rem; color:var(--text-muted); line-height:1.4;">
@@ -1254,6 +1433,30 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="plots-column">
         <div class="plot-box" id="plot-ratio-hist" style="flex:0.75;"></div>
         <div class="plot-box" id="plot-dynamics" style="flex:0.7;"></div>
+
+        <!-- Comparison Controls Bar -->
+        <div style="display:flex; justify-content:space-between; align-items:center; background:var(--card-bg); padding:0.35rem 0.6rem; border:1px solid var(--panel-border); border-radius:6px; font-size:0.76rem;">
+          <div style="display:flex; align-items:center; gap:0.6rem;">
+            <span style="font-weight:600;">Timeline Mode:</span>
+            <div style="display:inline-flex; border:1px solid var(--panel-border); border-radius:4px; overflow:hidden;">
+              <button id="btn-view-shared" style="padding:0.2rem 0.5rem; font-size:0.72rem; cursor:pointer; background:var(--primary); color:#ffffff; border:none;">🔀 Shared Overlay</button>
+              <button id="btn-view-stacked" style="padding:0.2rem 0.5rem; font-size:0.72rem; cursor:pointer; background:var(--input-bg); color:var(--text); border:none;">🥞 Stacked Subplots</button>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-left:0.4rem;">
+              <label style="cursor:pointer; display:flex; align-items:center; gap:0.2rem;"><input type="checkbox" id="chk-show-m1" checked> <span style="color:#3b82f6; font-weight:600;">M1</span></label>
+              <label style="cursor:pointer; display:flex; align-items:center; gap:0.2rem;"><input type="checkbox" id="chk-show-m2" checked> <span style="color:#f59e0b; font-weight:600;">M2</span></label>
+              <label style="cursor:pointer; display:flex; align-items:center; gap:0.2rem;"><input type="checkbox" id="chk-show-m3" checked> <span style="color:#10b981; font-weight:600;">M3</span></label>
+              <label style="cursor:pointer; display:flex; align-items:center; gap:0.2rem;"><input type="checkbox" id="chk-show-gt"> <span style="color:#94a3b8;">GT</span></label>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.4rem; font-size:0.72rem; color:var(--text-muted);">
+            <span style="font-weight:600;">Glitch Badges:</span>
+            <span title="Neutral Dropout (<450ms while rolling)">🔴 Dropout</span>
+            <span title="Rapid Chatter (<300ms dwell)">🟠 Chatter</span>
+            <span title="Phantom Upshift during deceleration">🟣 Phantom</span>
+          </div>
+        </div>
+
         <div class="plot-box" id="plot-models-compare" style="flex:1.2;"></div>
       </div>
     </div>
@@ -1312,9 +1515,123 @@ HTML_PAGE = r"""<!DOCTYPE html>
       };
     }
 
+    let timelineViewMode = 'shared'; // 'shared' or 'stacked'
+
+    // Collapsible Card Toggles
+    const btnToggleTheory = document.getElementById('btn-toggle-theory');
+    if (btnToggleTheory) {
+      btnToggleTheory.addEventListener('click', () => {
+        const body = document.getElementById('theory-body');
+        const arrow = document.getElementById('theory-arrow');
+        const isOpen = body.style.display !== 'none';
+        body.style.display = isOpen ? 'none' : 'block';
+        arrow.innerText = isOpen ? '▶ Expand' : '▼ Collapse';
+      });
+    }
+
+    const btnToggleTuning = document.getElementById('btn-toggle-tuning');
+    if (btnToggleTuning) {
+      btnToggleTuning.addEventListener('click', () => {
+        const body = document.getElementById('tuning-body');
+        const arrow = document.getElementById('tuning-arrow');
+        const isOpen = body.style.display !== 'none';
+        body.style.display = isOpen ? 'none' : 'block';
+        arrow.innerText = isOpen ? '▶ Expand' : '▼ Collapse';
+      });
+    }
+
+    // Tuning Sliders Live Value Labels
+    function setupSliderSync(id, valId, formatFn) {
+      const el = document.getElementById(id);
+      const valEl = document.getElementById(valId);
+      if (el && valEl) {
+        el.addEventListener('input', () => {
+          valEl.innerText = formatFn(parseFloat(el.value));
+        });
+      }
+    }
+    setupSliderSync('slider-m1-alpha', 'val-m1-alpha', v => v.toFixed(2));
+    setupSliderSync('slider-m1-tol', 'val-m1-tol', v => '±' + v.toFixed(2));
+    setupSliderSync('slider-m1-latch', 'val-m1-latch', v => Math.round(v) + ' ms');
+    setupSliderSync('slider-m2-decay', 'val-m2-decay', v => v.toFixed(2));
+    setupSliderSync('slider-m2-p0', 'val-m2-p0', v => v.toFixed(2));
+    setupSliderSync('slider-m2-conf', 'val-m2-conf', v => v.toFixed(2));
+    setupSliderSync('slider-m3-inertia', 'val-m3-inertia', v => v.toFixed(3));
+    setupSliderSync('slider-m3-decel', 'val-m3-decel', v => Math.round(v) + ' Hz/s');
+
+    function getTuningQuery() {
+      const p = [];
+      const getVal = id => document.getElementById(id) ? document.getElementById(id).value : null;
+      if (getVal('slider-m1-alpha')) p.push(`m1_alpha=${getVal('slider-m1-alpha')}`);
+      if (getVal('slider-m1-tol')) p.push(`m1_tol=${getVal('slider-m1-tol')}`);
+      if (getVal('slider-m1-latch')) p.push(`m1_latch_ms=${getVal('slider-m1-latch')}`);
+      if (getVal('slider-m2-decay')) p.push(`m2_decay=${getVal('slider-m2-decay')}`);
+      if (getVal('slider-m2-p0')) p.push(`m2_p0=${getVal('slider-m2-p0')}`);
+      if (getVal('slider-m2-conf')) p.push(`m2_conf=${getVal('slider-m2-conf')}`);
+      if (getVal('slider-m3-inertia')) p.push(`m3_inertia=${getVal('slider-m3-inertia')}`);
+      if (getVal('slider-m3-decel')) p.push(`m3_decel=${getVal('slider-m3-decel')}`);
+      return p.join('&');
+    }
+
+    document.getElementById('btn-apply-tuning').addEventListener('click', () => {
+      loadDataset();
+    });
+
+    document.getElementById('btn-reset-tuning').addEventListener('click', () => {
+      document.getElementById('slider-m1-alpha').value = 0.15;
+      document.getElementById('val-m1-alpha').innerText = '0.15';
+      document.getElementById('slider-m1-tol').value = 0.25;
+      document.getElementById('val-m1-tol').innerText = '±0.25';
+      document.getElementById('slider-m1-latch').value = 200;
+      document.getElementById('val-m1-latch').innerText = '200 ms';
+
+      document.getElementById('slider-m2-decay').value = 0.88;
+      document.getElementById('val-m2-decay').innerText = '0.88';
+      document.getElementById('slider-m2-p0').value = 0.12;
+      document.getElementById('val-m2-p0').innerText = '0.12';
+      document.getElementById('slider-m2-conf').value = 0.40;
+      document.getElementById('val-m2-conf').innerText = '0.40';
+
+      document.getElementById('slider-m3-inertia').value = 0.970;
+      document.getElementById('val-m3-inertia').innerText = '0.970';
+      document.getElementById('slider-m3-decel').value = -40;
+      document.getElementById('val-m3-decel').innerText = '-40 Hz/s';
+
+      loadDataset();
+    });
+
+    // View Mode Switcher
+    const btnViewShared = document.getElementById('btn-view-shared');
+    const btnViewStacked = document.getElementById('btn-view-stacked');
+
+    btnViewShared.addEventListener('click', () => {
+      timelineViewMode = 'shared';
+      btnViewShared.style.background = 'var(--primary)';
+      btnViewShared.style.color = '#ffffff';
+      btnViewStacked.style.background = 'var(--input-bg)';
+      btnViewStacked.style.color = 'var(--text)';
+      renderAllPlots();
+    });
+
+    btnViewStacked.addEventListener('click', () => {
+      timelineViewMode = 'stacked';
+      btnViewStacked.style.background = 'var(--primary)';
+      btnViewStacked.style.color = '#ffffff';
+      btnViewShared.style.background = 'var(--input-bg)';
+      btnViewShared.style.color = 'var(--text)';
+      renderAllPlots();
+    });
+
+    ['chk-show-m1', 'chk-show-m2', 'chk-show-m3', 'chk-show-gt'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', renderAllPlots);
+    });
+
     async function loadDataset() {
       try {
-        const res = await fetch(`/api/dataset?log=${encodeURIComponent(currentLog)}`);
+        const query = getTuningQuery();
+        const url = `/api/dataset?log=${encodeURIComponent(currentLog)}${query ? '&' + query : ''}`;
+        const res = await fetch(url);
         datasetData = await res.json();
         updateUI();
         renderAllPlots();
@@ -1328,7 +1645,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const res = await fetch('/api/logs');
         const logs = await res.json();
         const sel = document.getElementById('select-log');
-        sel.innerHTML = '<option value="all">⚡ All Combined Logs (Aggregated)</option>';
+        sel.innerHTML = '<option value="all">⚡ All Combined Logs (Concatenated Aggregated)</option>';
         logs.forEach(l => {
           const opt = document.createElement('option');
           opt.value = l.filename;
@@ -1402,7 +1719,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <td style="font-weight:700; color:var(--primary);">${i + 1}st</td>
           <td style="font-family:monospace;">${f.means[i].toFixed(3)}</td>
           <td style="font-family:monospace; color:var(--text-muted);">&plusmn;${f.stds[i].toFixed(3)}</td>
-          <td style="font-family:monospace;">${f.counts[i]}</td>
+          <td style="font-family:monospace;">${f.counts[i].toLocaleString()}</td>
         `;
         tbody.appendChild(tr);
       }
@@ -1487,6 +1804,36 @@ HTML_PAGE = r"""<!DOCTYPE html>
         showlegend: true
       }, { responsive: true });
 
+      // Session boundary shapes for concatenated mode
+      const sessionShapes = [];
+      const sessionAnnotations = [];
+      if (datasetData.session_boundaries && datasetData.session_boundaries.length > 1 && currentLog === 'all') {
+        datasetData.session_boundaries.forEach((b, idx) => {
+          if (idx > 0) {
+            sessionShapes.push({
+              type: 'line',
+              xref: 'x',
+              yref: 'paper',
+              x0: b.start_time,
+              x1: b.start_time,
+              y0: 0,
+              y1: 1,
+              line: { color: '#64748b', width: 1.5, dash: 'dash' }
+            });
+            sessionAnnotations.push({
+              xref: 'x',
+              yref: 'paper',
+              x: b.start_time + 1.0,
+              y: 0.98,
+              text: b.name.replace('.bin', ''),
+              showarrow: false,
+              font: { size: 9, color: '#94a3b8' },
+              xanchor: 'left'
+            });
+          }
+        });
+      }
+
       // 2. Synchronized Vehicle Dynamics
       const ts = datasetData.timeseries;
       const dynTraces = [
@@ -1511,62 +1858,221 @@ HTML_PAGE = r"""<!DOCTYPE html>
       Plotly.react('plot-dynamics', dynTraces, {
         ...theme,
         margin: { t: 25, b: 25, l: 45, r: 45 },
-        title: { text: `Synchronized Driving Dynamics (${currentLog})`, font: { size: 11 } },
+        title: { text: `Synchronized Driving Dynamics (${currentLog === 'all' ? 'All Logs Concatenated' : currentLog})`, font: { size: 11 } },
         xaxis: { title: '', gridcolor: theme.gridcolor },
         yaxis: { title: 'km/h', titlefont: { color: '#38bdf8' }, tickfont: { color: '#38bdf8' }, gridcolor: theme.gridcolor },
         yaxis2: { title: 'RPM', titlefont: { color: '#f59e0b' }, tickfont: { color: '#f59e0b' }, overlaying: 'y', side: 'right', gridcolor: 'transparent' },
+        shapes: sessionShapes,
+        annotations: sessionAnnotations,
         legend: { orientation: 'h', y: 1.15, x: 0 }
       }, { responsive: true });
 
-      // 3. Side-by-Side Model Comparison
-      const compareTraces = [
-        {
-          x: ts.times,
-          y: ts.m1_gears,
-          mode: 'lines',
-          name: 'M1: Gated Heuristic',
-          line: { color: '#3b82f6', width: 1.8, shape: 'hv' }
-        },
-        {
-          x: ts.times,
-          y: ts.m2_gears,
-          mode: 'lines',
-          name: 'M2: Recursive Bayes',
-          line: { color: '#f59e0b', width: 1.8, shape: 'hv' }
-        },
-        {
-          x: ts.times,
-          y: ts.m3_gears,
-          mode: 'lines',
-          name: 'M3: HMM State-Space',
-          line: { color: '#10b981', width: 2.2, shape: 'hv' }
-        }
-      ];
+      // 3. Side-by-Side Model Comparison (Shared vs. Stacked)
+      const showM1 = document.getElementById('chk-show-m1') ? document.getElementById('chk-show-m1').checked : true;
+      const showM2 = document.getElementById('chk-show-m2') ? document.getElementById('chk-show-m2').checked : true;
+      const showM3 = document.getElementById('chk-show-m3') ? document.getElementById('chk-show-m3').checked : true;
+      const showGT = document.getElementById('chk-show-gt') ? document.getElementById('chk-show-gt').checked : false;
 
-      if (ts.ground_truth && ts.ground_truth.some(x => x > 0)) {
-        compareTraces.push({
-          x: ts.times,
-          y: ts.ground_truth,
-          mode: 'lines',
-          name: 'ITF_gear_position_ST',
-          line: { color: '#94a3b8', width: 1.5, dash: 'dot', shape: 'hv' }
-        });
+      const b = datasetData.benchmarks || {};
+      const compareTraces = [];
+
+      function addGlitchTraces(modelKey, targetYaxis, modelName) {
+        const events = (b[modelKey] && b[modelKey].events) ? b[modelKey].events : [];
+        if (!events || events.length === 0) return;
+
+        const drops = events.filter(e => e.type === 'dropout');
+        const chats = events.filter(e => e.type === 'chatter');
+        const phans = events.filter(e => e.type === 'phantom');
+
+        if (drops.length > 0) {
+          compareTraces.push({
+            x: drops.map(e => e.time),
+            y: drops.map(e => e.gear),
+            mode: 'markers',
+            name: `${modelName} Dropout (${drops.length})`,
+            text: drops.map(e => e.desc),
+            hoverinfo: 'text+x',
+            marker: { symbol: 'circle', size: 9, color: '#ef4444', line: { color: '#ffffff', width: 1.2 } },
+            yaxis: targetYaxis
+          });
+        }
+        if (chats.length > 0) {
+          compareTraces.push({
+            x: chats.map(e => e.time),
+            y: chats.map(e => e.gear),
+            mode: 'markers',
+            name: `${modelName} Chatter (${chats.length})`,
+            text: chats.map(e => e.desc),
+            hoverinfo: 'text+x',
+            marker: { symbol: 'diamond', size: 9, color: '#f97316', line: { color: '#ffffff', width: 1.2 } },
+            yaxis: targetYaxis
+          });
+        }
+        if (phans.length > 0) {
+          compareTraces.push({
+            x: phans.map(e => e.time),
+            y: phans.map(e => e.gear),
+            mode: 'markers',
+            name: `${modelName} Phantom (${phans.length})`,
+            text: phans.map(e => e.desc),
+            hoverinfo: 'text+x',
+            marker: { symbol: 'triangle-up', size: 11, color: '#a855f7', line: { color: '#ffffff', width: 1.2 } },
+            yaxis: targetYaxis
+          });
+        }
       }
 
-      Plotly.react('plot-models-compare', compareTraces, {
-        ...theme,
-        margin: { t: 30, b: 35, l: 45, r: 25 },
-        title: { text: 'Side-by-Side Model Predictions (M1 Gated Heuristic vs. M2 Bayes vs. M3 HMM)', font: { size: 11 } },
-        xaxis: { title: 'Time (s)', gridcolor: theme.gridcolor },
-        yaxis: {
-          title: 'Gear',
-          gridcolor: theme.gridcolor,
-          tickvals: [0, 1, 2, 3, 4, 5],
-          ticktext: ['N', '1st', '2nd', '3rd', '4th', '5th'],
-          range: [-0.3, 5.5]
-        },
-        legend: { orientation: 'h', y: 1.15, x: 0 }
-      }, { responsive: true });
+      if (timelineViewMode === 'shared') {
+        if (showM1) {
+          compareTraces.push({
+            x: ts.times,
+            y: ts.m1_gears,
+            mode: 'lines',
+            name: 'M1: Gated Heuristic',
+            line: { color: '#3b82f6', width: 1.8, shape: 'hv' },
+            yaxis: 'y'
+          });
+          addGlitchTraces('m1', 'y', 'M1');
+        }
+        if (showM2) {
+          compareTraces.push({
+            x: ts.times,
+            y: ts.m2_gears,
+            mode: 'lines',
+            name: 'M2: Recursive Bayes',
+            line: { color: '#f59e0b', width: 1.8, shape: 'hv' },
+            yaxis: 'y'
+          });
+          addGlitchTraces('m2', 'y', 'M2');
+        }
+        if (showM3) {
+          compareTraces.push({
+            x: ts.times,
+            y: ts.m3_gears,
+            mode: 'lines',
+            name: 'M3: HMM State-Space',
+            line: { color: '#10b981', width: 2.2, shape: 'hv' },
+            yaxis: 'y'
+          });
+          addGlitchTraces('m3', 'y', 'M3');
+        }
+        if (showGT && ts.ground_truth) {
+          compareTraces.push({
+            x: ts.times,
+            y: ts.ground_truth,
+            mode: 'lines',
+            name: 'ITF_gear_position_ST',
+            line: { color: '#94a3b8', width: 1.5, dash: 'dot', shape: 'hv' },
+            yaxis: 'y'
+          });
+        }
+
+        Plotly.react('plot-models-compare', compareTraces, {
+          ...theme,
+          margin: { t: 30, b: 35, l: 45, r: 25 },
+          title: { text: `Shared Model Predictions & Glitch Callouts (${currentLog === 'all' ? 'All Logs' : currentLog})`, font: { size: 11 } },
+          xaxis: { title: 'Time (s)', gridcolor: theme.gridcolor },
+          yaxis: {
+            title: 'Gear',
+            gridcolor: theme.gridcolor,
+            tickvals: [0, 1, 2, 3, 4, 5],
+            ticktext: ['N', '1st', '2nd', '3rd', '4th', '5th'],
+            range: [-0.3, 5.5]
+          },
+          shapes: sessionShapes,
+          annotations: sessionAnnotations,
+          legend: { orientation: 'h', y: 1.15, x: 0 }
+        }, { responsive: true });
+
+      } else {
+        // Stacked Subplots Mode
+        if (showM1) {
+          compareTraces.push({
+            x: ts.times,
+            y: ts.m1_gears,
+            mode: 'lines',
+            name: 'M1: Heuristic',
+            line: { color: '#3b82f6', width: 1.8, shape: 'hv' },
+            yaxis: 'y'
+          });
+          addGlitchTraces('m1', 'y', 'M1');
+        }
+        if (showM2) {
+          compareTraces.push({
+            x: ts.times,
+            y: ts.m2_gears,
+            mode: 'lines',
+            name: 'M2: Bayes',
+            line: { color: '#f59e0b', width: 1.8, shape: 'hv' },
+            yaxis: 'y2'
+          });
+          addGlitchTraces('m2', 'y2', 'M2');
+        }
+        if (showM3) {
+          compareTraces.push({
+            x: ts.times,
+            y: ts.m3_gears,
+            mode: 'lines',
+            name: 'M3: HMM',
+            line: { color: '#10b981', width: 2.0, shape: 'hv' },
+            yaxis: 'y3'
+          });
+          addGlitchTraces('m3', 'y3', 'M3');
+        }
+
+        const stackedShapes = [];
+        if (datasetData.session_boundaries && datasetData.session_boundaries.length > 1 && currentLog === 'all') {
+          datasetData.session_boundaries.forEach((sb, idx) => {
+            if (idx > 0) {
+              ['y', 'y2', 'y3'].forEach(yAxisRef => {
+                stackedShapes.push({
+                  type: 'line',
+                  xref: 'x',
+                  yref: yAxisRef,
+                  x0: sb.start_time,
+                  x1: sb.start_time,
+                  y0: 0,
+                  y1: 5,
+                  line: { color: '#64748b', width: 1.5, dash: 'dash' }
+                });
+              });
+            }
+          });
+        }
+
+        Plotly.react('plot-models-compare', compareTraces, {
+          ...theme,
+          margin: { t: 30, b: 35, l: 45, r: 25 },
+          title: { text: `Stacked Subplots: M1 (Top), M2 (Mid), M3 (Bottom) (${currentLog === 'all' ? 'All Logs' : currentLog})`, font: { size: 11 } },
+          xaxis: { title: 'Time (s)', gridcolor: theme.gridcolor },
+          yaxis: {
+            domain: [0.69, 1.0],
+            title: 'M1',
+            gridcolor: theme.gridcolor,
+            tickvals: [0, 1, 2, 3, 4, 5],
+            ticktext: ['N', '1', '2', '3', '4', '5'],
+            range: [-0.3, 5.5]
+          },
+          yaxis2: {
+            domain: [0.35, 0.66],
+            title: 'M2',
+            gridcolor: theme.gridcolor,
+            tickvals: [0, 1, 2, 3, 4, 5],
+            ticktext: ['N', '1', '2', '3', '4', '5'],
+            range: [-0.3, 5.5]
+          },
+          yaxis3: {
+            domain: [0.0, 0.31],
+            title: 'M3',
+            gridcolor: theme.gridcolor,
+            tickvals: [0, 1, 2, 3, 4, 5],
+            ticktext: ['N', '1', '2', '3', '4', '5'],
+            range: [-0.3, 5.5]
+          },
+          shapes: stackedShapes,
+          legend: { orientation: 'h', y: 1.15, x: 0 }
+        }, { responsive: true });
+      }
 
       // Synchronize zooming between dynamics and models timeline
       const dynEl = document.getElementById('plot-dynamics');
@@ -1645,23 +2151,38 @@ class GearLabHandler(BaseHTTPRequestHandler):
             vars_ = agg["fitted"]["vars"]
             A = agg["transition_matrix"]
 
-            # Select timeseries to return
-            chosen_log = None
-            if log_param != "all":
+            # Parse custom parameters
+            m1_alpha = float(query.get("m1_alpha", [0.15])[0])
+            m1_tol = float(query.get("m1_tol", [0.25])[0])
+            m1_latch_ms = float(query.get("m1_latch_ms", [200.0])[0])
+
+            m2_decay = float(query.get("m2_decay", [0.88])[0])
+            m2_p0 = float(query.get("m2_p0", [0.12])[0])
+            m2_conf = float(query.get("m2_conf", [0.40])[0])
+
+            m3_inertia = float(query.get("m3_inertia", [0.97])[0])
+            m3_clutch_decel = float(query.get("m3_clutch_decel", [-40.0])[0])
+
+            # Select timeline dataset
+            session_boundaries = []
+            if log_param == "all":
+                chosen_log = agg.get("concat_timeline") or agg["logs"][0]
+                session_boundaries = chosen_log.get("session_boundaries", [])
+            else:
                 chosen_log = next((l for l in agg["logs"] if l["filename"] == log_param), None)
-            if not chosen_log:
-                chosen_log = agg["logs"][0] if agg["logs"] else {"times": [], "speed_freq": [], "rpm_freq": [], "speed_kph": [], "rpm": [], "ground_truth": []}
+                if not chosen_log:
+                    chosen_log = agg["logs"][0] if agg["logs"] else {"times": [], "speed_freq": [], "rpm_freq": [], "speed_kph": [], "rpm": [], "ground_truth": []}
 
             # Run 3 models on the chosen log
-            m1 = run_model_1_heuristic(chosen_log, means)
-            m2 = run_model_2_bayesian(chosen_log, means, vars_)
-            m3 = run_model_3_hmm(chosen_log, means, vars_, A)
+            m1 = run_model_1_heuristic(chosen_log, means, alpha=m1_alpha, tol=m1_tol, latch_ms=m1_latch_ms)
+            m2 = run_model_2_bayesian(chosen_log, means, vars_, decay=m2_decay, p0=m2_p0, conf_thresh=m2_conf)
+            m3 = run_model_3_hmm(chosen_log, means, vars_, A, inertia=m3_inertia, clutch_decel=m3_clutch_decel)
 
             b1 = evaluate_glitches(chosen_log["times"], chosen_log["speed_kph"], chosen_log["rpm"], m1)
             b2 = evaluate_glitches(chosen_log["times"], chosen_log["speed_kph"], chosen_log["rpm"], m2)
             b3 = evaluate_glitches(chosen_log["times"], chosen_log["speed_kph"], chosen_log["rpm"], m3)
 
-            # Cap samples for web rendering responsiveness (max 3500 points)
+            # Subsample points for responsive web rendering (max 3500 points)
             step = max(1, len(chosen_log["times"]) // 3500)
             times_sub = chosen_log["times"][::step]
             speed_kph_sub = chosen_log["speed_kph"][::step]
@@ -1676,6 +2197,8 @@ class GearLabHandler(BaseHTTPRequestHandler):
                 "fitted": agg["fitted"],
                 "transition_matrix": agg["transition_matrix"],
                 "histogram": agg["histogram"],
+                "session_boundaries": session_boundaries,
+                "active_log": log_param,
                 "benchmarks": {
                     "m1": b1,
                     "m2": b2,

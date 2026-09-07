@@ -2720,10 +2720,25 @@ HTML_PAGE = r"""<!DOCTYPE html>
           duration: filteredTimes[m - 1] - filteredTimes[curStart]
         });
 
+        const dropoutTimes = [];
+        const dropoutGears = [];
+        const dropoutTexts = [];
+
+        const chatterTimes = [];
+        const chatterGears = [];
+        const chatterTexts = [];
+
+        const phantomTimes = [];
+        const phantomGears = [];
+        const phantomTexts = [];
+
         for (let s = 0; s < segments.length; s++) {
           const seg = segments[s];
           if (seg.gear > 0 && seg.duration < 0.30) {
             chatterEvents++;
+            chatterTimes.push(seg.startTime);
+            chatterGears.push(seg.gear);
+            chatterTexts.push(`Chatter: ${seg.gear}G dwell only ${(seg.duration * 1000).toFixed(0)} ms`);
           }
           if (seg.gear === 0 && s > 0 && s < segments.length - 1) {
             const prevSeg = segments[s - 1];
@@ -2732,6 +2747,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
               const avgSpeed = (filteredSpeeds[seg.startIdx] + filteredSpeeds[seg.endIdx]) / 2.0;
               if (avgSpeed >= 20.0) {
                 dropouts++;
+                dropoutTimes.push(seg.startTime);
+                dropoutGears.push(0);
+                dropoutTexts.push(`Dropout: ${prevSeg.gear}G -> N -> ${nextSeg.gear}G in ${(seg.duration * 1000).toFixed(0)} ms @ ${avgSpeed.toFixed(1)} km/h`);
               }
             }
           }
@@ -2749,6 +2767,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
               const dSpeed = (filteredSpeeds[idx] - filteredSpeeds[backIdx]) / dt;
               if (dRpm < -1200.0 && dSpeed < 1.0) {
                 phantomShifts++;
+                phantomTimes.push(filteredTimes[idx]);
+                phantomGears.push(curSeg.gear);
+                phantomTexts.push(`Phantom Shift: ${prevSeg.gear}G -> ${curSeg.gear}G during engine drop (${dRpm.toFixed(0)} RPM/s)`);
               }
             }
           }
@@ -2900,6 +2921,43 @@ HTML_PAGE = r"""<!DOCTYPE html>
           mode: 'lines',
           name: 'ITF_gear_position_ST',
           line: { color: '#f59e0b', width: 1.5, dash: 'dot', shape: 'hv' },
+          yaxis: 'y2'
+        });
+      }
+
+      if (dropoutTimes.length > 0) {
+        timeTraces.push({
+          x: dropoutTimes,
+          y: dropoutGears,
+          mode: 'markers',
+          name: `🔴 Dropout (${dropoutTimes.length})`,
+          text: dropoutTexts,
+          hoverinfo: 'text+x',
+          marker: { symbol: 'circle', size: 10, color: '#ef4444', line: { color: '#ffffff', width: 1.5 } },
+          yaxis: 'y2'
+        });
+      }
+      if (chatterTimes.length > 0) {
+        timeTraces.push({
+          x: chatterTimes,
+          y: chatterGears,
+          mode: 'markers',
+          name: `🟠 Chatter (${chatterTimes.length})`,
+          text: chatterTexts,
+          hoverinfo: 'text+x',
+          marker: { symbol: 'diamond', size: 10, color: '#f97316', line: { color: '#ffffff', width: 1.5 } },
+          yaxis: 'y2'
+        });
+      }
+      if (phantomTimes.length > 0) {
+        timeTraces.push({
+          x: phantomTimes,
+          y: phantomGears,
+          mode: 'markers',
+          name: `🟣 Phantom (${phantomTimes.length})`,
+          text: phantomTexts,
+          hoverinfo: 'text+x',
+          marker: { symbol: 'triangle-up', size: 12, color: '#a855f7', line: { color: '#ffffff', width: 1.5 } },
           yaxis: 'y2'
         });
       }

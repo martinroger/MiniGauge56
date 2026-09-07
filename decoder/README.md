@@ -249,17 +249,30 @@ python3 tuner.py --port 8085 --no-browser
 A dedicated algorithm laboratory and machine learning workbench engineered to train, benchmark, and export production-ready gear estimation models for the ESP32 firmware.
 
 ### Key Capabilities
-- **Multi-Log Statistical Aggregation**:
-  - Automatically scans and aggregates all `.bin` files in the folder (~364k frames, >12.8k driving points).
-  - Fits 5 global Gaussian ratio cluster peaks ($\mu_1..\mu_5$) and standard deviations ($\sigma_1..\sigma_5$).
+- **Multi-Log Statistical Aggregation & Concatenated Timeline**:
+  - Automatically scans and aggregates all `.bin` files in the folder (~364k frames, >300k driving points across 4 logs).
+  - Fits 5 global Gaussian ratio cluster peaks ($\mu_1 \approx 1.02, \mu_2 \approx 1.79, \mu_3 \approx 2.73, \mu_4 \approx 3.76, \mu_5 \approx 4.54$) and standard deviations ($\sigma_1..\sigma_5$).
+  - In aggregated mode (`All Logs`), concatenates drive sessions chronologically with a 5.0-second inter-session buffer and clear dashed vertical boundary lines.
+  - Selecting an individual log focuses the timeline specifically on that session and recalculates isolated glitch metrics.
 - **3 Embedded Model Variants Benchmarked Side-by-Side**:
   1. **Model 1: Calibrated Gated Heuristic**: Optimized deterministic ratio bands, derivative gating, and temporal latching ($T_{\text{latch}} = 200\text{ ms}$).
   2. **Model 2: Recursive Bayesian Classifier**: Gaussian likelihoods per gear updated recursively with temporal prior decay ($\lambda = 0.88$) and neutral prior floor.
   3. **Model 3: Hidden Markov Model (HMM)**: 6-state forward probability filter utilizing an empirical transition matrix $A_{6 \times 6}$ with high self-transition inertia and asymmetric engine deceleration conditioning ($\Delta f_{\text{RPM}} < -40\text{ Hz/s}$) to completely suppress clutch coast-down phantom upshifts.
-- **Standardized Glitch & Stability Scorecards**:
-  - Evaluates all 3 models on Neutral Dropouts ($N_{\text{dropout}}$), Micro-Dwell Chatter ($N_{\text{chatter}}$), Coast-Down Phantom Shifts ($N_{\text{phantom}}$), and unified Glitch-Free Quality Score (0–100%).
+- **Interactive Model Tuning Drawer**:
+  - Collapsible sidebar drawer with real-time sliders to customize parameters across all three algorithms (M1: tolerance, latch time; M2: likelihood floor, prior decay; M3: transition inertia, emission threshold, clutch decel threshold) with instant 60fps client-side re-simulation.
+- **Visual Glitch Annotations & Scorecards**:
+  - Automatically identifies, counts, and flags algorithm glitches directly on the timeline scopes with color-coded markers:
+    - 🔴 **Neutral Dropouts**: Brief spurious drops to neutral during steady cruising ($k \to 0 \to k$ in $< 450\text{ ms}$).
+    - 🟠 **Micro-Dwell Chatter**: Rapid transient gear toggling where a forward gear is held for $< 300\text{ ms}$.
+    - 🟣 **Coast-Down Phantom Shifts**: Spurious upward gear classifications during clutch-in coasting while engine speed decelerates rapidly.
+  - Side-by-side benchmark scoreboard computing glitch counts and unified Glitch-Free Quality Scores ($0\text{ to }100\%$).
+- **Flexible Comparison Visualizations**:
+  - **🥞 Stacked Subplots**: Vertically stacked, time-synchronized subplots for M1, M2, M3, and Ground Truth.
+  - **🔀 Shared Overlay**: Single shared timeline with interactive show/hide checkboxes per trace.
+- **Model Theory & Assumptions Sidebar Panel**:
+  - Collapsible reference panel detailing mathematical foundations, Bayesian recurrence formulas, HMM state transition dynamics, and embedded runtime tradeoffs.
 - **Turnkey ESP32 C Header Export (`gear_estimator_params.h`)**:
-  - 1-click generation of zero-heap-allocation, fixed-capacity C99 headers containing all calibrated constants and static inference functions (`gear_heuristic_update`, `gear_bayesian_update`, `gear_hmm_update`) ready for direct inclusion in ESP-IDF firmware.
+  - 1-click generation of zero-heap-allocation, fixed-capacity C99 headers containing all calibrated constants and static inference functions (`gear_heuristic_update`, `gear_bayesian_update`, `gear_hmm_update`) that compile with GCC/Clang under `-Wall -Wextra -Werror`.
 
 ### Usage
 

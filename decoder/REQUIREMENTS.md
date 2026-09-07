@@ -77,6 +77,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TUN-GEAR-008** | Dynamic Math Explainer | The sidebar MUST display a dynamic mathematical explainer card that rebuilds its formulas, active parameter values, and explanatory text in real time as presets or modular stage checkboxes change. |
 | **REQ-TUN-GEAR-009** | Ratio Histogram & Auto-Peak Detection | The UI MUST display a sample ratio histogram with projected tolerance bands, accompanied by an **Auto-Detect Peaks** function that clusters driving ratios to seed nominal gear ratios $R_1..R_5$. |
 | **REQ-TUN-GEAR-010** | Synchronized Dynamics Timeline | The UI MUST plot a synchronized dual-axis graph of `ITF_speed_kph` and `ITF_rpm` alongside the ratio and estimated gear curves, maintaining time synchronization with pan/zoom and the GPS track drawer. |
+| **REQ-TUN-GEAR-011** | In-Scope Glitch Marker Annotations | The gear timeline scope MUST visually flag detected algorithm glitches directly on the plot: 🔴 Neutral Dropouts, 🟠 Micro-Dwell Chatter, and 🟣 Coast-Down Phantom Shifts with interactive hover diagnostics. |
 
 ### 4.3 Tab 2: Fuel Level Filter Requirements
 
@@ -121,6 +122,11 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-LAB-004** | Hidden Markov Model (HMM) | The tool MUST implement a 6-state HMM using an empirical transition probability matrix $A_{6 \times 6}$ with high self-transition inertia, impossible skip penalties, and asymmetric engine-deceleration emission conditioning ($\Delta f_{\text{RPM}} < -40\text{ Hz/s}$) to eliminate clutch coast-down phantom upshifts. |
 | **REQ-LAB-005** | Standardized Glitch Evaluation | The tool MUST evaluate and display side-by-side performance metrics across all models: <br>• Neutral Dropouts ($N_{\text{dropout}}$): $k \to 0 \to k$ in $< 450\text{ ms}$ at $V \ge 20\text{ km/h}$.<br>• Micro-Dwell Chatter ($N_{\text{chatter}}$): forward gear dwell $< 300\text{ ms}$.<br>• Coast-Down Phantom Shifts ($N_{\text{phantom}}$): upward gear jumps while $\frac{d\text{RPM}}{dt} < -1200\text{ RPM/s}$ and speed is non-accelerating.<br>• Unified Glitch-Free Quality Score ($0\text{ to }100\%$). |
 | **REQ-LAB-006** | Turnkey ESP32 C Header Export | The tool MUST export a zero-heap-allocation, re-entrant C99 header (`gear_estimator_params.h`) containing calibrated ratio constants, variances, transition matrices, and complete static inference routines (`gear_heuristic_update`, `gear_bayesian_update`, `gear_hmm_update`) that compile with GCC/Clang under `-Wall -Wextra -Werror`. |
+| **REQ-LAB-007** | Concatenated Multi-Log Timeline | In aggregated mode, the tool MUST concatenate all individual drive sessions chronologically with a 5.0s separation buffer and dashed vertical boundary lines, while dynamically focusing strictly on single logs and recalculating isolated glitch scores when a specific log is selected. |
+| **REQ-LAB-008** | Stacked vs. Shared Multi-Model Layout | The timeline scope MUST support toggling between Stacked Subplots (individual time-synchronized subplots for M1, M2, M3, and Ground Truth) and Shared Overlay (single timeline with interactive show/hide checkboxes per trace). |
+| **REQ-LAB-009** | Interactive Model Tuning Drawer | The UI MUST feature an interactive tuning drawer permitting live adjustment of algorithmic parameters across all three models (M1: tolerance, latch time; M2: likelihood floor, prior decay; M3: transition inertia, emission threshold, clutch decel threshold) with instant 60fps re-simulation. |
+| **REQ-LAB-010** | In-Scope Glitch Marker Annotations | All model timeline scopes MUST plot color-coded glyph markers at exact timestamps of detected glitches (🔴 Neutral Dropouts, 🟠 Chatter, 🟣 Coast Phantoms) with detailed hover cards. |
+| **REQ-LAB-011** | Model Theory & Assumptions Panel | The UI MUST incorporate a collapsible sidebar panel summarizing core assumptions, mathematical formulas, state-space representations, and operational tradeoffs for each model. |
 
 ---
 
@@ -130,7 +136,7 @@ This document defines the functional, technical, and architectural requirements 
 |---|---|---|---|
 | **REQ-SYS-001** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py` | Top-level imports (stdlib only) | Automated headless test (no pip dependencies) |
 | **REQ-SYS-002** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py` | `read_bin_file()`, `CAN_FRAME_STRUCT` | Binary unpack test against `.bin` captures |
-| **REQ-SYS-003** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py` | `DbcDatabase.parse()`, `DbcMessage.decode()` | DBC parse verification with signed/scale/enum |
+| **REQ-SYS-003** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py` | `DbcDatabase.parse()`, `DbcMessage.decode()` | DBC parse verification with signed/scale/enum/float |
 | **REQ-SYS-004** | `visualize.py`, `tuner.py`, `gear_lab.py` | `initTheme()`, `setTheme()`, CSS tokens | Theme toggle verification in browser |
 | **REQ-SYS-005** | All `.md` files | Markdown relative links | Static doc link validation |
 | **REQ-DEC-001** | `decode.py` | `write_asc()` | Vector CANoe format validation test |
@@ -158,6 +164,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TUN-GEAR-008** | `tuner.py` | `renderGearMathExplanation()` | Dynamic math card DOM generation test |
 | **REQ-TUN-GEAR-009** | `tuner.py` | `plot-gear-hist`, `btn-auto-gear-peaks` | Histogram render & peak detection test |
 | **REQ-TUN-GEAR-010** | `tuner.py` | `plot-gear-dynamics`, relayout handlers | Dynamics plot synchronization test |
+| **REQ-TUN-GEAR-011** | `tuner.py` | `computeAndRenderGear()` (glitch markers) | Visual glitch event markers on timeline |
 | **REQ-TUN-FUEL-001** | `tuner.py` | `computeAndRenderFuel()` (SMA vs. EMA) | Fuel filter algorithm simulation test |
 | **REQ-TUN-FUEL-002** | `tuner.py` | `computeAndRenderFuel()` (quantization step) | Discrete rounding simulation test |
 | **REQ-TUN-FUEL-003** | `tuner.py` | `computeAndRenderFuel()` (tight autoscale) | Autoscale and zoom retention test |
@@ -169,10 +176,15 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TUN-ANA-001** | `tuner.py` | `compute_analytics()` (cycle timing & jitter) | Bus timing and packet loss calculation tests |
 | **REQ-TUN-ANA-002** | `tuner.py` | `compute_analytics()` (signal dispersion) | Slew rate and min/max/std dispersion tests |
 | **REQ-TUN-ANA-003** | `tuner.py` | `renderAnalyticsTable()`, `/api/export_analytics`| Interactive table & CSV download tests |
-| **REQ-LAB-001** | `gear_lab.py` | `build_aggregated_dataset()`, `extract_gear_log()`| Multi-log sample aggregation test (12.8k pts) |
+| **REQ-LAB-001** | `gear_lab.py` | `build_aggregated_dataset()`, `extract_gear_log()`| Multi-log sample aggregation test (300k pts) |
 | **REQ-LAB-002** | `gear_lab.py` | `fit_gear_clusters()` | Cluster center fitting test ($\mu_1..\mu_5$) |
 | **REQ-LAB-003** | `gear_lab.py` | `run_model_2_bayesian()` | Recursive Bayes probability inference test |
 | **REQ-LAB-004** | `gear_lab.py` | `run_model_3_hmm()`, `compute_empirical_transition_matrix()`| HMM transition matrix & clutch drop test |
 | **REQ-LAB-005** | `tuner.py`, `gear_lab.py` | `evaluate_glitches()` | Dropouts, chatter, phantom shifts scorecards |
 | **REQ-LAB-006** | `gear_lab.py` | `generate_esp32_c_header()`, `/api/export_c` | Automated GCC compilation test (-Wall -Werror)|
+| **REQ-LAB-007** | `gear_lab.py` | `build_aggregated_dataset()`, `renderTimeline()`| Concatenated timeline & boundary markers test |
+| **REQ-LAB-008** | `gear_lab.py` | `renderTimeline()`, layout mode toggle | Stacked subplots vs. shared overlay test |
+| **REQ-LAB-009** | `gear_lab.py` | `recomputeAll()`, tuning drawer listeners | Live parameter tuning and 60fps update test |
+| **REQ-LAB-010** | `gear_lab.py` | `buildGlitchTraces()`, `renderTimeline()` | Visual glitch markers on model timelines |
+| **REQ-LAB-011** | `gear_lab.py` | Collapsible sidebar theory card | Theory & mathematical assumptions DOM check |
 
