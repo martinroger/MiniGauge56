@@ -244,8 +244,48 @@ python3 tuner.py --port 8085 --no-browser
 
 ---
 
-## 4. Requirements & Implementation Traceability
+## 4. Dedicated Gear Estimator Lab & Model Trainer (`gear_lab.py`)
 
-For the full architectural specification, functional requirement statements, and Implementation Traceability Matrix mapping each requirement (`REQ-DEC-*`, `REQ-VIS-*`, `REQ-TUN-*`) to exact code implementations and test procedures, refer to:
+A dedicated algorithm laboratory and machine learning workbench engineered to train, benchmark, and export production-ready gear estimation models for the ESP32 firmware.
+
+### Key Capabilities
+- **Multi-Log Statistical Aggregation**:
+  - Automatically scans and aggregates all `.bin` files in the folder (~364k frames, >12.8k driving points).
+  - Fits 5 global Gaussian ratio cluster peaks ($\mu_1..\mu_5$) and standard deviations ($\sigma_1..\sigma_5$).
+- **3 Embedded Model Variants Benchmarked Side-by-Side**:
+  1. **Model 1: Calibrated Gated Heuristic**: Optimized deterministic ratio bands, derivative gating, and temporal latching ($T_{\text{latch}} = 200\text{ ms}$).
+  2. **Model 2: Recursive Bayesian Classifier**: Gaussian likelihoods per gear updated recursively with temporal prior decay ($\lambda = 0.88$) and neutral prior floor.
+  3. **Model 3: Hidden Markov Model (HMM)**: 6-state forward probability filter utilizing an empirical transition matrix $A_{6 \times 6}$ with high self-transition inertia and asymmetric engine deceleration conditioning ($\Delta f_{\text{RPM}} < -40\text{ Hz/s}$) to completely suppress clutch coast-down phantom upshifts.
+- **Standardized Glitch & Stability Scorecards**:
+  - Evaluates all 3 models on Neutral Dropouts ($N_{\text{dropout}}$), Micro-Dwell Chatter ($N_{\text{chatter}}$), Coast-Down Phantom Shifts ($N_{\text{phantom}}$), and unified Glitch-Free Quality Score (0–100%).
+- **Turnkey ESP32 C Header Export (`gear_estimator_params.h`)**:
+  - 1-click generation of zero-heap-allocation, fixed-capacity C99 headers containing all calibrated constants and static inference functions (`gear_heuristic_update`, `gear_bayesian_update`, `gear_hmm_update`) ready for direct inclusion in ESP-IDF firmware.
+
+### Usage
+
+```bash
+cd decoder
+
+# Launch Gear Estimator Lab on default port 8082
+python3 gear_lab.py
+
+# Run on a custom port without auto-opening the browser
+python3 gear_lab.py --port 8086 --no-browser
+```
+
+### CLI Arguments
+
+| Argument | Description |
+|---|---|
+| `--port, -p <port>` | HTTP server port (default: 8082, auto-increments if busy) |
+| `--dbc, -d <file.dbc>` | Custom DBC file path (default: `binocan.dbc`) |
+| `--no-browser` | Do not launch the browser automatically |
+
+---
+
+## 5. Requirements & Implementation Traceability
+
+For the full architectural specification, functional requirement statements, and Implementation Traceability Matrix mapping each requirement (`REQ-DEC-*`, `REQ-VIS-*`, `REQ-TUN-*`, `REQ-LAB-*`) to exact code implementations and test procedures, refer to:
 
 👉 **[REQUIREMENTS.md](REQUIREMENTS.md)**
+

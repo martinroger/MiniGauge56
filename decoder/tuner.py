@@ -1276,9 +1276,27 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="algo-content">
         <div class="scorecards-row">
           <div class="scorecard">
-            <span class="sc-label">Drive State</span>
+            <span class="sc-label">Drive Active</span>
             <span class="sc-val good" id="sc-gear-active">--%</span>
           </div>
+          <div class="scorecard">
+            <span class="sc-label">Glitch-Free Score</span>
+            <span class="sc-val good" id="sc-gear-glitch-score">100%</span>
+          </div>
+          <div class="scorecard">
+            <span class="sc-label">Neutral Dropouts</span>
+            <span class="sc-val" id="sc-gear-dropouts">0</span>
+          </div>
+          <div class="scorecard">
+            <span class="sc-label">Chatter (&lt;300ms)</span>
+            <span class="sc-val" id="sc-gear-chatter">0</span>
+          </div>
+          <div class="scorecard">
+            <span class="sc-label">Coast Phantoms</span>
+            <span class="sc-val" id="sc-gear-phantoms">0</span>
+          </div>
+        </div>
+        <div class="scorecards-row" style="margin-top:-0.35rem;">
           <div class="scorecard">
             <span class="sc-label">Est. 1st Gear</span>
             <span class="sc-val" id="sc-gear-time-1">--s</span>
@@ -2663,6 +2681,96 @@ HTML_PAGE = r"""<!DOCTYPE html>
       document.getElementById('sc-gear-time-3').innerText = (gearTimeCounts[3] || 0).toFixed(1) + 's';
       document.getElementById('sc-gear-time-4').innerText = (gearTimeCounts[4] || 0).toFixed(1) + 's';
       document.getElementById('sc-gear-time-5').innerText = (gearTimeCounts[5] || 0).toFixed(1) + 's';
+
+      // Compute Glitch & Stability Scorecards
+      let dropouts = 0;
+      let chatterEvents = 0;
+      let phantomShifts = 0;
+
+      const m = filteredTimes.length;
+      if (m > 2) {
+        const segments = [];
+        let curGear = estimatedGears[0];
+        let curStart = 0;
+        for (let i = 1; i < m; i++) {
+          if (estimatedGears[i] !== curGear) {
+            segments.push({
+              gear: curGear,
+              startIdx: curStart,
+              endIdx: i - 1,
+              startTime: filteredTimes[curStart],
+              endTime: filteredTimes[i - 1],
+              duration: filteredTimes[i - 1] - filteredTimes[curStart]
+            });
+            curGear = estimatedGears[i];
+            curStart = i;
+          }
+        }
+        segments.push({
+          gear: curGear,
+          startIdx: curStart,
+          endIdx: m - 1,
+          startTime: filteredTimes[curStart],
+          endTime: filteredTimes[m - 1],
+          duration: filteredTimes[m - 1] - filteredTimes[curStart]
+        });
+
+        for (let s = 0; s < segments.length; s++) {
+          const seg = segments[s];
+          if (seg.gear > 0 && seg.duration < 0.30) {
+            chatterEvents++;
+          }
+          if (seg.gear === 0 && s > 0 && s < segments.length - 1) {
+            const prevSeg = segments[s - 1];
+            const nextSeg = segments[s + 1];
+            if (prevSeg.gear > 0 && prevSeg.gear === nextSeg.gear && seg.duration < 0.45) {
+              const avgSpeed = (filteredSpeeds[seg.startIdx] + filteredSpeeds[seg.endIdx]) / 2.0;
+              if (avgSpeed >= 20.0) {
+                dropouts++;
+              }
+            }
+          }
+        }
+
+        for (let s = 1; s < segments.length; s++) {
+          const prevSeg = segments[s - 1];
+          const curSeg = segments[s];
+          if (curSeg.gear > prevSeg.gear && prevSeg.gear > 0) {
+            const idx = curSeg.startIdx;
+            const backIdx = Math.max(0, idx - 4);
+            const dt = filteredTimes[idx] - filteredTimes[backIdx];
+            if (dt > 0.05) {
+              const dRpm = (filteredRpms[idx] - filteredRpms[backIdx]) / dt;
+              const dSpeed = (filteredSpeeds[idx] - filteredSpeeds[backIdx]) / dt;
+              if (dRpm < -1200.0 && dSpeed < 1.0) {
+                phantomShifts++;
+              }
+            }
+          }
+        }
+      }
+
+      const glitchScore = Math.max(0, Math.min(100, Math.round(100 - (2.5 * dropouts + 1.0 * chatterEvents + 5.0 * phantomShifts))));
+      const glitchEl = document.getElementById('sc-gear-glitch-score');
+      if (glitchEl) {
+        glitchEl.innerText = glitchScore + '%';
+        glitchEl.className = 'sc-val ' + (glitchScore >= 90 ? 'good' : (glitchScore >= 70 ? 'warn' : 'bad'));
+      }
+      const dropEl = document.getElementById('sc-gear-dropouts');
+      if (dropEl) {
+        dropEl.innerText = dropouts;
+        dropEl.className = 'sc-val ' + (dropouts === 0 ? 'good' : 'warn');
+      }
+      const chatEl = document.getElementById('sc-gear-chatter');
+      if (chatEl) {
+        chatEl.innerText = chatterEvents;
+        chatEl.className = 'sc-val ' + (chatterEvents === 0 ? 'good' : (chatterEvents < 5 ? 'warn' : 'bad'));
+      }
+      const phanEl = document.getElementById('sc-gear-phantoms');
+      if (phanEl) {
+        phanEl.innerText = phantomShifts;
+        phanEl.className = 'sc-val ' + (phantomShifts === 0 ? 'good' : 'bad');
+      }
 
       const theme = getPlotlyLayoutTheme();
 

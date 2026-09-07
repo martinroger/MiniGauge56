@@ -106,14 +106,32 @@ This document defines the functional, technical, and architectural requirements 
 
 ---
 
-## 5. Implementation Traceability Matrix
+## 5. Dedicated Gear Estimator Lab (`gear_lab.py`) Requirements
+
+### 5.1 Scope & Purpose
+`gear_lab.py` is a dedicated algorithm development, machine learning, and calibration workstation designed to aggregate all available CAN binary logs, extract empirical global ratio distributions, train lightweight statistical models (Heuristic, Bayesian, and Hidden Markov Model), benchmark glitch performance side-by-side, and export ready-to-compile C headers for ESP32 firmware.
+
+### 5.2 Functional Requirements
+
+| ID | Title | Requirement Statement |
+|---|---|---|
+| **REQ-LAB-001** | Multi-Log Dataset Aggregation | The tool MUST automatically scan and parse all valid `*.bin` log captures in the directory, aggregating valid driving pairs ($f_{\text{speed}} \ge 5.0\text{ Hz}, f_{\text{RPM}} \ge 25.0\text{ Hz}$) into a unified multi-log dataset. |
+| **REQ-LAB-002** | Global Gaussian Mixture Clustering | The tool MUST fit 5 distinct Gaussian ratio cluster centers ($\mu_1..\mu_5$) and standard deviations ($\sigma_1..\sigma_5$) across the combined driving dataset to identify nominal ratios for 1st through 5th gear. |
+| **REQ-LAB-003** | Recursive Bayesian Classifier | The tool MUST implement and evaluate a Recursive Bayesian Classifier computing 1D Gaussian likelihoods per gear with temporal prior decay ($\lambda \in [0.80, 0.95]$) and a neutral baseline prior. |
+| **REQ-LAB-004** | Hidden Markov Model (HMM) | The tool MUST implement a 6-state HMM using an empirical transition probability matrix $A_{6 \times 6}$ with high self-transition inertia, impossible skip penalties, and asymmetric engine-deceleration emission conditioning ($\Delta f_{\text{RPM}} < -40\text{ Hz/s}$) to eliminate clutch coast-down phantom upshifts. |
+| **REQ-LAB-005** | Standardized Glitch Evaluation | The tool MUST evaluate and display side-by-side performance metrics across all models: <br>• Neutral Dropouts ($N_{\text{dropout}}$): $k \to 0 \to k$ in $< 450\text{ ms}$ at $V \ge 20\text{ km/h}$.<br>• Micro-Dwell Chatter ($N_{\text{chatter}}$): forward gear dwell $< 300\text{ ms}$.<br>• Coast-Down Phantom Shifts ($N_{\text{phantom}}$): upward gear jumps while $\frac{d\text{RPM}}{dt} < -1200\text{ RPM/s}$ and speed is non-accelerating.<br>• Unified Glitch-Free Quality Score ($0\text{ to }100\%$). |
+| **REQ-LAB-006** | Turnkey ESP32 C Header Export | The tool MUST export a zero-heap-allocation, re-entrant C99 header (`gear_estimator_params.h`) containing calibrated ratio constants, variances, transition matrices, and complete static inference routines (`gear_heuristic_update`, `gear_bayesian_update`, `gear_hmm_update`) that compile with GCC/Clang under `-Wall -Wextra -Werror`. |
+
+---
+
+## 6. Implementation Traceability Matrix
 
 | Requirement ID | Implementing File | Function / Component / Handler | Verification Method |
 |---|---|---|---|
-| **REQ-SYS-001** | `decode.py`, `visualize.py`, `tuner.py` | Top-level imports (stdlib only) | Automated headless test (no pip dependencies) |
-| **REQ-SYS-002** | `decode.py`, `visualize.py`, `tuner.py` | `read_bin_file()`, `CAN_FRAME_STRUCT` | Binary unpack test against `.bin` captures |
-| **REQ-SYS-003** | `decode.py`, `visualize.py`, `tuner.py` | `DbcDatabase.parse()`, `DbcMessage.decode()` | DBC parse verification with signed/scale/enum |
-| **REQ-SYS-004** | `visualize.py`, `tuner.py` | `initTheme()`, `setTheme()`, CSS tokens | Theme toggle verification in browser |
+| **REQ-SYS-001** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py` | Top-level imports (stdlib only) | Automated headless test (no pip dependencies) |
+| **REQ-SYS-002** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py` | `read_bin_file()`, `CAN_FRAME_STRUCT` | Binary unpack test against `.bin` captures |
+| **REQ-SYS-003** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py` | `DbcDatabase.parse()`, `DbcMessage.decode()` | DBC parse verification with signed/scale/enum |
+| **REQ-SYS-004** | `visualize.py`, `tuner.py`, `gear_lab.py` | `initTheme()`, `setTheme()`, CSS tokens | Theme toggle verification in browser |
 | **REQ-SYS-005** | All `.md` files | Markdown relative links | Static doc link validation |
 | **REQ-DEC-001** | `decode.py` | `write_asc()` | Vector CANoe format validation test |
 | **REQ-DEC-002** | `decode.py` | `write_csv()` | CSV column structure validation |
@@ -151,3 +169,10 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TUN-ANA-001** | `tuner.py` | `compute_analytics()` (cycle timing & jitter) | Bus timing and packet loss calculation tests |
 | **REQ-TUN-ANA-002** | `tuner.py` | `compute_analytics()` (signal dispersion) | Slew rate and min/max/std dispersion tests |
 | **REQ-TUN-ANA-003** | `tuner.py` | `renderAnalyticsTable()`, `/api/export_analytics`| Interactive table & CSV download tests |
+| **REQ-LAB-001** | `gear_lab.py` | `build_aggregated_dataset()`, `extract_gear_log()`| Multi-log sample aggregation test (12.8k pts) |
+| **REQ-LAB-002** | `gear_lab.py` | `fit_gear_clusters()` | Cluster center fitting test ($\mu_1..\mu_5$) |
+| **REQ-LAB-003** | `gear_lab.py` | `run_model_2_bayesian()` | Recursive Bayes probability inference test |
+| **REQ-LAB-004** | `gear_lab.py` | `run_model_3_hmm()`, `compute_empirical_transition_matrix()`| HMM transition matrix & clutch drop test |
+| **REQ-LAB-005** | `tuner.py`, `gear_lab.py` | `evaluate_glitches()` | Dropouts, chatter, phantom shifts scorecards |
+| **REQ-LAB-006** | `gear_lab.py` | `generate_esp32_c_header()`, `/api/export_c` | Automated GCC compilation test (-Wall -Werror)|
+
