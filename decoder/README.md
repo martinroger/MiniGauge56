@@ -142,19 +142,28 @@ A bespoke browser-based calibration and tuning dashboard engineered specifically
 ### Key Capabilities
 
 #### 1. ⚙️ Gear Position Estimator Tab
+- **Algorithmic Presets & Modular Pipeline**:
+  - **1. Baseline (Gated Ratio EMA)**: Pure ratio gating and ratio-domain EMA without input pre-filtering or output latching.
+  - **2. RPM Pre-Filtered + Ratio EMA**: Activates Stage 1 RPM pre-filter (choice of continuous EMA with time constant $\tau$ or sliding SMA window) applied to `DBG_RPM_freq` before calculating the ratio.
+  - **3. Full Pipeline (RPM Filter + Latch)**: Combines RPM pre-filtering with temporal output latching/debouncing ($50\text{ to }600\text{ ms}$) to suppress single-sample transients and shift chatter.
+  - **Custom Modular Controls**: Toggle individual stages independently to assess isolated algorithmic impact.
+- **Dynamic Math & Workflow Explainer**:
+  - Interactive sidebar card that rebuilds its formulas, equations, active parameter values, and explanatory text in real time as presets or stage toggles change.
+- **Dual-Unit Gating Sliders**:
+  - **Min Speed Cutoff**: Displays both electrical frequency and vehicle road speed: `${val} Hz (~${val * 0.2444} km/h)`.
+  - **Min RPM Cutoff**: Displays both electrical frequency and engine speed: `${val} Hz (${val * 30} RPM)`.
+  - **Stability Gate**: $|r_{\text{inst}}(t) - r_{\text{inst}}(t - \Delta t)| \le \text{Gate}_{\text{stab}}$ (strictly rejects clutch slip, free-revving, and gear change transients).
 - **Mathematical Pipeline & Architecture**:
-  1. *Instantaneous Ratio Calculation*:
-     $$r_{\text{inst}}(t) = \frac{f_{\text{speed}}(t)}{f_{\text{RPM}}(t)}$$
-     Computed continuously from 0x300 `DBG_speed_freq` and 0x301 `DBG_RPM_freq`.
-  2. *Triple Gating (Clutch / Slip Rejection)*:
-     - Min Speed Gate: $f_{\text{speed}} \ge f_{\text{min}}$ (rejects stationary roll).
-     - Min RPM Gate: $f_{\text{RPM}} \ge f_{\text{min}}$ (rejects engine stall or zero denominator).
-     - Derivative Stability Gate: $|r_{\text{inst}}(t) - r_{\text{inst}}(t - \Delta t)| \le \Delta r_{\text{max}}$ (strictly rejects clutch slip, free-revving, and gear change transients).
-  3. *Ratio-Domain Smoothing (EMA on Ratio)*:
+  1. *Stage 1 (Optional RPM Pre-Filter)*:
+     $$f_{\text{RPM,filt}}(t) = \alpha_{\text{rpm}} f_{\text{RPM}}(t) + (1 - \alpha_{\text{rpm}}) f_{\text{RPM,filt}}(t - \Delta t)$$
+  2. *Stage 2 (Instantaneous Ratio & Triple Gating)*:
+     $$r_{\text{inst}}(t) = \frac{f_{\text{speed}}(t)}{f_{\text{RPM,eff}}(t)}$$
+     Evaluated when $f_{\text{speed}} \ge f_{\text{min}}$, $f_{\text{RPM}} \ge f_{\text{min}}$, and derivative stability holds.
+  3. *Stage 3 (Ratio-Domain Smoothing)*:
      $$r_{\text{EMA}}(t) = \alpha \cdot r_{\text{inst}}(t) + (1 - \alpha) \cdot r_{\text{EMA}}(t - \Delta t)$$
-     **Crucial physical principle**: The EMA filter is strictly applied to the **ratio**, *not* to the individual source signals ($f_{\text{speed}}$, $f_{\text{RPM}}$). Filtering speed and RPM separately would introduce severe differential phase lag during throttle changes due to disparate rotational inertias, creating large artificial ratio spikes.
-  4. *Tolerance Classification Corridor*:
-     Classifies 5 forward gears ($i \in \{1, 2, 3, 4, 5\}$) if $|r_{\text{EMA}} - R_i| \le \text{Tol} \cdot R_i$. Fails tolerance or gate $\rightarrow$ Neutral (N / 0). (Reverse cannot be directly inferred from CAN bus logs and defaults to Neutral/Uncertain).
+     **Crucial physical principle**: The EMA filter is strictly applied to the **ratio**, *not* independently to raw speed and RPM. Filtering speed and RPM separately would introduce severe differential phase lag during throttle changes due to disparate rotational inertias, creating large artificial ratio spikes.
+  4. *Stage 4 (Tolerance Classification & Output Latch)*:
+     Classifies 5 forward gears ($i \in \{1, 2, 3, 4, 5\}$) if $|r_{\text{EMA}} - R_i| \le \text{Tol} \cdot R_i$. When latching is active, gear transitions require continuous confirmation for $\ge T_{\text{latch}}$ ms, with immediate fallback to Neutral upon vehicle standstill.
 - **Synchronized Vehicle Dynamics Timeline**:
   - Displays a synchronized dual-axis time-series of `ITF_speed_kph` (km/h, left axis) and `ITF_rpm` (RPM, right axis) alongside the ratio and classified gear trace.
   - Zooming, panning, and hovering are fully synchronized across both timelines and the GPS track map.
@@ -233,4 +242,10 @@ python3 tuner.py --port 8085 --no-browser
 | `--dbc, -d <file.dbc>` | Custom DBC file path (default: `binocan.dbc`) |
 | `--no-browser` | Do not launch the browser automatically |
 
+---
 
+## 4. Requirements & Implementation Traceability
+
+For the full architectural specification, functional requirement statements, and Implementation Traceability Matrix mapping each requirement (`REQ-DEC-*`, `REQ-VIS-*`, `REQ-TUN-*`) to exact code implementations and test procedures, refer to:
+
+👉 **[REQUIREMENTS.md](REQUIREMENTS.md)**

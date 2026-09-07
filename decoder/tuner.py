@@ -1125,19 +1125,57 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <!-- TAB 1: GEAR POSITION ESTIMATOR -->
     <div id="tab-gear" class="tab-pane active">
       <div class="algo-sidebar">
+        <div class="card" style="border-left: 3px solid var(--primary);">
+          <div class="card-title">Algorithm Preset</div>
+          <div class="ctrl-group">
+            <select id="select-gear-preset" style="width:100%; font-weight:600;">
+              <option value="baseline" selected>1. Baseline (Gated Ratio EMA)</option>
+              <option value="rpm_filter">2. RPM Pre-Filtered + Ratio EMA</option>
+              <option value="latched">3. Full Pipeline (RPM Filter + Latch)</option>
+              <option value="custom">Custom Pipeline</option>
+            </select>
+          </div>
+        </div>
+
         <div class="card">
-          <div class="card-title">Gating Filters</div>
+          <div class="card-title">
+            <span>Stage 1: Input RPM Pre-Filter</span>
+            <label style="font-size:0.75rem; font-weight:normal; display:flex; align-items:center; gap:0.3rem; text-transform:none; cursor:pointer;">
+              <input type="checkbox" id="chk-gear-rpm-filter"> Enable
+            </label>
+          </div>
+          <div id="gear-rpm-filter-controls" style="display:none; flex-direction:column; gap:0.6rem; margin-top:0.4rem;">
+            <div style="display:flex; gap:0.6rem;">
+              <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.78rem; cursor:pointer;">
+                <input type="radio" name="gear-rpm-algo" value="EMA" checked id="radio-gear-rpm-ema"> EMA
+              </label>
+              <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.78rem; cursor:pointer;">
+                <input type="radio" name="gear-rpm-algo" value="SMA" id="radio-gear-rpm-sma"> SMA
+              </label>
+            </div>
+            <div class="ctrl-group">
+              <div class="ctrl-label-row">
+                <span class="ctrl-label" id="lbl-gear-rpm-param">Time Constant (τ)</span>
+                <span class="ctrl-val" id="val-gear-rpm-param">0.10 s</span>
+              </div>
+              <input type="range" id="slider-gear-rpm-param" min="0.02" max="1.00" step="0.02" value="0.10">
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Stage 2: Gating Filters</div>
           <div class="ctrl-group">
             <div class="ctrl-label-row">
               <span class="ctrl-label">Min Speed Freq</span>
-              <span class="ctrl-val" id="val-gear-minspeed">5.0 Hz</span>
+              <span class="ctrl-val" id="val-gear-minspeed">5.0 Hz (~1.2 km/h)</span>
             </div>
             <input type="range" id="slider-gear-minspeed" min="0" max="40" step="0.5" value="5.0">
           </div>
           <div class="ctrl-group">
             <div class="ctrl-label-row">
               <span class="ctrl-label">Min RPM Freq</span>
-              <span class="ctrl-val" id="val-gear-minrpm">25.0 Hz</span>
+              <span class="ctrl-val" id="val-gear-minrpm">25.0 Hz (750 RPM)</span>
             </div>
             <input type="range" id="slider-gear-minrpm" min="5" max="80" step="1" value="25.0">
           </div>
@@ -1151,13 +1189,34 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
 
         <div class="card">
-          <div class="card-title">Smoothing Filter</div>
+          <div class="card-title">Stage 3: Ratio Smoothing</div>
           <div class="ctrl-group">
             <div class="ctrl-label-row">
               <span class="ctrl-label">EMA Alpha (α)</span>
               <span class="ctrl-val" id="val-gear-alpha">0.15</span>
             </div>
             <input type="range" id="slider-gear-alpha" min="0.01" max="1.00" step="0.01" value="0.15">
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <span>Stage 4: Output Latch / Debounce</span>
+            <label style="font-size:0.75rem; font-weight:normal; display:flex; align-items:center; gap:0.3rem; text-transform:none; cursor:pointer;">
+              <input type="checkbox" id="chk-gear-latch"> Enable
+            </label>
+          </div>
+          <div id="gear-latch-controls" style="display:none; flex-direction:column; gap:0.6rem; margin-top:0.4rem;">
+            <div class="ctrl-group">
+              <div class="ctrl-label-row">
+                <span class="ctrl-label">Hold Confirmation Time</span>
+                <span class="ctrl-val" id="val-gear-latch">200 ms</span>
+              </div>
+              <input type="range" id="slider-gear-latch" min="50" max="600" step="25" value="200">
+            </div>
+            <div style="font-size:0.72rem; color:var(--text-muted); line-height:1.35;">
+              Requires candidate gear to hold continuously before confirming transition, suppressing shift chatter.
+            </div>
           </div>
         </div>
 
@@ -1211,42 +1270,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           </div>
         </div>
 
-        <div class="card" style="border-left: 3px solid var(--primary);">
-          <div class="card-title" style="color:var(--primary);">📐 Algorithm Math & Workflow</div>
-          <div style="font-size:0.75rem; color:var(--text); line-height:1.45; display:flex; flex-direction:column; gap:0.5rem;">
-            <div>
-              <strong>1. Instantaneous Ratio:</strong>
-              <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
-                r_inst(t) = f_speed(t) / f_RPM(t)
-              </div>
-              <span style="color:var(--text-muted); font-size:0.7rem;">Computed from 0x300 <code>DBG_speed_freq</code> & 0x301 <code>DBG_RPM_freq</code>.</span>
-            </div>
-            <div>
-              <strong>2. Triple Gating (Clutch / Slip Rejection):</strong>
-              <ul style="padding-left:1rem; margin-top:2px; color:var(--text-muted); font-size:0.7rem;">
-                <li><code>f_speed &ge; minSpeed</code> (excludes standstill)</li>
-                <li><code>f_RPM &ge; minRPM</code> (excludes stall/idle)</li>
-                <li><code>|&Delta;r / &Delta;t| &le; Gate</code> (rejects clutch slip, free revving, and active shift transients)</li>
-              </ul>
-            </div>
-            <div>
-              <strong>3. Ratio-Domain EMA (Filter on Ratio):</strong>
-              <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
-                r_EMA(t) = &alpha; &middot; r_inst(t) + (1 - &alpha;) &middot; r_EMA(t - 1)
-              </div>
-              <div style="font-size:0.7rem; color:var(--warning); margin-top:3px; line-height:1.35;">
-                ⚡ <em>Note:</em> EMA is strictly applied to the <strong>ratio</strong>, NOT individual frequencies. Filtering speed and RPM separately causes differential phase lag during throttle changes, inducing large artificial ratio spikes.
-              </div>
-            </div>
-            <div>
-              <strong>4. Tolerance Classification:</strong>
-              <div style="color:var(--text-muted); font-size:0.7rem;">
-                Gear <em>i</em> &isin; [1..5] if <code>|r_EMA - R_i| &le; tol &times; R_i</code>.<br>
-                Fails tolerance or gate &rarr; Neutral (N / 0).
-              </div>
-            </div>
-          </div>
-        </div>
+        <div class="card" id="card-gear-math" style="border-left: 3px solid var(--primary);"></div>
       </div>
 
       <div class="algo-content">
@@ -2113,14 +2137,136 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     // TAB 1: GEAR POSITION ESTIMATOR LOGIC
     const gearParams = {
+      preset: 'baseline',
+      rpmFilterEnabled: false,
+      rpmFilterType: 'EMA',
+      rpmFilterTau: 0.10,
       minSpeed: 5.0,
       minRpm: 25.0,
       stabGate: 0.050,
       alpha: 0.15,
+      latchEnabled: false,
+      latchHoldMs: 200,
       tol: 8.0,
       r: [1.82, 2.73, 3.76, 4.54, 5.25],
       showGroundTruth: false
     };
+
+    function updateGearLabels() {
+      const speedKph = (gearParams.minSpeed * 0.2444).toFixed(1);
+      const rpmVal = Math.round(gearParams.minRpm * 30);
+      document.getElementById('val-gear-minspeed').innerText = `${gearParams.minSpeed.toFixed(1)} Hz (~${speedKph} km/h)`;
+      document.getElementById('val-gear-minrpm').innerText = `${gearParams.minRpm.toFixed(0)} Hz (${rpmVal} RPM)`;
+      document.getElementById('val-gear-stab').innerText = gearParams.stabGate.toFixed(3);
+      document.getElementById('val-gear-alpha').innerText = gearParams.alpha.toFixed(2);
+      document.getElementById('val-gear-tol').innerText = '±' + gearParams.tol.toFixed(1) + '%';
+      if (document.getElementById('val-gear-rpm-param')) {
+        document.getElementById('val-gear-rpm-param').innerText = gearParams.rpmFilterTau.toFixed(2) + ' s';
+      }
+      if (document.getElementById('val-gear-latch')) {
+        document.getElementById('val-gear-latch').innerText = gearParams.latchHoldMs + ' ms';
+      }
+    }
+
+    function renderGearMathExplanation() {
+      const card = document.getElementById('card-gear-math');
+      if (!card) return;
+
+      const presetNames = {
+        'baseline': '1. Baseline (Gated Ratio EMA)',
+        'rpm_filter': '2. RPM Pre-Filtered + Ratio EMA',
+        'latched': '3. Full Pipeline (RPM Filter + Latch)',
+        'custom': 'Custom Modular Pipeline'
+      };
+
+      const presetLabel = presetNames[gearParams.preset] || 'Custom Modular Pipeline';
+
+      let stepNum = 1;
+      let stepsHtml = '';
+
+      if (gearParams.rpmFilterEnabled) {
+        if (gearParams.rpmFilterType === 'EMA') {
+          stepsHtml += `
+            <div>
+              <strong>Step ${stepNum++}: Input RPM Frequency Smoothing (EMA):</strong>
+              <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
+                f_RPM,filt(t) = &alpha;_rpm &middot; f_RPM(t) + (1 - &alpha;_rpm) &middot; f_RPM,filt(t - &Delta;t)
+              </div>
+              <span style="color:var(--text-muted); font-size:0.7rem;">Exponential filter on 0x301 DBG_RPM_freq with &tau; = ${gearParams.rpmFilterTau.toFixed(2)}s (&alpha;_rpm &approx; ${(0.1 / (gearParams.rpmFilterTau + 0.1)).toFixed(2)}).</span>
+            </div>
+          `;
+        } else {
+          const winPts = Math.max(1, Math.round(gearParams.rpmFilterTau / 0.1));
+          stepsHtml += `
+            <div>
+              <strong>Step ${stepNum++}: Input RPM Frequency Smoothing (SMA):</strong>
+              <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
+                f_RPM,filt(t) = (1 / W) &sum; f_RPM(t - k&Delta;t)
+              </div>
+              <span style="color:var(--text-muted); font-size:0.7rem;">Moving window of ${winPts} samples (&Delta;t = ${gearParams.rpmFilterTau.toFixed(2)}s) on 0x301 DBG_RPM_freq.</span>
+            </div>
+          `;
+        }
+      }
+
+      const rpmSource = gearParams.rpmFilterEnabled ? 'f_RPM,filt(t)' : 'f_RPM(t)';
+
+      stepsHtml += `
+        <div>
+          <strong>Step ${stepNum++}: Instantaneous Gear Ratio:</strong>
+          <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
+            r_inst(t) = f_speed(t) / ${rpmSource}
+          </div>
+          <span style="color:var(--text-muted); font-size:0.7rem;">Computed from 0x300 <code>DBG_speed_freq</code> & 0x301 ${gearParams.rpmFilterEnabled ? 'filtered' : 'raw'} <code>DBG_RPM_freq</code>.</span>
+        </div>
+        <div>
+          <strong>Step ${stepNum++}: Triple Gating (Clutch / Slip Rejection):</strong>
+          <ul style="padding-left:1rem; margin-top:2px; color:var(--text-muted); font-size:0.7rem;">
+            <li><code>f_speed &ge; minSpeed</code> (${gearParams.minSpeed.toFixed(1)} Hz &approx; ${(gearParams.minSpeed * 0.2444).toFixed(1)} km/h, rejects standstill)</li>
+            <li><code>f_RPM &ge; minRPM</code> (${gearParams.minRpm.toFixed(0)} Hz = ${Math.round(gearParams.minRpm * 30)} RPM, rejects stall/idle)</li>
+            <li><code>|&Delta;r / &Delta;t| &le; Gate</code> (${gearParams.stabGate.toFixed(3)}, rejects clutch slip and active shift transients)</li>
+          </ul>
+        </div>
+        <div>
+          <strong>Step ${stepNum++}: Ratio-Domain EMA (Filter on Ratio):</strong>
+          <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
+            r_EMA(t) = &alpha; &middot; r_inst(t) + (1 - &alpha;) &middot; r_EMA(t - 1)
+          </div>
+          <div style="font-size:0.7rem; color:var(--warning); margin-top:3px; line-height:1.35;">
+            ⚡ <em>Note:</em> Primary smoothing applies directly to the <strong>ratio</strong> (&alpha; = ${gearParams.alpha.toFixed(2)}) to prevent differential phase lag between engine and wheel inertia.
+          </div>
+        </div>
+        <div>
+          <strong>Step ${stepNum++}: Tolerance Classification:</strong>
+          <div style="color:var(--text-muted); font-size:0.7rem;">
+            Candidate gear <em>i</em> &isin; [1..5] if <code>|r_EMA - R_i| &le; tol &times; R_i</code> (&plusmn;${gearParams.tol.toFixed(1)}%).<br>
+            Fails tolerance or gating &rarr; Neutral (N / 0).
+          </div>
+        </div>
+      `;
+
+      if (gearParams.latchEnabled) {
+        stepsHtml += `
+          <div>
+            <strong>Step ${stepNum++}: Output Gear Latching / Debouncing:</strong>
+            <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
+              G_out(t) = G_cand(t) &nbsp; iff sustained &ge; ${gearParams.latchHoldMs} ms
+            </div>
+            <span style="color:var(--text-muted); font-size:0.7rem;">Holds current gear and suppresses 1-sample transitions or jitter during clutching. Immediate drop to Neutral on vehicle stop.</span>
+          </div>
+        `;
+      }
+
+      card.innerHTML = `
+        <div class="card-title" style="color:var(--primary); display:flex; justify-content:space-between; align-items:center;">
+          <span>📐 Algorithm Math & Workflow</span>
+          <span style="font-size:0.68rem; font-weight:normal; background:var(--badge-bg); color:var(--badge-text); padding:2px 6px; border-radius:4px;">${presetLabel}</span>
+        </div>
+        <div style="font-size:0.75rem; color:var(--text); line-height:1.45; display:flex; flex-direction:column; gap:0.5rem; margin-top:0.4rem;">
+          ${stepsHtml}
+        </div>
+      `;
+    }
 
     function loadGearSettings() {
       const saved = localStorage.getItem('minigauge_gear_params');
@@ -2129,21 +2275,42 @@ HTML_PAGE = r"""<!DOCTYPE html>
           Object.assign(gearParams, JSON.parse(saved));
         } catch(e){}
       }
+      if (document.getElementById('select-gear-preset')) {
+        document.getElementById('select-gear-preset').value = gearParams.preset || 'baseline';
+      }
+      if (document.getElementById('chk-gear-rpm-filter')) {
+        document.getElementById('chk-gear-rpm-filter').checked = !!gearParams.rpmFilterEnabled;
+        document.getElementById('gear-rpm-filter-controls').style.display = gearParams.rpmFilterEnabled ? 'flex' : 'none';
+      }
+      if (document.getElementById('radio-gear-rpm-ema')) {
+        document.getElementById('radio-gear-rpm-ema').checked = (gearParams.rpmFilterType === 'EMA');
+        document.getElementById('radio-gear-rpm-sma').checked = (gearParams.rpmFilterType === 'SMA');
+        document.getElementById('lbl-gear-rpm-param').innerText = (gearParams.rpmFilterType === 'EMA') ? 'Time Constant (τ)' : 'Window Size (s)';
+      }
+      if (document.getElementById('slider-gear-rpm-param')) {
+        document.getElementById('slider-gear-rpm-param').value = gearParams.rpmFilterTau;
+      }
+      if (document.getElementById('chk-gear-latch')) {
+        document.getElementById('chk-gear-latch').checked = !!gearParams.latchEnabled;
+        document.getElementById('gear-latch-controls').style.display = gearParams.latchEnabled ? 'flex' : 'none';
+      }
+      if (document.getElementById('slider-gear-latch')) {
+        document.getElementById('slider-gear-latch').value = gearParams.latchHoldMs;
+      }
+
       document.getElementById('slider-gear-minspeed').value = gearParams.minSpeed;
-      document.getElementById('val-gear-minspeed').innerText = gearParams.minSpeed.toFixed(1) + ' Hz';
       document.getElementById('slider-gear-minrpm').value = gearParams.minRpm;
-      document.getElementById('val-gear-minrpm').innerText = gearParams.minRpm.toFixed(1) + ' Hz';
       document.getElementById('slider-gear-stab').value = gearParams.stabGate;
-      document.getElementById('val-gear-stab').innerText = gearParams.stabGate.toFixed(3);
       document.getElementById('slider-gear-alpha').value = gearParams.alpha;
-      document.getElementById('val-gear-alpha').innerText = gearParams.alpha.toFixed(2);
       document.getElementById('slider-gear-tol').value = gearParams.tol;
-      document.getElementById('val-gear-tol').innerText = '±' + gearParams.tol.toFixed(1) + '%';
       document.getElementById('chk-gear-groundtruth').checked = gearParams.showGroundTruth;
+
       for (let i = 1; i <= 5; i++) {
         const inp = document.getElementById(`gear-r-${i}`);
         if (inp && gearParams.r[i - 1] !== undefined) inp.value = gearParams.r[i - 1].toFixed(2);
       }
+      updateGearLabels();
+      renderGearMathExplanation();
     }
     loadGearSettings();
 
@@ -2151,34 +2318,107 @@ HTML_PAGE = r"""<!DOCTYPE html>
       localStorage.setItem('minigauge_gear_params', JSON.stringify(gearParams));
     }
 
+    document.getElementById('select-gear-preset').addEventListener('change', (e) => {
+      const p = e.target.value;
+      gearParams.preset = p;
+      if (p === 'baseline') {
+        gearParams.rpmFilterEnabled = false;
+        gearParams.latchEnabled = false;
+      } else if (p === 'rpm_filter') {
+        gearParams.rpmFilterEnabled = true;
+        gearParams.latchEnabled = false;
+      } else if (p === 'latched') {
+        gearParams.rpmFilterEnabled = true;
+        gearParams.latchEnabled = true;
+      }
+      document.getElementById('chk-gear-rpm-filter').checked = gearParams.rpmFilterEnabled;
+      document.getElementById('gear-rpm-filter-controls').style.display = gearParams.rpmFilterEnabled ? 'flex' : 'none';
+      document.getElementById('chk-gear-latch').checked = gearParams.latchEnabled;
+      document.getElementById('gear-latch-controls').style.display = gearParams.latchEnabled ? 'flex' : 'none';
+      saveGearSettings();
+      renderGearMathExplanation();
+      computeAndRenderGear();
+    });
+
+    document.getElementById('chk-gear-rpm-filter').addEventListener('change', (e) => {
+      gearParams.rpmFilterEnabled = e.target.checked;
+      gearParams.preset = 'custom';
+      document.getElementById('select-gear-preset').value = 'custom';
+      document.getElementById('gear-rpm-filter-controls').style.display = gearParams.rpmFilterEnabled ? 'flex' : 'none';
+      saveGearSettings();
+      renderGearMathExplanation();
+      computeAndRenderGear();
+    });
+
+    document.querySelectorAll('input[name="gear-rpm-algo"]').forEach(r => {
+      r.addEventListener('change', (e) => {
+        gearParams.rpmFilterType = e.target.value;
+        document.getElementById('lbl-gear-rpm-param').innerText = (gearParams.rpmFilterType === 'EMA') ? 'Time Constant (τ)' : 'Window Size (s)';
+        saveGearSettings();
+        renderGearMathExplanation();
+        computeAndRenderGear();
+      });
+    });
+
+    document.getElementById('slider-gear-rpm-param').addEventListener('input', (e) => {
+      gearParams.rpmFilterTau = parseFloat(e.target.value);
+      updateGearLabels();
+      saveGearSettings();
+      renderGearMathExplanation();
+      computeAndRenderGear();
+    });
+
+    document.getElementById('chk-gear-latch').addEventListener('change', (e) => {
+      gearParams.latchEnabled = e.target.checked;
+      gearParams.preset = 'custom';
+      document.getElementById('select-gear-preset').value = 'custom';
+      document.getElementById('gear-latch-controls').style.display = gearParams.latchEnabled ? 'flex' : 'none';
+      saveGearSettings();
+      renderGearMathExplanation();
+      computeAndRenderGear();
+    });
+
+    document.getElementById('slider-gear-latch').addEventListener('input', (e) => {
+      gearParams.latchHoldMs = parseInt(e.target.value, 10);
+      updateGearLabels();
+      saveGearSettings();
+      renderGearMathExplanation();
+      computeAndRenderGear();
+    });
+
     document.getElementById('slider-gear-minspeed').addEventListener('input', (e) => {
       gearParams.minSpeed = parseFloat(e.target.value);
-      document.getElementById('val-gear-minspeed').innerText = gearParams.minSpeed.toFixed(1) + ' Hz';
+      updateGearLabels();
       saveGearSettings();
+      renderGearMathExplanation();
       computeAndRenderGear();
     });
     document.getElementById('slider-gear-minrpm').addEventListener('input', (e) => {
       gearParams.minRpm = parseFloat(e.target.value);
-      document.getElementById('val-gear-minrpm').innerText = gearParams.minRpm.toFixed(1) + ' Hz';
+      updateGearLabels();
       saveGearSettings();
+      renderGearMathExplanation();
       computeAndRenderGear();
     });
     document.getElementById('slider-gear-stab').addEventListener('input', (e) => {
       gearParams.stabGate = parseFloat(e.target.value);
-      document.getElementById('val-gear-stab').innerText = gearParams.stabGate.toFixed(3);
+      updateGearLabels();
       saveGearSettings();
+      renderGearMathExplanation();
       computeAndRenderGear();
     });
     document.getElementById('slider-gear-alpha').addEventListener('input', (e) => {
       gearParams.alpha = parseFloat(e.target.value);
-      document.getElementById('val-gear-alpha').innerText = gearParams.alpha.toFixed(2);
+      updateGearLabels();
       saveGearSettings();
+      renderGearMathExplanation();
       computeAndRenderGear();
     });
     document.getElementById('slider-gear-tol').addEventListener('input', (e) => {
       gearParams.tol = parseFloat(e.target.value);
-      document.getElementById('val-gear-tol').innerText = '±' + gearParams.tol.toFixed(1) + '%';
+      updateGearLabels();
       saveGearSettings();
+      renderGearMathExplanation();
       computeAndRenderGear();
     });
     document.getElementById('chk-gear-groundtruth').addEventListener('change', (e) => {
@@ -2198,10 +2438,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     document.getElementById('btn-reset-gear-defaults').addEventListener('click', () => {
+      gearParams.preset = 'baseline';
+      gearParams.rpmFilterEnabled = false;
+      gearParams.rpmFilterType = 'EMA';
+      gearParams.rpmFilterTau = 0.10;
       gearParams.minSpeed = 5.0;
       gearParams.minRpm = 25.0;
       gearParams.stabGate = 0.050;
       gearParams.alpha = 0.15;
+      gearParams.latchEnabled = false;
+      gearParams.latchHoldMs = 200;
       gearParams.tol = 8.0;
       gearParams.r = [1.82, 2.73, 3.76, 4.54, 5.25];
       gearParams.showGroundTruth = false;
@@ -2288,10 +2534,49 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
       const gearTimeCounts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
 
+      // Step 0: Precompute filtered RPM frequency if enabled
+      const effRpmFreqs = new Float64Array(n);
+      if (gearParams.rpmFilterEnabled) {
+        if (gearParams.rpmFilterType === 'EMA') {
+          const tau = Math.max(0.01, gearParams.rpmFilterTau);
+          let emaRpm = g.rpm_freq[0] || 0.0;
+          effRpmFreqs[0] = emaRpm;
+          for (let i = 1; i < n; i++) {
+            const dt = Math.max(0.001, Math.min(1.0, g.times[i] - g.times[i - 1]));
+            const alphaRpm = dt / (tau + dt);
+            emaRpm = alphaRpm * g.rpm_freq[i] + (1.0 - alphaRpm) * emaRpm;
+            effRpmFreqs[i] = emaRpm;
+          }
+        } else {
+          // SMA sliding window
+          const winSec = Math.max(0.02, gearParams.rpmFilterTau);
+          let sum = 0.0;
+          let startIdx = 0;
+          for (let i = 0; i < n; i++) {
+            sum += g.rpm_freq[i];
+            while (startIdx < i && (g.times[i] - g.times[startIdx]) > winSec) {
+              sum -= g.rpm_freq[startIdx];
+              startIdx++;
+            }
+            const count = (i - startIdx + 1);
+            effRpmFreqs[i] = count > 0 ? (sum / count) : g.rpm_freq[i];
+          }
+        }
+      } else {
+        for (let i = 0; i < n; i++) {
+          effRpmFreqs[i] = g.rpm_freq[i];
+        }
+      }
+
+      // Output latch state variables
+      let latchedGear = 0;
+      let pendingGear = 0;
+      let pendingStartTime = 0;
+
       for (let i = 0; i < n; i++) {
         const t = g.times[i];
         const sf = g.speed_freq[i];
-        const rf = g.rpm_freq[i];
+        const rf = effRpmFreqs[i];
         const gt = g.ground_truth[i];
 
         const speedValid = (sf >= gearParams.minSpeed);
@@ -2325,15 +2610,36 @@ HTML_PAGE = r"""<!DOCTYPE html>
           currentEma = null;
         }
 
-        let estGear = 0;
+        let candGear = 0;
         if (currentEma !== null) {
           for (let gi = 0; gi < 5; gi++) {
             const nominal = gearParams.r[gi];
             const tolWindow = nominal * (gearParams.tol / 100.0);
             if (Math.abs(currentEma - nominal) <= tolWindow) {
-              estGear = gi + 1;
+              candGear = gi + 1;
               break;
             }
+          }
+        }
+
+        let finalGear = candGear;
+        if (gearParams.latchEnabled) {
+          // If vehicle is stopped or engine stalled, drop immediately to Neutral
+          if (!speedValid || !rpmValid) {
+            latchedGear = 0;
+            pendingGear = 0;
+            pendingStartTime = t;
+            finalGear = 0;
+          } else {
+            if (candGear !== pendingGear) {
+              pendingGear = candGear;
+              pendingStartTime = t;
+            }
+            const elapsedMs = (t - pendingStartTime) * 1000.0;
+            if (elapsedMs >= gearParams.latchHoldMs) {
+              latchedGear = pendingGear;
+            }
+            finalGear = latchedGear;
           }
         }
 
@@ -2341,11 +2647,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
           filteredTimes.push(t);
           rawRatios.push(isGatedActive ? ratio : null);
           smoothedRatios.push(currentEma);
-          estimatedGears.push(estGear);
+          estimatedGears.push(finalGear);
           groundTruthGears.push(gt);
           filteredSpeeds.push(g.speed_kph[i] || 0);
           filteredRpms.push(g.rpm[i] || 0);
-          gearTimeCounts[estGear] = (gearTimeCounts[estGear] || 0) + 0.1;
+          const dt = (i > 0) ? Math.min(0.2, Math.max(0.01, t - g.times[i-1])) : 0.1;
+          gearTimeCounts[finalGear] = (gearTimeCounts[finalGear] || 0) + dt;
         }
       }
 
