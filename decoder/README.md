@@ -203,8 +203,10 @@ A bespoke browser-based calibration and tuning dashboard engineered specifically
   - Lower Bound: $V_{\text{GPS}}$ (indicated speed must never under-read true vehicle speed).
   - Upper Bound: $1.10 \cdot V_{\text{GPS}} + 4\text{ km/h}$.
   - Shaded compliance corridor with red markers highlighting any regulatory violations.
-- **GPS Quality Filtering**: Ignore points without valid 3D GPS navigation solutions (`RBX_valid_fix == 0` or `RBX_fix_ST < 3`).
-- **Scorecards**: ECE R39 compliance %, $V_{\text{ind}} \ge V_{\text{GPS}}$ rate %, max under-read, max over-read, and average speed delta.
+- **GPS Quality & Dynamic Phase Lag Filtering**:
+  - Ignore points without valid 3D GPS navigation solutions (`RBX_valid_fix == 0` or `RBX_fix_ST < 3`).
+  - **Dynamic Speed Change Rate Filter ($|dv/dt|$)**: Configurable slider ($0.5\text{ to }15.0\text{ km/h/s}$, default $4.0\text{ km/h/s}$) that disqualifies transient samples during hard acceleration or braking where sensor phase lag between CAN wheel speed and GPS speed creates artificial boundary violations.
+- **Scorecards**: ECE R39 compliance %, $V_{\text{ind}} \ge V_{\text{GPS}}$ rate %, max under-read, max over-read, average speed delta, and qualified sample count/percentage.
 
 #### 4. 📊 Signal & Bus Analytics Tab
 - **CAN Message Cycle Diagnostics**:

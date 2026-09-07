@@ -98,6 +98,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TUN-SPD-002** | UNECE Regulation 39 Compliance | The tool MUST evaluate compliance against the legal corridor: $V_{\text{GPS}} \le V_{\text{corr}} \le 1.10 \cdot V_{\text{GPS}} + 4.0\text{ km/h}$, flagging violations with red warning markers. |
 | **REQ-TUN-SPD-003** | Automated Gain/Offset Optimizer | The tool MUST provide a 1-click calibration optimizer that determines optimal $k$ and $c$ parameters satisfying ECE R39 across 100% of valid driving points while minimizing over-reading. |
 | **REQ-TUN-SPD-004** | GPS Fix Filtering | Speed evaluation MUST strictly exclude GPS points without valid 3D navigation fixes (`RBX_valid_fix == 0` or `RBX_fix_ST < 3`). |
+| **REQ-TUN-SPD-005** | Dynamic Speed Change Rate Filter | The tool MUST provide a configurable slider ($0.5\text{ to }15.0\text{ km/h/s}$) and enable toggle to filter out samples where the speed rate of change $\max(|dv_{\text{GPS}}/dt|, |dv_{\text{ind}}/dt|)$ exceeds the threshold, eliminating artificial ECE R39 boundary violations caused by sensor phase lag during hard acceleration or braking. |
 
 ### 4.5 Tab 4: Signal & Bus Analytics Requirements
 
@@ -179,6 +180,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TUN-SPD-002** | `tuner.py` | `computeAndRenderSpeed()` (ECE R39 corridor) | Legal boundary and violation marker tests |
 | **REQ-TUN-SPD-003** | `tuner.py` | `btn-auto-tune-speed` optimizer | Automated $k/c$ parameter solver test |
 | **REQ-TUN-SPD-004** | `tuner.py` | `extract_algo_data()`, speed validity filter | GPS fix state rejection test |
+| **REQ-TUN-SPD-005** | `tuner.py` | `getSpeedRateOfChange()`, `computeAndRenderSpeed()` | Dynamic acceleration filtering & sample qualification tests |
 | **REQ-TUN-ANA-001** | `tuner.py` | `compute_analytics()` (cycle timing & jitter) | Bus timing and packet loss calculation tests |
 | **REQ-TUN-ANA-002** | `tuner.py` | `compute_analytics()` (signal dispersion) | Slew rate and min/max/std dispersion tests |
 | **REQ-TUN-ANA-003** | `tuner.py` | `renderAnalyticsTable()`, `/api/export_analytics`| Interactive table & CSV download tests |

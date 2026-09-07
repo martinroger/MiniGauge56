@@ -1526,17 +1526,31 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
 
         <div class="card">
-          <div class="card-title">GPS Fix Masking</div>
+          <div class="card-title">Dynamic Lag & Fix Masking</div>
           <label style="display:flex; align-items:center; gap:0.45rem; font-size:0.8rem; cursor:pointer;">
             <input type="checkbox" id="chk-speed-require-gps" checked>
             <span>Ignore invalid GPS fixes (&lt; 3D fix)</span>
           </label>
+          <label style="display:flex; align-items:center; gap:0.45rem; font-size:0.8rem; cursor:pointer; margin-top:0.5rem;">
+            <input type="checkbox" id="chk-speed-filter-accel" checked>
+            <span>Filter high |dv/dt| (GPS phase lag)</span>
+          </label>
+          <div class="ctrl-group" style="margin-top:0.6rem;">
+            <div class="ctrl-label-row">
+              <span class="ctrl-label">Max Speed Change Rate</span>
+              <span class="ctrl-val" id="val-speed-maxaccel">4.0 km/h/s</span>
+            </div>
+            <input type="range" id="slider-speed-maxaccel" min="0.5" max="15.0" step="0.5" value="4.0">
+          </div>
           <div class="ctrl-group" style="margin-top:0.6rem;">
             <div class="ctrl-label-row">
               <span class="ctrl-label">Min Evaluation Speed</span>
               <span class="ctrl-val" id="val-speed-mineval">5.0 km/h</span>
             </div>
             <input type="range" id="slider-speed-mineval" min="0" max="25" step="1" value="5.0">
+          </div>
+          <div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.5rem; line-height:1.35;">
+            Disqualifies transient points during hard acceleration or braking where sensor phase lag distorts ECE R39 bounds.
           </div>
           <div style="margin-top:0.75rem;">
             <button id="btn-reset-speed-defaults" style="width:100%;">Reset Speed Defaults</button>
@@ -1565,6 +1579,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div class="scorecard">
             <span class="sc-label">Avg Speed Delta</span>
             <span class="sc-val" id="sc-speed-avgdelta">-- km/h</span>
+          </div>
+          <div class="scorecard">
+            <span class="sc-label">Qualified Samples</span>
+            <span class="sc-val" id="sc-speed-samples">--</span>
           </div>
         </div>
         <div class="plots-column">
@@ -3740,8 +3758,25 @@ HTML_PAGE = r"""<!DOCTYPE html>
       gain: 1.000,
       offset: 0.0,
       requireGps: true,
-      minEvalSpeed: 5.0
+      minEvalSpeed: 5.0,
+      filterAccel: true,
+      maxAccel: 4.0 // km/h/s
     };
+
+    function getSpeedRateOfChange(times, values, idx) {
+      if (idx <= 0 || !times || times.length < 2) return 0;
+      const tCurr = times[idx];
+      const vCurr = values[idx];
+      // Look back up to 5 samples to find a baseline at least 0.04s away to avoid near-zero dt division
+      for (let k = idx - 1; k >= Math.max(0, idx - 5); k--) {
+        const dt = tCurr - times[k];
+        if (dt >= 0.04) {
+          return Math.abs(vCurr - values[k]) / dt;
+        }
+      }
+      const dt1 = tCurr - times[idx - 1];
+      return dt1 > 0.005 ? Math.abs(vCurr - values[idx - 1]) / dt1 : 0;
+    }
 
     function loadSpeedSettings() {
       const saved = localStorage.getItem('minigauge_speed_params');
@@ -3753,6 +3788,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
       document.getElementById('slider-speed-offset').value = speedParams.offset;
       document.getElementById('val-speed-offset').innerText = speedParams.offset.toFixed(1) + ' km/h';
       document.getElementById('chk-speed-require-gps').checked = speedParams.requireGps;
+      document.getElementById('chk-speed-filter-accel').checked = speedParams.filterAccel;
+      document.getElementById('slider-speed-maxaccel').value = speedParams.maxAccel;
+      const gEq = (speedParams.maxAccel / 35.3039).toFixed(2);
+      document.getElementById('val-speed-maxaccel').innerText = `${speedParams.maxAccel.toFixed(1)} km/h/s (~${gEq} g)`;
       document.getElementById('slider-speed-mineval').value = speedParams.minEvalSpeed;
       document.getElementById('val-speed-mineval').innerText = speedParams.minEvalSpeed.toFixed(1) + ' km/h';
     }
@@ -3782,6 +3821,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
       computeAndRenderSpeed();
     });
 
+    document.getElementById('chk-speed-filter-accel').addEventListener('change', (e) => {
+      speedParams.filterAccel = e.target.checked;
+      saveSpeedSettings();
+      computeAndRenderSpeed();
+    });
+
+    document.getElementById('slider-speed-maxaccel').addEventListener('input', (e) => {
+      speedParams.maxAccel = parseFloat(e.target.value);
+      const gEq = (speedParams.maxAccel / 35.3039).toFixed(2);
+      document.getElementById('val-speed-maxaccel').innerText = `${speedParams.maxAccel.toFixed(1)} km/h/s (~${gEq} g)`;
+      saveSpeedSettings();
+      computeAndRenderSpeed();
+    });
+
     document.getElementById('slider-speed-mineval').addEventListener('input', (e) => {
       speedParams.minEvalSpeed = parseFloat(e.target.value);
       document.getElementById('val-speed-mineval').innerText = speedParams.minEvalSpeed.toFixed(1) + ' km/h';
@@ -3793,6 +3846,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
       speedParams.gain = 1.000;
       speedParams.offset = 0.0;
       speedParams.requireGps = true;
+      speedParams.filterAccel = true;
+      speedParams.maxAccel = 4.0;
       speedParams.minEvalSpeed = 5.0;
       saveSpeedSettings();
       loadSpeedSettings();
@@ -3819,7 +3874,17 @@ HTML_PAGE = r"""<!DOCTYPE html>
             indIdx++;
           }
           if (Math.abs(spd.times[indIdx] - tg) < 0.2) {
-            pairs.push({ vGps: vGps, vInd: spd.ind_speed[indIdx] });
+            let accelOk = true;
+            if (speedParams.filterAccel) {
+              const dGps = getSpeedRateOfChange(spd.gps_times, spd.gps_speed, i);
+              const dInd = getSpeedRateOfChange(spd.times, spd.ind_speed, indIdx);
+              if (Math.max(dGps, dInd) > speedParams.maxAccel) {
+                accelOk = false;
+              }
+            }
+            if (accelOk) {
+              pairs.push({ vGps: vGps, vInd: spd.ind_speed[indIdx] });
+            }
           }
         }
       }
@@ -3861,7 +3926,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       saveSpeedSettings();
       loadSpeedSettings();
       computeAndRenderSpeed();
-      alert(`Optimized parameters:\nGain k = ${speedParams.gain}\nOffset c = ${speedParams.offset} km/h\nECE R39 Compliance: ${(bestCompliance * 100).toFixed(1)}%`);
+      alert(`Optimized parameters:\nGain k = ${speedParams.gain}\nOffset c = ${speedParams.offset} km/h\nECE R39 Compliance: ${(bestCompliance * 100).toFixed(1)}% (${pairs.length} qualified points evaluated)`);
     });
 
     function computeAndRenderSpeed() {
@@ -3891,6 +3956,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       let compliantCount = 0;
       let geGpsCount = 0;
       let evalSampleCount = 0;
+      let totalEligibleCount = 0;
       let maxUnderread = 0;
       let maxOverread = 0;
       let sumDelta = 0;
@@ -3918,17 +3984,29 @@ HTML_PAGE = r"""<!DOCTYPE html>
               speedDeltas.push(delta);
 
               if (vGps >= speedParams.minEvalSpeed) {
-                evalSampleCount++;
-                sumDelta += delta;
-                if (vCorr >= vGps) geGpsCount++;
-                if (vCorr >= vGps && vCorr <= maxAllowed) {
-                  compliantCount++;
-                } else {
-                  violationTimes.push(t);
-                  violationValues.push(vCorr);
+                totalEligibleCount++;
+                let accelOk = true;
+                if (speedParams.filterAccel) {
+                  const dGps = getSpeedRateOfChange(spd.gps_times, spd.gps_speed, i);
+                  const dInd = getSpeedRateOfChange(spd.times, spd.ind_speed, indIdx);
+                  if (Math.max(dGps, dInd) > speedParams.maxAccel) {
+                    accelOk = false;
+                  }
                 }
-                if (delta < 0 && Math.abs(delta) > maxUnderread) maxUnderread = Math.abs(delta);
-                if (delta > 0 && delta > maxOverread) maxOverread = delta;
+
+                if (accelOk) {
+                  evalSampleCount++;
+                  sumDelta += delta;
+                  if (vCorr >= vGps) geGpsCount++;
+                  if (vCorr >= vGps && vCorr <= maxAllowed) {
+                    compliantCount++;
+                  } else {
+                    violationTimes.push(t);
+                    violationValues.push(vCorr);
+                  }
+                  if (delta < 0 && Math.abs(delta) > maxUnderread) maxUnderread = Math.abs(delta);
+                  if (delta > 0 && delta > maxOverread) maxOverread = delta;
+                }
               }
             }
           }
@@ -3950,6 +4028,18 @@ HTML_PAGE = r"""<!DOCTYPE html>
       document.getElementById('sc-speed-maxunder').innerText = (maxUnderread > 0 ? '-' : '') + maxUnderread.toFixed(1) + ' km/h';
       document.getElementById('sc-speed-maxover').innerText = '+' + maxOverread.toFixed(1) + ' km/h';
       document.getElementById('sc-speed-avgdelta').innerText = (avgDelta !== '--' ? (avgDelta > 0 ? '+' : '') + avgDelta : '--') + ' km/h';
+
+      const scSamples = document.getElementById('sc-speed-samples');
+      if (scSamples) {
+        if (totalEligibleCount > 0) {
+          const pct = (evalSampleCount / totalEligibleCount * 100).toFixed(0);
+          scSamples.innerText = `${evalSampleCount.toLocaleString()} (${pct}%)`;
+          scSamples.className = 'sc-val ' + (pct >= 75 ? 'good' : 'warn');
+        } else {
+          scSamples.innerText = '--';
+          scSamples.className = 'sc-val';
+        }
+      }
 
       const theme = getPlotlyLayoutTheme();
 
@@ -3987,7 +4077,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       ], {
         ...theme,
         margin: { t: 30, b: 35, l: 50, r: 25 },
-        title: { text: `ECE R39 Speed Compliance Corridor (k = ${speedParams.gain}, c = ${speedParams.offset} km/h)`, font: { size: 12 } },
+        title: { text: `ECE R39 Speed Compliance Corridor (k = ${speedParams.gain}, c = ${speedParams.offset} km/h${speedParams.filterAccel ? `, max |dv/dt| = ${speedParams.maxAccel} km/h/s` : ''})`, font: { size: 12 } },
         xaxis: { title: 'Time (s)', gridcolor: theme.gridcolor, range: [tMin, tMax] },
         yaxis: { title: 'Speed (km/h)', gridcolor: theme.gridcolor },
         legend: { orientation: 'h', y: 1.1, x: 0 }
