@@ -1235,23 +1235,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.4rem; font-size:0.78rem;">
             <div>
               <label>1st Gear</label>
-              <input type="number" id="gear-r-1" step="0.01" value="1.82" style="width:100%;">
+              <input type="number" id="gear-r-1" step="0.01" value="1.01" style="width:100%;">
             </div>
             <div>
               <label>2nd Gear</label>
-              <input type="number" id="gear-r-2" step="0.01" value="2.73" style="width:100%;">
+              <input type="number" id="gear-r-2" step="0.01" value="1.80" style="width:100%;">
             </div>
             <div>
               <label>3rd Gear</label>
-              <input type="number" id="gear-r-3" step="0.01" value="3.76" style="width:100%;">
+              <input type="number" id="gear-r-3" step="0.01" value="2.73" style="width:100%;">
             </div>
             <div>
               <label>4th Gear</label>
-              <input type="number" id="gear-r-4" step="0.01" value="4.54" style="width:100%;">
+              <input type="number" id="gear-r-4" step="0.01" value="3.76" style="width:100%;">
             </div>
             <div>
               <label>5th Gear</label>
-              <input type="number" id="gear-r-5" step="0.01" value="5.25" style="width:100%;">
+              <input type="number" id="gear-r-5" step="0.01" value="4.54" style="width:100%;">
             </div>
           </div>
           <div style="font-size:0.72rem; color:var(--text-muted); margin-top:0.4rem;">
@@ -2166,7 +2166,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       latchEnabled: false,
       latchHoldMs: 200,
       tol: 8.0,
-      r: [1.82, 2.73, 3.76, 4.54, 5.25],
+      r: [1.01, 1.80, 2.73, 3.76, 4.54],
       showGroundTruth: false
     };
 
@@ -2467,7 +2467,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       gearParams.latchEnabled = false;
       gearParams.latchHoldMs = 200;
       gearParams.tol = 8.0;
-      gearParams.r = [1.82, 2.73, 3.76, 4.54, 5.25];
+      gearParams.r = [1.01, 1.80, 2.73, 3.76, 4.54];
       gearParams.showGroundTruth = false;
       saveGearSettings();
       loadGearSettings();
