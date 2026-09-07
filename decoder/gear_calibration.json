@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "source": "gear_lab",
+  "updated_at": "2026-09-07T14:27:29Z",
+  "nominal_ratios": [
+    1.018,
+    1.793,
+    2.726,
+    3.763,
+    4.542
+  ],
+  "tolerance": 0.26,
+  "tolerance_abs": 0.25,
+  "latch_ms": 210,
+  "latch_time_ms": 220,
+  "min_speed_kph": 3.0,
+  "min_rpm": 650.0,
+  "stability_gate": 0.05,
+  "ratio_alpha": 0.15
+}

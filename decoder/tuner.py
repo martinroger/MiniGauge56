@@ -790,6 +790,27 @@ HTML_PAGE = r"""<!DOCTYPE html>
       position: relative;
       min-height: 180px;
     }
+    .timeline-needle {
+      position: absolute;
+      top: 0;
+      width: 2px;
+      background-color: #ef4444;
+      pointer-events: none;
+      z-index: 50;
+      box-shadow: 0 0 6px rgba(239, 68, 68, 0.8);
+      transition: none;
+    }
+    .model-badge {
+      display: inline-block;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .badge-latched { background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.35); }
+    .badge-neutral { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); }
 
     .analytics-viewport {
       width: 100%;
@@ -1265,7 +1286,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <input type="checkbox" id="chk-gear-groundtruth">
             <span>Show ITF_gear_position_ST trace</span>
           </label>
-          <div style="margin-top:0.75rem;">
+          <label style="display:flex; align-items:center; gap:0.45rem; font-size:0.8rem; cursor:pointer; margin-top:0.35rem;">
+            <input type="checkbox" id="chk-gear-gauge-pod" checked>
+            <span>Show Simulated Gear Gauge</span>
+          </label>
+          <div style="display:flex; gap:0.4rem; margin-top:0.75rem;">
+            <button id="btn-save-shared-cal" style="flex:1; font-size:0.75rem;" title="Save current tolerance and latch to gear_calibration.json">💾 Save Cal</button>
+            <button id="btn-load-shared-cal" style="flex:1; font-size:0.75rem;" title="Load parameters from gear_calibration.json">📥 Load Cal</button>
+          </div>
+          <div style="margin-top:0.4rem;">
             <button id="btn-reset-gear-defaults" style="width:100%;">Reset Gear Defaults</button>
           </div>
         </div>
@@ -1316,6 +1345,52 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div class="scorecard">
             <span class="sc-label">Est. 5th Gear</span>
             <span class="sc-val" id="sc-gear-time-5">--s</span>
+          </div>
+        </div>
+
+        <!-- DRIVE REPLAYER TOOLBAR & SIMULATED GEAR GAUGE -->
+        <div style="display:flex; flex-direction:column; gap:0.45rem; margin-top:0.45rem;">
+          <div class="card" style="display:flex; align-items:center; gap:0.6rem; padding:0.45rem 0.75rem; margin-bottom:0; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:0.35rem;">
+              <button id="btn-replay-play" class="btn-primary" style="padding:0.25rem 0.6rem; font-size:0.75rem;">▶ Play</button>
+              <button id="btn-replay-reset" style="padding:0.25rem 0.5rem; font-size:0.75rem;">⏹ Reset</button>
+              <button id="btn-replay-prev" style="padding:0.25rem 0.45rem; font-size:0.75rem;" title="Step Back 200ms">◀</button>
+              <button id="btn-replay-next" style="padding:0.25rem 0.45rem; font-size:0.75rem;" title="Step Forward 200ms">▶</button>
+              <select id="select-replay-speed" style="padding:0.2rem 0.4rem; font-size:0.75rem;">
+                <option value="0.25">0.25x</option>
+                <option value="0.5">0.5x</option>
+                <option value="1.0" selected>1.0x</option>
+                <option value="2.0">2.0x</option>
+                <option value="5.0">5.0x</option>
+                <option value="10.0">10.0x</option>
+              </select>
+            </div>
+            <div style="flex:1; display:flex; align-items:center; gap:0.5rem; min-width:200px;">
+              <input type="range" id="slider-replay-scrub" min="0" max="100" step="0.05" value="0" style="flex:1;">
+              <span id="lbl-replay-time" style="font-family:monospace; font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">0.00s / 0.00s</span>
+            </div>
+          </div>
+
+          <!-- Simulated Gear Position Gauge (Toggleable) -->
+          <div id="pod-simulated-gear" class="card" style="display:flex; align-items:center; justify-content:space-between; padding:0.55rem 1.25rem; background:linear-gradient(180deg, var(--card-bg) 0%, rgba(30,41,59,0.85) 100%); border-left:3px solid #3b82f6; margin-bottom:0;">
+            <div style="display:flex; align-items:center; gap:1.5rem;">
+              <div style="text-align:center;">
+                <div style="font-size:0.65rem; color:var(--text-muted); text-transform:uppercase; font-weight:700; letter-spacing:0.04em;">Simulated Gear</div>
+                <div id="pod-tuner-gear" style="font-size:2.2rem; font-weight:800; font-family:monospace; line-height:1; color:#3b82f6; margin-top:0.15rem;">N</div>
+              </div>
+              <div style="height:32px; width:1px; background:var(--panel-border);"></div>
+              <div style="display:flex; flex-direction:column; gap:0.15rem; font-size:0.75rem; font-family:monospace;">
+                <div>Speed: <span id="pod-tuner-speed" style="color:var(--text); font-weight:600;">0.0 km/h</span></div>
+                <div>Engine: <span id="pod-tuner-rpm" style="color:var(--text); font-weight:600;">0 RPM</span></div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:0.15rem; font-size:0.75rem; font-family:monospace;">
+                <div>Ratio: <span id="pod-tuner-ratio" style="color:var(--text); font-weight:600;">--</span></div>
+                <div>Status: <span id="pod-tuner-status" class="model-badge badge-neutral" style="font-size:0.65rem;">NEUTRAL</span></div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.6rem;">
+              <span id="pod-tuner-lock" style="font-size:0.72rem; color:var(--text-muted); font-family:monospace;">GPS Track Synced</span>
+            </div>
           </div>
         </div>
         <div class="plots-column">
@@ -1995,7 +2070,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     function handlePlotHover(ev) {
       if (ev && ev.points && ev.points[0] && ev.points[0].x !== undefined) {
-        updateVehicleMarker(ev.points[0].x);
+        const t = ev.points[0].x;
+        updateVehicleMarker(t);
+        if (typeof updateTunerReplayDisplay === 'function' && (!tunerReplayer || !tunerReplayer.playing)) {
+          updateTunerReplayDisplay(t);
+        }
       }
     }
 
@@ -2527,6 +2606,74 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
     });
 
+    // Toggle simulated gear gauge pod
+    const chkGaugePod = document.getElementById('chk-gear-gauge-pod');
+    if (chkGaugePod) {
+      chkGaugePod.addEventListener('change', (e) => {
+        const pod = document.getElementById('pod-simulated-gear');
+        if (pod) pod.style.display = e.target.checked ? 'flex' : 'none';
+      });
+    }
+
+    // Shared calibration save / load
+    const btnSaveCal = document.getElementById('btn-save-shared-cal');
+    if (btnSaveCal) {
+      btnSaveCal.addEventListener('click', async () => {
+        btnSaveCal.disabled = true;
+        try {
+          const payload = {
+            tolerance: gearParams.tol,
+            latch_ms: gearParams.latchHoldMs
+          };
+          const resp = await fetch('/api/calibration', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const res = await resp.json();
+          if (res.status === 'ok') {
+            alert('Shared Calibration saved to decoder/gear_calibration.json');
+          } else {
+            alert('Failed to save calibration: ' + (res.error || 'error'));
+          }
+        } catch (e) {
+          alert('Save calibration error: ' + e.message);
+        } finally {
+          btnSaveCal.disabled = false;
+        }
+      });
+    }
+
+    const btnLoadCal = document.getElementById('btn-load-shared-cal');
+    if (btnLoadCal) {
+      btnLoadCal.addEventListener('click', async () => {
+        btnLoadCal.disabled = true;
+        try {
+          const resp = await fetch('/api/calibration');
+          const cal = await resp.json();
+          if (cal.tolerance !== undefined) {
+            gearParams.tol = cal.tolerance;
+            const el = document.getElementById('slider-gear-tol');
+            if (el) el.value = cal.tolerance;
+          }
+          if (cal.latch_ms !== undefined) {
+            gearParams.latchHoldMs = cal.latch_ms;
+            const el = document.getElementById('slider-gear-latch');
+            if (el) el.value = cal.latch_ms;
+          }
+          saveGearSettings();
+          updateGearLabels();
+          renderGearMathExplanation();
+          computeAndRenderGear();
+          alert('Shared Calibration loaded from decoder/gear_calibration.json');
+        } catch (e) {
+          alert('Load calibration error: ' + e.message);
+        } finally {
+          btnLoadCal.disabled = false;
+        }
+      });
+    }
+
     function computeAndRenderGear() {
       if (!algoData || !algoData.gear) return;
       const g = algoData.gear;
@@ -2984,7 +3131,230 @@ HTML_PAGE = r"""<!DOCTYPE html>
         timeEl.on('plotly_relayout', handlePlotRelayout);
         timeEl.on('plotly_hover', handlePlotHover);
       }
+
+      currentGearData = {
+        times: filteredTimes,
+        speeds: filteredSpeeds,
+        rpms: filteredRpms,
+        ratios: smoothedRatios,
+        rawRatios: rawRatios,
+        gears: estimatedGears
+      };
+      initTunerReplayer();
     }
+
+    // =========================================================================
+    // TUNER DRIVE REPLAYER & SIMULATED GEAR GAUGE
+    // =========================================================================
+    let currentGearData = null;
+    const tunerReplayer = {
+      playing: false,
+      timer: null,
+      lastTimestamp: 0,
+      currentTime: 0,
+      minTime: 0,
+      maxTime: 0,
+      speed: 1.0
+    };
+
+    function ensureTunerNeedles() {
+      ['plot-gear-dynamics', 'plot-gear-time'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (!el.querySelector(`.timeline-needle-${id}`)) {
+          const needle = document.createElement('div');
+          needle.className = `timeline-needle timeline-needle-${id}`;
+          needle.style.display = 'none';
+          el.appendChild(needle);
+        }
+      });
+    }
+
+    function initTunerReplayer() {
+      if (!currentGearData || !currentGearData.times || currentGearData.times.length === 0) return;
+      ensureTunerNeedles();
+      const times = currentGearData.times;
+      tunerReplayer.minTime = times[0];
+      tunerReplayer.maxTime = times[times.length - 1];
+
+      const scrub = document.getElementById('slider-replay-scrub');
+      if (scrub) {
+        scrub.min = tunerReplayer.minTime;
+        scrub.max = tunerReplayer.maxTime;
+        scrub.step = Math.max(0.01, (tunerReplayer.maxTime - tunerReplayer.minTime) / 3500);
+        if (tunerReplayer.currentTime < tunerReplayer.minTime || tunerReplayer.currentTime > tunerReplayer.maxTime) {
+          tunerReplayer.currentTime = tunerReplayer.minTime;
+        }
+        scrub.value = tunerReplayer.currentTime;
+      }
+      updateTunerReplayDisplay(tunerReplayer.currentTime);
+    }
+
+    function updateTunerReplayDisplay(t) {
+      tunerReplayer.currentTime = t;
+      const scrub = document.getElementById('slider-replay-scrub');
+      if (scrub && Math.abs(parseFloat(scrub.value) - t) > 0.05) {
+        scrub.value = t;
+      }
+      const lbl = document.getElementById('lbl-replay-time');
+      if (lbl) {
+        lbl.textContent = `${t.toFixed(2)}s / ${tunerReplayer.maxTime.toFixed(2)}s`;
+      }
+
+      // Update Plotly needles on dynamics and gear time
+      ['plot-gear-dynamics', 'plot-gear-time'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el || !el._fullLayout || !el._fullLayout.xaxis) return;
+        const needle = el.querySelector(`.timeline-needle-${id}`);
+        if (!needle) return;
+
+        const xaxis = el._fullLayout.xaxis;
+        if (t < xaxis.range[0] || t > xaxis.range[1]) {
+          needle.style.display = 'none';
+          return;
+        }
+        const leftPx = xaxis._offset + xaxis.d2p(t);
+        needle.style.left = `${leftPx}px`;
+        needle.style.top = `${el._fullLayout.margin.t}px`;
+        needle.style.height = `${el._fullLayout._size.h}px`;
+        needle.style.display = 'block';
+      });
+
+      // Update vehicle marker on GPS map
+      updateVehicleMarker(t);
+
+      // Update Simulated Gear Gauge Pod
+      if (!currentGearData || !currentGearData.times || currentGearData.times.length === 0) return;
+      const d = currentGearData;
+      let low = 0, high = d.times.length - 1;
+      let idx = 0;
+      while (low <= high) {
+        const mid = (low + high) >> 1;
+        if (d.times[mid] === t) { idx = mid; break; }
+        else if (d.times[mid] < t) { idx = mid; low = mid + 1; }
+        else high = mid - 1;
+      }
+
+      const spd = d.speeds[idx] !== undefined ? d.speeds[idx] : 0;
+      const rpm = d.rpms[idx] !== undefined ? d.rpms[idx] : 0;
+      const ratio = (d.ratios[idx] !== null && d.ratios[idx] !== undefined) ? d.ratios[idx] : (d.rawRatios[idx] || 0);
+      const gear = d.gears[idx] !== undefined ? d.gears[idx] : 0;
+
+      const gEl = document.getElementById('pod-tuner-gear');
+      if (gEl) {
+        gEl.textContent = gear === 0 ? 'N' : String(gear);
+        gEl.style.color = gear === 0 ? 'var(--text-muted)' : '#3b82f6';
+      }
+      const sEl = document.getElementById('pod-tuner-speed');
+      if (sEl) sEl.textContent = `${spd.toFixed(1)} km/h`;
+      const rEl = document.getElementById('pod-tuner-rpm');
+      if (rEl) rEl.textContent = `${Math.round(rpm)} RPM`;
+      const ratEl = document.getElementById('pod-tuner-ratio');
+      if (ratEl) ratEl.textContent = ratio > 0.01 ? ratio.toFixed(2) : '--';
+      const statEl = document.getElementById('pod-tuner-status');
+      if (statEl) {
+        statEl.textContent = gear === 0 ? 'NEUTRAL/COAST' : 'LATCHED';
+        statEl.className = `model-badge ${gear === 0 ? 'badge-neutral' : 'badge-latched'}`;
+      }
+    }
+
+    function playTunerStep(timestamp) {
+      if (!tunerReplayer.playing) return;
+      if (!tunerReplayer.lastTimestamp) tunerReplayer.lastTimestamp = timestamp;
+      const dt = (timestamp - tunerReplayer.lastTimestamp) / 1000.0;
+      tunerReplayer.lastTimestamp = timestamp;
+
+      let nextT = tunerReplayer.currentTime + dt * tunerReplayer.speed;
+      if (nextT >= tunerReplayer.maxTime) {
+        nextT = tunerReplayer.maxTime;
+        updateTunerReplayDisplay(nextT);
+        stopTunerPlayback();
+        return;
+      }
+      updateTunerReplayDisplay(nextT);
+      tunerReplayer.timer = requestAnimationFrame(playTunerStep);
+    }
+
+    function startTunerPlayback() {
+      if (tunerReplayer.currentTime >= tunerReplayer.maxTime) {
+        tunerReplayer.currentTime = tunerReplayer.minTime;
+      }
+      tunerReplayer.playing = true;
+      tunerReplayer.lastTimestamp = 0;
+      const btn = document.getElementById('btn-replay-play');
+      if (btn) btn.textContent = '⏸ Pause';
+      tunerReplayer.timer = requestAnimationFrame(playTunerStep);
+    }
+
+    function stopTunerPlayback() {
+      tunerReplayer.playing = false;
+      if (tunerReplayer.timer) {
+        cancelAnimationFrame(tunerReplayer.timer);
+        tunerReplayer.timer = null;
+      }
+      const btn = document.getElementById('btn-replay-play');
+      if (btn) btn.textContent = '▶ Play';
+    }
+
+    // Replayer controls setup
+    const btnPlay = document.getElementById('btn-replay-play');
+    if (btnPlay) {
+      btnPlay.addEventListener('click', () => {
+        if (tunerReplayer.playing) stopTunerPlayback();
+        else startTunerPlayback();
+      });
+    }
+
+    const btnReset = document.getElementById('btn-replay-reset');
+    if (btnReset) {
+      btnReset.addEventListener('click', () => {
+        stopTunerPlayback();
+        updateTunerReplayDisplay(tunerReplayer.minTime);
+      });
+    }
+
+    const btnPrev = document.getElementById('btn-replay-prev');
+    if (btnPrev) {
+      btnPrev.addEventListener('click', () => {
+        stopTunerPlayback();
+        updateTunerReplayDisplay(Math.max(tunerReplayer.minTime, tunerReplayer.currentTime - 0.2));
+      });
+    }
+
+    const btnNext = document.getElementById('btn-replay-next');
+    if (btnNext) {
+      btnNext.addEventListener('click', () => {
+        stopTunerPlayback();
+        updateTunerReplayDisplay(Math.min(tunerReplayer.maxTime, tunerReplayer.currentTime + 0.2));
+      });
+    }
+
+    const selSpeed = document.getElementById('select-replay-speed');
+    if (selSpeed) {
+      selSpeed.addEventListener('change', (e) => {
+        tunerReplayer.speed = parseFloat(e.target.value) || 1.0;
+      });
+    }
+
+    const scrubSlider = document.getElementById('slider-replay-scrub');
+    if (scrubSlider) {
+      scrubSlider.addEventListener('input', (e) => {
+        stopTunerPlayback();
+        updateTunerReplayDisplay(parseFloat(e.target.value));
+      });
+    }
+
+    ['plot-gear-dynamics', 'plot-gear-time'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.on('plotly_click', (d) => {
+          if (d && d.points && d.points[0] && d.points[0].x !== undefined) {
+            stopTunerPlayback();
+            updateTunerReplayDisplay(d.points[0].x);
+          }
+        });
+      }
+    });
 
     // TAB 2: FUEL LEVEL FILTERING LOGIC
     const fuelParams = {
@@ -3823,11 +4193,55 @@ class TunerHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(csv_bytes)
 
+            elif path == "/api/calibration":
+                cal_file = SCRIPT_DIR / "gear_calibration.json"
+                if cal_file.is_file():
+                    try:
+                        with open(cal_file, "r", encoding="utf-8") as f:
+                            self.send_json(json.load(f))
+                            return
+                    except Exception:
+                        pass
+                self.send_json({
+                    "version": 1,
+                    "nominal_ratios": [1.018, 1.793, 2.726, 3.763, 4.542],
+                    "tolerance": 0.25,
+                    "latch_ms": 200,
+                    "min_speed_kph": 3.0,
+                    "min_rpm": 650.0
+                })
+
             else:
                 self.send_error(404, "Not Found")
 
         except Exception as e:
             self.send_error(500, str(e))
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path == "/api/calibration":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(length)
+                data = json.loads(body.decode("utf-8"))
+                cal_file = SCRIPT_DIR / "gear_calibration.json"
+                existing = {}
+                if cal_file.is_file():
+                    try:
+                        with open(cal_file, "r", encoding="utf-8") as f:
+                            existing = json.load(f)
+                    except Exception:
+                        pass
+                existing.update(data)
+                with open(cal_file, "w", encoding="utf-8") as f:
+                    json.dump(existing, f, indent=2)
+                self.send_json({"status": "ok", "saved": existing})
+            except Exception as e:
+                self.send_json({"status": "error", "error": str(e)}, status=500)
+        else:
+            self.send_error(404)
 
 
 def find_available_port(start_port: int = 8081, max_tries: int = 100) -> int:

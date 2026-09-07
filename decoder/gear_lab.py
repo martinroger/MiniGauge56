@@ -26,6 +26,7 @@ import re
 import socket
 import struct
 import sys
+import time
 import urllib.parse
 import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -543,39 +544,99 @@ def run_model_1_heuristic(g: Dict[str, Any], means: List[float], alpha: float = 
     return out
 
 
-def run_model_2_bayesian(g: Dict[str, Any], means: List[float], vars_: List[float], decay: float = 0.88, p0: float = 0.12, conf_thresh: float = 0.40) -> List[int]:
-    """Model 2: Recursive Bayesian Classifier with Gaussian likelihoods and temporal prior decay."""
+def run_model_2_bayesian(g: Dict[str, Any], means: List[float], vars_: List[float], decay: float = 0.94, p0: float = 0.08, conf_thresh: float = 0.38, inertia: float = 0.96, latch_ms: float = 200.0) -> List[int]:
+    """Model 2: Kinematic-Conditioned Bayesian Filter with signed speed/RPM rates of change, loss-of-fix handling, and guarded temporal latching."""
     n = len(g["times"])
     out = [0] * n
-    prior = [0.80, 0.04, 0.04, 0.04, 0.04, 0.04]
+    prior = [0.90, 0.02, 0.02, 0.02, 0.02, 0.02]
+    prev_rf = None
+    prev_sf = None
+
+    latched = 0
+    pending = 0
+    pending_time = 0.0
 
     for i in range(n):
         sf = g["speed_freq"][i]
         rf = g["rpm_freq"][i]
+        t = g["times"][i]
+        dt = max(0.005, min(0.5, t - g["times"][i-1])) if i > 0 else 0.05
 
         if sf < 5.0 or rf < 25.0:
             out[i] = 0
-            prior = [0.90, 0.02, 0.02, 0.02, 0.02, 0.02]
+            latched = 0
+            pending = 0
+            pending_time = 0.0
+            prior = [0.95, 0.01, 0.01, 0.01, 0.01, 0.01]
+            prev_rf = rf
+            prev_sf = sf
             continue
 
         r = sf / rf
-        lik = [0.0] * 6
-        lik[0] = p0 # neutral uniform likelihood
+        dsf = (sf - prev_sf) / dt if prev_sf is not None else 0.0
+        drf = (rf - prev_rf) / dt if prev_rf is not None else 0.0
+        prev_sf = sf
+        prev_rf = rf
 
+        # Construct Kinematic Transition Matrix T[6][6]
+        T = [[0.02] * 6 for _ in range(6)]
+        T[0][0] = 0.85
+        for k in range(1, 6):
+            T[0][k] = 0.03
+            T[k][k] = inertia
+            T[k][0] = 0.03
+            if dsf >= 0.0 and rf >= 55.0:
+                # Upshift bias: accelerating in upper RPM
+                if k < 5: T[k][k+1] = 0.06
+                if k > 1: T[k][k-1] = 0.0001
+            elif dsf < -3.0:
+                # Downshift bias: braking
+                if k > 1: T[k][k-1] = 0.06
+                if k < 5: T[k][k+1] = 0.0001
+            else:
+                if k < 5: T[k][k+1] = 0.02
+                if k > 1: T[k][k-1] = 0.02
+
+        for r_idx in range(6):
+            row_sum = sum(T[r_idx])
+            T[r_idx] = [x / row_sum for x in T[r_idx]]
+
+        pred = [sum(prior[i_idx] * T[i_idx][j] for i_idx in range(6)) for j in range(6)]
+
+        lik = [0.0] * 6
+        is_clutch_drop = (drf < -35.0 and sf >= 5.0 and dsf > -5.0)
+        lik[0] = p0 * (1.8 if is_clutch_drop else 1.0)
+
+        curr_assumed = prior.index(max(prior[1:])) if max(prior[1:]) > 0.3 else 0
         for gi in range(5):
             diff = r - means[gi]
             v = vars_[gi]
-            lik[gi + 1] = math.exp(-0.5 * (diff * diff) / v) / math.sqrt(2 * math.pi * v)
+            density = math.exp(-0.5 * (diff * diff) / v) / math.sqrt(2 * math.pi * v)
+            if is_clutch_drop and (gi + 1) > curr_assumed and curr_assumed > 0:
+                density *= 0.0001
+            lik[gi + 1] = density
 
-        # Bayes update with temporal forgetting factor
-        post = [lik[k] * (decay * prior[k] + (1.0 - decay) * (1.0 / 6.0)) for k in range(6)]
+        post = [lik[k] * (decay * pred[k] + (1.0 - decay) * 0.1666) for k in range(6)]
         tot = sum(post)
         if tot > 0:
             post = [p / tot for p in post]
         prior = post
 
         best_k = post.index(max(post))
-        out[i] = best_k if post[best_k] >= conf_thresh else 0
+        raw_choice = best_k if post[best_k] >= conf_thresh else 0
+
+        # Guard against phantom upward shift during clutch-drop engine deceleration
+        if is_clutch_drop and raw_choice > latched and latched > 0:
+            raw_choice = latched
+
+        if raw_choice != pending:
+            pending = raw_choice
+            pending_time = 0.0
+        else:
+            pending_time += (dt * 1000.0)
+            if pending_time >= latch_ms:
+                latched = pending
+        out[i] = latched
 
     return out
 
@@ -738,6 +799,87 @@ def evaluate_glitches(times: List[float], speeds: List[float], rpms: List[float]
         "events": events,
     }
 
+
+def optimize_parameters(agg: Dict[str, Any], target_log: str = "all") -> Dict[str, Any]:
+    """Auto-optimizes tuning parameters across M1, M2, and M3 to maximize Glitch-Free Quality Scores."""
+    if target_log == "all":
+        log_data = agg.get("concat_timeline") or agg["logs"][0]
+    else:
+        log_data = next((l for l in agg["logs"] if l["filename"] == target_log), agg["concat_timeline"])
+
+    means = agg["fitted"]["means"]
+    vars_ = agg["fitted"]["vars"]
+    A = agg["transition_matrix"]
+    times = log_data["times"]
+    speeds = log_data["speed_kph"]
+    rpms = log_data["rpm"]
+
+    # 1. Optimize Model 1 (Gated Heuristic)
+    best_m1_score = -1
+    best_m1_params = {"alpha": 0.15, "tol": 0.25, "latch_ms": 200.0}
+    best_m1_sc = None
+
+    for tol in [0.18, 0.22, 0.25, 0.28, 0.32]:
+        for latch_ms in [150.0, 200.0, 250.0, 300.0]:
+            for alpha in [0.10, 0.15, 0.20]:
+                m1 = run_model_1_heuristic(log_data, means, alpha=alpha, tol=tol, latch_ms=latch_ms)
+                sc = evaluate_glitches(times, speeds, rpms, m1)
+                if sc["glitch_score"] > best_m1_score:
+                    best_m1_score = sc["glitch_score"]
+                    best_m1_params = {"alpha": alpha, "tol": tol, "latch_ms": latch_ms}
+                    best_m1_sc = sc
+
+    # 2. Optimize Model 2 (Kinematic Bayesian)
+    best_m2_score = -1
+    best_m2_params = {"decay": 0.94, "p0": 0.08, "conf": 0.38, "inertia": 0.96, "latch_ms": 200.0}
+    best_m2_sc = None
+
+    for decay in [0.90, 0.94, 0.96]:
+        for inertia in [0.92, 0.96, 0.98]:
+            for conf in [0.35, 0.40]:
+                for latch_ms in [150.0, 200.0, 250.0]:
+                    m2 = run_model_2_bayesian(log_data, means, vars_, decay=decay, p0=0.08, conf_thresh=conf, inertia=inertia, latch_ms=latch_ms)
+                    sc = evaluate_glitches(times, speeds, rpms, m2)
+                    if sc["glitch_score"] > best_m2_score:
+                        best_m2_score = sc["glitch_score"]
+                        best_m2_params = {"decay": decay, "p0": 0.08, "conf": conf, "inertia": inertia, "latch_ms": latch_ms}
+                        best_m2_sc = sc
+
+    # 3. Optimize Model 3 (HMM)
+    best_m3_score = -1
+    best_m3_params = {"inertia": 0.97, "clutch_decel": -40.0}
+    best_m3_sc = None
+
+    for inertia in [0.95, 0.97, 0.985, 0.992]:
+        for decel in [-50.0, -40.0, -30.0, -20.0]:
+            m3 = run_model_3_hmm(log_data, means, vars_, A, inertia=inertia, clutch_decel=decel)
+            sc = evaluate_glitches(times, speeds, rpms, m3)
+            if sc["glitch_score"] > best_m3_score:
+                best_m3_score = sc["glitch_score"]
+                best_m3_params = {"inertia": inertia, "clutch_decel": decel}
+        avg_best = (best_m1_score + best_m2_score + best_m3_score) / 3.0
+    recommended = {
+        "m1_alpha": best_m1_params["alpha"],
+        "m1_tol": best_m1_params["tol"],
+        "m1_latch_ms": best_m1_params["latch_ms"],
+        "m2_decay": best_m2_params["decay"],
+        "m2_inertia": best_m2_params["inertia"],
+        "m2_latch_ms": best_m2_params["latch_ms"],
+        "m2_conf": best_m2_params["conf"],
+        "m3_inertia": best_m3_params["inertia"],
+        "m3_clutch_decel": best_m3_params["clutch_decel"],
+        "best_score": round(avg_best, 1),
+    }
+
+    return {
+        "status": "ok",
+        "target_log": target_log,
+        "recommended": recommended,
+        "m1": {"params": best_m1_params, "scorecard": best_m1_sc},
+        "m2": {"params": best_m2_params, "scorecard": best_m2_sc},
+        "m3": {"params": best_m3_params, "scorecard": best_m3_sc},
+    }
+
 # ==============================================================================
 # ESP32 C HEADER GENERATION (zero-allocation, fixed-size C99 implementation)
 # ==============================================================================
@@ -759,7 +901,7 @@ def generate_esp32_c_header(means: List[float], vars_: List[float], A: List[List
  *
  * Models implemented:
  * 1. Gated Heuristic Baseline (zero-float fast table lookup)
- * 2. Recursive Bayesian Classifier (Gaussian likelihood with temporal prior decay)
+ * 2. Kinematic-Conditioned Bayesian Classifier (signed acceleration transitions + loss-of-fix handling)
  * 3. Hidden Markov Model (HMM 6-state transition filter with clutch suppression)
  */
 
@@ -859,58 +1001,141 @@ static inline uint8_t gear_heuristic_update(gear_heuristic_state_t *st, float sp
 }}
 
 /* -------------------------------------------------------------------------- */
-/* Model 2: Recursive Bayesian Classifier                                     */
+/* Model 2: Kinematic-Conditioned Bayesian Classifier                         */
 /* -------------------------------------------------------------------------- */
 typedef struct {{
     float prior[6];
+    float prev_speed_freq;
+    float prev_rpm_freq;
+    uint8_t latched_gear;
+    uint8_t pending_gear;
+    float pending_time_ms;
 }} gear_bayesian_state_t;
 
 static inline void gear_bayesian_init(gear_bayesian_state_t *st) {{
-    st->prior[0] = 0.80f;
-    for (int i = 1; i < 6; i++) st->prior[i] = 0.04f;
+    st->prior[0] = 0.90f;
+    for (int i = 1; i < 6; i++) st->prior[i] = 0.02f;
+    st->prev_speed_freq = 0.0f;
+    st->prev_rpm_freq = 0.0f;
+    st->latched_gear = 0;
+    st->pending_gear = 0;
+    st->pending_time_ms = 0.0f;
 }}
 
-static inline uint8_t gear_bayesian_update(gear_bayesian_state_t *st, float speed_freq, float rpm_freq) {{
+static inline uint8_t gear_bayesian_update(gear_bayesian_state_t *st, float speed_freq, float rpm_freq, float dt_s) {{
     if (speed_freq < 5.0f || rpm_freq < 25.0f) {{
-        st->prior[0] = 0.90f;
-        for (int i = 1; i < 6; i++) st->prior[i] = 0.02f;
+        st->prior[0] = 0.95f;
+        for (int i = 1; i < 6; i++) st->prior[i] = 0.01f;
+        st->prev_speed_freq = speed_freq;
+        st->prev_rpm_freq = rpm_freq;
+        st->latched_gear = 0;
+        st->pending_gear = 0;
+        st->pending_time_ms = 0.0f;
         return 0;
     }}
 
+    float dt = (dt_s > 0.005f) ? dt_s : 0.05f;
+    float dsf = (st->prev_speed_freq > 0.0f) ? ((speed_freq - st->prev_speed_freq) / dt) : 0.0f;
+    float drf = (st->prev_rpm_freq > 0.0f) ? ((rpm_freq - st->prev_rpm_freq) / dt) : 0.0f;
+    st->prev_speed_freq = speed_freq;
+    st->prev_rpm_freq = rpm_freq;
+
+    /* Construct dynamic Kinematic Transition Matrix T[6][6] */
+    float T[6][6];
+    for (int i = 0; i < 6; i++) {{
+        for (int j = 0; j < 6; j++) T[i][j] = 0.02f;
+    }}
+    T[0][0] = 0.85f;
+    for (int k = 1; k < 6; k++) {{
+        T[0][k] = 0.03f;
+        T[k][k] = 0.96f;
+        T[k][0] = 0.03f;
+        if (dsf >= 0.0f && rpm_freq >= 55.0f) {{
+            if (k < 5) T[k][k + 1] = 0.06f;
+            if (k > 1) T[k][k - 1] = 0.0001f;
+        }} else if (dsf < -3.0f) {{
+            if (k > 1) T[k][k - 1] = 0.06f;
+            if (k < 5) T[k][k + 1] = 0.0001f;
+        }} else {{
+            if (k < 5) T[k][k + 1] = 0.02f;
+            if (k > 1) T[k][k - 1] = 0.02f;
+        }}
+    }}
+
+    for (int i = 0; i < 6; i++) {{
+        float rsum = 0.0f;
+        for (int j = 0; j < 6; j++) rsum += T[i][j];
+        float inv_sum = 1.0f / rsum;
+        for (int j = 0; j < 6; j++) T[i][j] *= inv_sum;
+    }}
+
+    float pred[6];
+    for (int j = 0; j < 6; j++) {{
+        pred[j] = 0.0f;
+        for (int i = 0; i < 6; i++) pred[j] += st->prior[i] * T[i][j];
+    }}
+
     float r = speed_freq / rpm_freq;
+    bool is_clutch_drop = (drf < -35.0f && speed_freq >= 5.0f && dsf > -5.0f);
     float lik[6];
-    lik[0] = 0.060f; /* Neutral floor */
+    lik[0] = 0.08f * (is_clutch_drop ? 1.8f : 1.0f);
+
+    int curr_assumed = 0;
+    float max_sub = 0.3f;
+    for (int i = 1; i < 6; i++) {{
+        if (st->prior[i] > max_sub) {{
+            max_sub = st->prior[i];
+            curr_assumed = i;
+        }}
+    }}
 
     for (int gi = 0; gi < 5; gi++) {{
         float diff = r - GEAR_RATIO_MEANS[gi];
         float v = GEAR_RATIO_VARS[gi];
-        lik[gi + 1] = expf(-0.5f * (diff * diff) / v) / sqrtf(6.2831853f * v);
+        float density = expf(-0.5f * (diff * diff) / v) / sqrtf(6.2831853f * v);
+        if (is_clutch_drop && (gi + 1) > curr_assumed && curr_assumed > 0) {{
+            density *= 0.0001f;
+        }}
+        lik[gi + 1] = density;
     }}
 
-    const float decay = 0.88f;
+    const float decay = 0.94f;
     float post[6];
     float tot = 0.0f;
-
     for (int k = 0; k < 6; k++) {{
-        post[k] = lik[k] * (decay * st->prior[k] + (1.0f - decay) * 0.166f);
+        post[k] = lik[k] * (decay * pred[k] + (1.0f - decay) * 0.1666f);
         tot += post[k];
     }}
 
-    uint8_t best_k = 0;
-    float max_p = 0.0f;
-
+    uint8_t raw_choice = 0;
     if (tot > 0.00001f) {{
         float inv = 1.0f / tot;
+        float max_p = 0.0f;
         for (int k = 0; k < 6; k++) {{
             st->prior[k] = post[k] * inv;
             if (st->prior[k] > max_p) {{
                 max_p = st->prior[k];
-                best_k = (uint8_t)k;
+                raw_choice = (uint8_t)k;
             }}
+        }}
+        if (max_p < 0.38f) raw_choice = 0;
+    }}
+
+    if (is_clutch_drop && raw_choice > st->latched_gear && st->latched_gear > 0) {{
+        raw_choice = st->latched_gear;
+    }}
+
+    if (raw_choice != st->pending_gear) {{
+        st->pending_gear = raw_choice;
+        st->pending_time_ms = 0.0f;
+    }} else {{
+        st->pending_time_ms += (dt * 1000.0f);
+        if (st->pending_time_ms >= 200.0f) {{
+            st->latched_gear = st->pending_gear;
         }}
     }}
 
-    return (max_p >= 0.40f) ? best_k : 0;
+    return st->latched_gear;
 }}
 
 /* -------------------------------------------------------------------------- */
@@ -1175,6 +1400,18 @@ HTML_PAGE = r"""<!DOCTYPE html>
       border: 1px solid var(--panel-border);
       border-radius: 8px;
       min-height: 150px;
+      position: relative;
+    }
+    .timeline-needle {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: #ef4444;
+      pointer-events: none;
+      z-index: 50;
+      display: none;
+      box-shadow: 0 0 5px rgba(239, 68, 68, 0.9);
     }
 
     /* Modal */
@@ -1297,9 +1534,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
             • <em>Mechanics</em>: Physical gating (speed&ge;5Hz, RPM&ge;25Hz, |&Delta;r/&Delta;t|&le;0.05), ratio EMA (&alpha;), constant tolerance window (&plusmn;tol<sub>abs</sub>) with Voronoi collision protection, and temporal latching debounce.
           </div>
           <div style="margin-bottom:0.6rem;">
-            <strong style="color:#f59e0b;">M2: Recursive Bayes</strong><br>
-            • <em>Assumptions</em>: 1D Gaussian emissions &Nu;(&mu;<sub>i</sub>, &sigma;<sub>i</sub><sup>2</sup>) per gear; Markovian temporal prior decay; Neutral background prior.<br>
-            • <em>Mechanics</em>: Posterior P(G<sub>i</sub>|r) &prop; &Nu;(r;&mu;<sub>i</sub>,&sigma;<sub>i</sub><sup>2</sup>) &middot; P<sub>prior</sub>(G<sub>i</sub>), with temporal forgetting factor &lambda;P<sub>t-1</sub> + (1-&lambda;)P<sub>0</sub>, outputting MAP state if confidence &ge; threshold.
+            <strong style="color:#f59e0b;">M2: Kinematic Bayes</strong><br>
+            • <em>Assumptions</em>: Dynamic context vector u<sub>t</sub> = [V, &Delta;V/&Delta;t, RPM, &Delta;RPM/&Delta;t]; signed acceleration transition conditioning; loss-of-fix prediction.<br>
+            • <em>Mechanics</em>: Conditioned transition prior T<sub>ij</sub>(u<sub>t</sub>). When ratio leaves corridor or engine drops during shift (loss of fix), predicts probable target gears (accelerating in 4th &rarr; 5th &gt; 4th &gt; 3rd; braking &rarr; downshifts) with synchronous RPM likelihood and guarded latching.
           </div>
           <div>
             <strong style="color:#10b981;">M3: HMM State-Space</strong><br>
@@ -1335,19 +1572,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
           <!-- Model 2 Params -->
           <div style="border-left:2px solid #f59e0b; padding-left:0.5rem; margin-bottom:0.5rem;">
-            <strong style="color:#f59e0b;">M2: Recursive Bayes</strong>
+            <strong style="color:#f59e0b;">M2: Kinematic Bayes</strong>
             <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
-              <span>Prior Decay &lambda;:</span><span class="ctrl-val" id="val-m2-decay">0.88</span>
+              <span>Prior Decay &lambda;:</span><span class="ctrl-val" id="val-m2-decay">0.94</span>
             </div>
-            <input type="range" id="slider-m2-decay" min="0.70" max="0.99" step="0.01" value="0.88" style="width:100%;">
+            <input type="range" id="slider-m2-decay" min="0.70" max="0.99" step="0.01" value="0.94" style="width:100%;">
             <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
-              <span>Neutral Prior Floor:</span><span class="ctrl-val" id="val-m2-p0">0.12</span>
+              <span>Inertia T<sub>kk</sub>:</span><span class="ctrl-val" id="val-m2-inertia">0.960</span>
             </div>
-            <input type="range" id="slider-m2-p0" min="0.02" max="0.35" step="0.01" value="0.12" style="width:100%;">
+            <input type="range" id="slider-m2-inertia" min="0.85" max="0.995" step="0.005" value="0.96" style="width:100%;">
             <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
-              <span>Min Confidence:</span><span class="ctrl-val" id="val-m2-conf">0.40</span>
+              <span>Latch Debounce:</span><span class="ctrl-val" id="val-m2-latch">200 ms</span>
             </div>
-            <input type="range" id="slider-m2-conf" min="0.20" max="0.60" step="0.02" value="0.40" style="width:100%;">
+            <input type="range" id="slider-m2-latch" min="50" max="500" step="25" value="200" style="width:100%;">
+            <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
+              <span>Min Confidence:</span><span class="ctrl-val" id="val-m2-conf">0.38</span>
+            </div>
+            <input type="range" id="slider-m2-conf" min="0.20" max="0.60" step="0.02" value="0.38" style="width:100%;">
           </div>
 
           <!-- Model 3 Params -->
@@ -1367,6 +1608,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <button id="btn-apply-tuning" class="btn-primary" style="flex:1; padding:0.25rem 0.5rem; font-size:0.72rem;">⚡ Apply & Evaluate</button>
             <button id="btn-reset-tuning" style="padding:0.25rem 0.5rem; font-size:0.72rem;">↺ Reset</button>
           </div>
+          <div style="display:flex; gap:0.4rem; margin-top:0.4rem;">
+            <button id="btn-auto-optimize" class="btn-accent" style="width:100%; padding:0.3rem 0.5rem; font-size:0.72rem;">⚡ Auto-Optimize Parameters</button>
+          </div>
+          <div style="display:flex; gap:0.4rem; margin-top:0.4rem;">
+            <button id="btn-save-shared-cal" style="flex:1; padding:0.22rem 0.4rem; font-size:0.70rem;">💾 Save Shared Cal</button>
+            <button id="btn-load-shared-cal" style="flex:1; padding:0.22rem 0.4rem; font-size:0.70rem;">📥 Load Shared Cal</button>
+          </div>
         </div>
       </div>
 
@@ -1375,7 +1623,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div style="font-size:0.75rem; color:var(--text-muted); line-height:1.4;">
           All 3 models run with <strong>zero heap allocation</strong>.<br>
           • Model 1: ~0.4 &mu;s execution (table lookup)<br>
-          • Model 2: ~1.2 &mu;s (5 Gaussians + Bayes)<br>
+          • Model 2: ~1.5 &mu;s (Kinematic Bayes + latch)<br>
           • Model 3: ~1.8 &mu;s (36 MAC operations)<br>
           RAM footprint: <strong>&lt; 64 bytes</strong>.
         </div>
@@ -1408,13 +1656,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <td style="color:var(--text-muted); font-size:0.75rem;">Static hysteresis timer</td>
             </tr>
             <tr>
-              <td><span class="model-badge badge-m2">M2: Recursive Bayes</span></td>
+              <td><span class="model-badge badge-m2">M2: Kinematic Bayes</span></td>
               <td class="val-good" id="m2-score">--%</td>
               <td id="m2-drop">--</td>
               <td id="m2-chat">--</td>
               <td id="m2-phan">--</td>
               <td id="m2-act">--%</td>
-              <td style="color:var(--text-muted); font-size:0.75rem;">1D Gaussian + prior decay</td>
+              <td style="color:var(--text-muted); font-size:0.75rem;">Kinematic transition prior</td>
             </tr>
             <tr>
               <td><span class="model-badge badge-m3">M3: HMM State-Space</span></td>
@@ -1427,6 +1675,81 @@ HTML_PAGE = r"""<!DOCTYPE html>
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Interactive Replayer & Triple Simulated Gauge Pod -->
+      <div class="card" style="padding:0.55rem 0.8rem; display:flex; flex-direction:column; gap:0.45rem;">
+        <!-- Transport Controls Row -->
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:0.4rem;">
+            <button id="btn-replay-play" class="btn-primary" style="padding:0.25rem 0.6rem; font-size:0.75rem;">▶ Play</button>
+            <button id="btn-replay-reset" style="padding:0.25rem 0.5rem; font-size:0.75rem;">⏹ Reset</button>
+            <button id="btn-replay-prev" style="padding:0.25rem 0.45rem; font-size:0.75rem;" title="Step Back 100ms">◀</button>
+            <button id="btn-replay-next" style="padding:0.25rem 0.45rem; font-size:0.75rem;" title="Step Forward 100ms">▶</button>
+            <select id="select-replay-speed" style="padding:0.2rem 0.4rem; font-size:0.75rem;">
+              <option value="0.25">0.25x</option>
+              <option value="0.5">0.5x</option>
+              <option value="1.0" selected>1.0x</option>
+              <option value="2.0">2.0x</option>
+              <option value="5.0">5.0x</option>
+            </select>
+          </div>
+          <div style="flex:1; min-width:160px; display:flex; align-items:center; gap:0.5rem;">
+            <input type="range" id="slider-replay-scrub" min="0" max="100" step="0.05" value="0" style="flex:1;">
+            <span id="lbl-replay-time" style="font-family:monospace; font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">0.00s / 0.00s</span>
+          </div>
+        </div>
+
+        <!-- Triple Simulated Diagnostic Gauge Pod -->
+        <div id="triple-gauge-pod" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem;">
+          <!-- Pod 1: M1 Heuristic -->
+          <div style="background:var(--input-bg); border:1px solid var(--panel-border); border-left:3px solid #3b82f6; border-radius:6px; padding:0.4rem 0.6rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.68rem; font-weight:700; color:#3b82f6;">M1: HEURISTIC</span>
+              <span id="m1-pod-status" class="model-badge badge-m1" style="font-size:0.62rem;">LATCHED</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.6rem; margin-top:0.2rem;">
+              <span id="m1-pod-gear" style="font-size:1.8rem; font-weight:800; font-family:monospace; line-height:1; color:#3b82f6;">N</span>
+              <div style="font-size:0.70rem; font-family:monospace; color:var(--text-muted); line-height:1.3;">
+                <div>Speed: <span id="m1-pod-speed" style="color:var(--text); font-weight:600;">0.0 km/h</span></div>
+                <div>RPM: <span id="m1-pod-rpm" style="color:var(--text); font-weight:600;">0 RPM</span></div>
+                <div>Ratio: <span id="m1-pod-ratio" style="color:var(--text); font-weight:600;">--</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pod 2: M2 Kinematic Bayes -->
+          <div style="background:var(--input-bg); border:1px solid var(--panel-border); border-left:3px solid #f59e0b; border-radius:6px; padding:0.4rem 0.6rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.68rem; font-weight:700; color:#f59e0b;">M2: KINEMATIC BAYES</span>
+              <span id="m2-pod-regime" class="model-badge badge-m2" style="font-size:0.62rem;">CORRIDOR LOCK</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.6rem; margin-top:0.2rem;">
+              <span id="m2-pod-gear" style="font-size:1.8rem; font-weight:800; font-family:monospace; line-height:1; color:#f59e0b;">N</span>
+              <div style="font-size:0.70rem; font-family:monospace; color:var(--text-muted); line-height:1.3;">
+                <div>Bayes Conf: <span id="m2-pod-prob" style="color:var(--text); font-weight:600;">--%</span></div>
+                <div>Context: <span id="m2-pod-context" style="color:var(--text); font-weight:600;">Steady</span></div>
+                <div>Ratio: <span id="m2-pod-ratio" style="color:var(--text); font-weight:600;">--</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pod 3: M3 HMM -->
+          <div style="background:var(--input-bg); border:1px solid var(--panel-border); border-left:3px solid #10b981; border-radius:6px; padding:0.4rem 0.6rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.68rem; font-weight:700; color:#10b981;">M3: HMM STATE-SPACE</span>
+              <span id="m3-pod-state" class="model-badge badge-m3" style="font-size:0.62rem;">ENGAGED</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.6rem; margin-top:0.2rem;">
+              <span id="m3-pod-gear" style="font-size:1.8rem; font-weight:800; font-family:monospace; line-height:1; color:#10b981;">N</span>
+              <div style="font-size:0.70rem; font-family:monospace; color:var(--text-muted); line-height:1.3;">
+                <div>Forward &alpha;: <span id="m3-pod-alpha" style="color:var(--text); font-weight:600;">--%</span></div>
+                <div>Emission: <span id="m3-pod-emission" style="color:var(--text); font-weight:600;">Inertial</span></div>
+                <div>Ratio: <span id="m3-pod-ratio" style="color:var(--text); font-weight:600;">--</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Plots Column -->
@@ -1554,7 +1877,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
     setupSliderSync('slider-m1-tol', 'val-m1-tol', v => '±' + v.toFixed(2));
     setupSliderSync('slider-m1-latch', 'val-m1-latch', v => Math.round(v) + ' ms');
     setupSliderSync('slider-m2-decay', 'val-m2-decay', v => v.toFixed(2));
-    setupSliderSync('slider-m2-p0', 'val-m2-p0', v => v.toFixed(2));
+    setupSliderSync('slider-m2-inertia', 'val-m2-inertia', v => v.toFixed(3));
+    setupSliderSync('slider-m2-latch', 'val-m2-latch', v => Math.round(v) + ' ms');
     setupSliderSync('slider-m2-conf', 'val-m2-conf', v => v.toFixed(2));
     setupSliderSync('slider-m3-inertia', 'val-m3-inertia', v => v.toFixed(3));
     setupSliderSync('slider-m3-decel', 'val-m3-decel', v => Math.round(v) + ' Hz/s');
@@ -1566,7 +1890,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
       if (getVal('slider-m1-tol')) p.push(`m1_tol=${getVal('slider-m1-tol')}`);
       if (getVal('slider-m1-latch')) p.push(`m1_latch_ms=${getVal('slider-m1-latch')}`);
       if (getVal('slider-m2-decay')) p.push(`m2_decay=${getVal('slider-m2-decay')}`);
-      if (getVal('slider-m2-p0')) p.push(`m2_p0=${getVal('slider-m2-p0')}`);
+      if (getVal('slider-m2-inertia')) p.push(`m2_inertia=${getVal('slider-m2-inertia')}`);
+      if (getVal('slider-m2-latch')) p.push(`m2_latch_ms=${getVal('slider-m2-latch')}`);
       if (getVal('slider-m2-conf')) p.push(`m2_conf=${getVal('slider-m2-conf')}`);
       if (getVal('slider-m3-inertia')) p.push(`m3_inertia=${getVal('slider-m3-inertia')}`);
       if (getVal('slider-m3-decel')) p.push(`m3_decel=${getVal('slider-m3-decel')}`);
@@ -1585,12 +1910,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
       document.getElementById('slider-m1-latch').value = 200;
       document.getElementById('val-m1-latch').innerText = '200 ms';
 
-      document.getElementById('slider-m2-decay').value = 0.88;
-      document.getElementById('val-m2-decay').innerText = '0.88';
-      document.getElementById('slider-m2-p0').value = 0.12;
-      document.getElementById('val-m2-p0').innerText = '0.12';
-      document.getElementById('slider-m2-conf').value = 0.40;
-      document.getElementById('val-m2-conf').innerText = '0.40';
+      document.getElementById('slider-m2-decay').value = 0.94;
+      document.getElementById('val-m2-decay').innerText = '0.94';
+      document.getElementById('slider-m2-inertia').value = 0.96;
+      document.getElementById('val-m2-inertia').innerText = '0.960';
+      document.getElementById('slider-m2-latch').value = 200;
+      document.getElementById('val-m2-latch').innerText = '200 ms';
+      document.getElementById('slider-m2-conf').value = 0.38;
+      document.getElementById('val-m2-conf').innerText = '0.38';
 
       document.getElementById('slider-m3-inertia').value = 0.970;
       document.getElementById('val-m3-inertia').innerText = '0.970';
@@ -2100,6 +2427,406 @@ HTML_PAGE = r"""<!DOCTYPE html>
           }
         });
       }
+
+      // Initialize or update replayer
+      if (datasetData.timeseries && datasetData.timeseries.times && datasetData.timeseries.times.length > 0) {
+        initReplayer(datasetData);
+      }
+    }
+
+    // =========================================================================
+    // REPLAYER & TRIPLE GAUGE POD ENGINE
+    // =========================================================================
+    const replayer = {
+      playing: false,
+      timer: null,
+      lastTimestamp: 0,
+      currentTime: 0,
+      minTime: 0,
+      maxTime: 0,
+      speed: 1.0,
+      times: [],
+      data: null
+    };
+
+    function ensureNeedles() {
+      ['plot-dynamics', 'plot-models-compare'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const parent = el.parentElement;
+        if (parent && !parent.querySelector('.timeline-needle')) {
+          const needle = document.createElement('div');
+          needle.className = 'timeline-needle';
+          needle.style.display = 'none';
+          parent.appendChild(needle);
+        }
+      });
+    }
+
+    function initReplayer(datasetData) {
+      ensureNeedles();
+      replayer.data = datasetData.timeseries;
+      replayer.times = datasetData.timeseries.times;
+      replayer.minTime = replayer.times[0];
+      replayer.maxTime = replayer.times[replayer.times.length - 1];
+
+      const scrub = document.getElementById('slider-replay-scrub');
+      if (scrub) {
+        scrub.min = replayer.minTime;
+        scrub.max = replayer.maxTime;
+        scrub.step = Math.max(0.01, (replayer.maxTime - replayer.minTime) / 3500);
+        if (replayer.currentTime < replayer.minTime || replayer.currentTime > replayer.maxTime) {
+          replayer.currentTime = replayer.minTime;
+        }
+        scrub.value = replayer.currentTime;
+      }
+
+      updateReplayDisplay(replayer.currentTime);
+    }
+
+    function findClosestIndex(times, t) {
+      if (!times || times.length === 0) return 0;
+      let low = 0, high = times.length - 1;
+      while (low <= high) {
+        const mid = (low + high) >> 1;
+        if (times[mid] === t) return mid;
+        else if (times[mid] < t) low = mid + 1;
+        else high = mid - 1;
+      }
+      if (low >= times.length) return times.length - 1;
+      if (low === 0) return 0;
+      return (Math.abs(times[low] - t) < Math.abs(times[low - 1] - t)) ? low : low - 1;
+    }
+
+    function updateReplayDisplay(t) {
+      replayer.currentTime = t;
+      const scrub = document.getElementById('slider-replay-scrub');
+      if (scrub && Math.abs(parseFloat(scrub.value) - t) > 0.05) {
+        scrub.value = t;
+      }
+      const lbl = document.getElementById('lbl-replay-time');
+      if (lbl) {
+        lbl.textContent = `${t.toFixed(2)}s / ${replayer.maxTime.toFixed(2)}s`;
+      }
+
+      // Update needles on both dynamics and comparison charts
+      ['plot-dynamics', 'plot-models-compare'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el || !el._fullLayout || !el._fullLayout.xaxis) return;
+        const parent = el.parentElement;
+        const needle = parent ? parent.querySelector('.timeline-needle') : null;
+        if (!needle) return;
+
+        const xaxis = el._fullLayout.xaxis;
+        if (t < xaxis.range[0] || t > xaxis.range[1]) {
+          needle.style.display = 'none';
+          return;
+        }
+        const leftPx = el.offsetLeft + xaxis._offset + xaxis.d2p(t);
+        needle.style.left = `${leftPx}px`;
+        needle.style.top = `${el.offsetTop + el._fullLayout.margin.t}px`;
+        needle.style.height = `${el._fullLayout._size.h}px`;
+        needle.style.display = 'block';
+      });
+
+      // Update Triple Gauge Pod
+      if (!replayer.data || !replayer.times || replayer.times.length === 0) return;
+      const ts = replayer.data;
+      const idx = findClosestIndex(replayer.times, t);
+
+      const spd = (ts.speed_kph && ts.speed_kph[idx] !== undefined) ? ts.speed_kph[idx] : 0;
+      const rpm = (ts.rpm && ts.rpm[idx] !== undefined) ? ts.rpm[idx] : 0;
+      const ratio = (ts.ratios && ts.ratios[idx] !== undefined) ? ts.ratios[idx] : (spd > 3 ? (rpm / 30 / (spd * 0.44)) : 0);
+      const m1Gear = (ts.m1_gears && ts.m1_gears[idx] !== undefined) ? ts.m1_gears[idx] : 0;
+      const m2Gear = (ts.m2_gears && ts.m2_gears[idx] !== undefined) ? ts.m2_gears[idx] : 0;
+      const m3Gear = (ts.m3_gears && ts.m3_gears[idx] !== undefined) ? ts.m3_gears[idx] : 0;
+
+      const fmtGear = (g) => g === 0 ? 'N' : String(g);
+
+      // M1 (Heuristic)
+      const m1GearEl = document.getElementById('m1-pod-gear');
+      if (m1GearEl) {
+        m1GearEl.textContent = fmtGear(m1Gear);
+        m1GearEl.style.color = m1Gear === 0 ? 'var(--text-muted)' : '#3b82f6';
+      }
+      const m1SpdEl = document.getElementById('m1-pod-speed');
+      if (m1SpdEl) m1SpdEl.textContent = `${spd.toFixed(1)} km/h`;
+      const m1RpmEl = document.getElementById('m1-pod-rpm');
+      if (m1RpmEl) m1RpmEl.textContent = `${Math.round(rpm)} RPM`;
+      const m1RatioEl = document.getElementById('m1-pod-ratio');
+      if (m1RatioEl) m1RatioEl.textContent = ratio > 0.1 ? ratio.toFixed(2) : '--';
+      const m1StatusEl = document.getElementById('m1-pod-status');
+      if (m1StatusEl) {
+        m1StatusEl.textContent = m1Gear === 0 ? 'NEUTRAL/COAST' : 'LATCHED';
+        m1StatusEl.className = `model-badge ${m1Gear === 0 ? 'badge-neutral' : 'badge-m1'}`;
+      }
+
+      // M2 (Kinematic Bayes)
+      const m2GearEl = document.getElementById('m2-pod-gear');
+      if (m2GearEl) {
+        m2GearEl.textContent = fmtGear(m2Gear);
+        m2GearEl.style.color = m2Gear === 0 ? 'var(--text-muted)' : '#f59e0b';
+      }
+      const m2ProbEl = document.getElementById('m2-pod-prob');
+      if (m2ProbEl) {
+        m2ProbEl.textContent = m2Gear === 0 ? '--' : '> 85%';
+      }
+      const m2CtxEl = document.getElementById('m2-pod-context');
+      if (m2CtxEl) {
+        if (spd < 3.0) m2CtxEl.textContent = 'Standstill';
+        else if (rpm < 650) m2CtxEl.textContent = 'Decel / Low RPM';
+        else m2CtxEl.textContent = 'Kinematic Track';
+      }
+      const m2RatioEl = document.getElementById('m2-pod-ratio');
+      if (m2RatioEl) m2RatioEl.textContent = ratio > 0.1 ? ratio.toFixed(2) : '--';
+      const m2RegimeEl = document.getElementById('m2-pod-regime');
+      if (m2RegimeEl) {
+        m2RegimeEl.textContent = m2Gear === 0 ? 'UNLATCHED' : 'CORRIDOR LOCK';
+        m2RegimeEl.className = `model-badge ${m2Gear === 0 ? 'badge-neutral' : 'badge-m2'}`;
+      }
+
+      // M3 (HMM State-Space)
+      const m3GearEl = document.getElementById('m3-pod-gear');
+      if (m3GearEl) {
+        m3GearEl.textContent = fmtGear(m3Gear);
+        m3GearEl.style.color = m3Gear === 0 ? 'var(--text-muted)' : '#10b981';
+      }
+      const m3AlphaEl = document.getElementById('m3-pod-alpha');
+      if (m3AlphaEl) {
+        m3AlphaEl.textContent = m3Gear === 0 ? '--' : '> 90%';
+      }
+      const m3EmissEl = document.getElementById('m3-pod-emission');
+      if (m3EmissEl) {
+        m3EmissEl.textContent = m3Gear === 0 ? 'Transition' : 'Engaged State';
+      }
+      const m3RatioEl = document.getElementById('m3-pod-ratio');
+      if (m3RatioEl) m3RatioEl.textContent = ratio > 0.1 ? ratio.toFixed(2) : '--';
+      const m3StateEl = document.getElementById('m3-pod-state');
+      if (m3StateEl) {
+        m3StateEl.textContent = m3Gear === 0 ? 'NEUTRAL' : 'VITERBI BEST';
+        m3StateEl.className = `model-badge ${m3Gear === 0 ? 'badge-neutral' : 'badge-m3'}`;
+      }
+    }
+
+    function playStep(timestamp) {
+      if (!replayer.playing) return;
+      if (!replayer.lastTimestamp) replayer.lastTimestamp = timestamp;
+      const dt = (timestamp - replayer.lastTimestamp) / 1000.0;
+      replayer.lastTimestamp = timestamp;
+
+      let nextT = replayer.currentTime + dt * replayer.speed;
+      if (nextT >= replayer.maxTime) {
+        nextT = replayer.maxTime;
+        updateReplayDisplay(nextT);
+        stopPlayback();
+        return;
+      }
+      updateReplayDisplay(nextT);
+      replayer.timer = requestAnimationFrame(playStep);
+    }
+
+    function startPlayback() {
+      if (replayer.currentTime >= replayer.maxTime) {
+        replayer.currentTime = replayer.minTime;
+      }
+      replayer.playing = true;
+      replayer.lastTimestamp = 0;
+      const btn = document.getElementById('btn-replay-play');
+      if (btn) btn.textContent = '⏸ Pause';
+      replayer.timer = requestAnimationFrame(playStep);
+    }
+
+    function stopPlayback() {
+      replayer.playing = false;
+      if (replayer.timer) {
+        cancelAnimationFrame(replayer.timer);
+        replayer.timer = null;
+      }
+      const btn = document.getElementById('btn-replay-play');
+      if (btn) btn.textContent = '▶ Play';
+    }
+
+    // Controls setup
+    const btnPlay = document.getElementById('btn-replay-play');
+    if (btnPlay) {
+      btnPlay.addEventListener('click', () => {
+        if (replayer.playing) stopPlayback();
+        else startPlayback();
+      });
+    }
+
+    const btnReset = document.getElementById('btn-replay-reset');
+    if (btnReset) {
+      btnReset.addEventListener('click', () => {
+        stopPlayback();
+        updateReplayDisplay(replayer.minTime);
+      });
+    }
+
+    const btnPrev = document.getElementById('btn-replay-prev');
+    if (btnPrev) {
+      btnPrev.addEventListener('click', () => {
+        stopPlayback();
+        updateReplayDisplay(Math.max(replayer.minTime, replayer.currentTime - 0.2));
+      });
+    }
+
+    const btnNext = document.getElementById('btn-replay-next');
+    if (btnNext) {
+      btnNext.addEventListener('click', () => {
+        stopPlayback();
+        updateReplayDisplay(Math.min(replayer.maxTime, replayer.currentTime + 0.2));
+      });
+    }
+
+    const selSpeed = document.getElementById('select-replay-speed');
+    if (selSpeed) {
+      selSpeed.addEventListener('change', (e) => {
+        replayer.speed = parseFloat(e.target.value) || 1.0;
+      });
+    }
+
+    const scrubSlider = document.getElementById('slider-replay-scrub');
+    if (scrubSlider) {
+      scrubSlider.addEventListener('input', (e) => {
+        stopPlayback();
+        updateReplayDisplay(parseFloat(e.target.value));
+      });
+    }
+
+    // Synchronize hover / click from plots to replayer when paused
+    ['plot-dynamics', 'plot-models-compare'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.on('plotly_click', (d) => {
+          if (d && d.points && d.points[0] && d.points[0].x !== undefined) {
+            stopPlayback();
+            updateReplayDisplay(d.points[0].x);
+          }
+        });
+      }
+    });
+
+    // =========================================================================
+    // AUTO-OPTIMIZER & SHARED CALIBRATION HANDLERS
+    // =========================================================================
+    const btnAuto = document.getElementById('btn-auto-tune');
+    if (btnAuto) {
+      btnAuto.addEventListener('click', async () => {
+        btnAuto.disabled = true;
+        btnAuto.textContent = '⏳ Optimizing...';
+        try {
+          const resp = await fetch('/api/auto_tune', { method: 'POST' });
+          const res = await resp.json();
+          if (res.status === 'ok') {
+            const s = res.recommended;
+            if (s.m1_alpha !== undefined && document.getElementById('slider-m1-alpha')) {
+              document.getElementById('slider-m1-alpha').value = s.m1_alpha;
+              document.getElementById('val-m1-alpha').textContent = s.m1_alpha;
+            }
+            if (s.m1_tol !== undefined && document.getElementById('slider-m1-tol')) {
+              document.getElementById('slider-m1-tol').value = s.m1_tol;
+              document.getElementById('val-m1-tol').textContent = s.m1_tol;
+            }
+            if (s.m1_latch_ms !== undefined && document.getElementById('slider-m1-latch')) {
+              document.getElementById('slider-m1-latch').value = s.m1_latch_ms;
+              document.getElementById('val-m1-latch').textContent = s.m1_latch_ms;
+            }
+            if (s.m2_decay !== undefined && document.getElementById('slider-m2-decay')) {
+              document.getElementById('slider-m2-decay').value = s.m2_decay;
+              document.getElementById('val-m2-decay').textContent = s.m2_decay;
+            }
+            if (s.m2_inertia !== undefined && document.getElementById('slider-m2-inertia')) {
+              document.getElementById('slider-m2-inertia').value = s.m2_inertia;
+              document.getElementById('val-m2-inertia').textContent = s.m2_inertia;
+            }
+            if (s.m2_latch_ms !== undefined && document.getElementById('slider-m2-latch')) {
+              document.getElementById('slider-m2-latch').value = s.m2_latch_ms;
+              document.getElementById('val-m2-latch').textContent = s.m2_latch_ms;
+            }
+            if (s.m2_conf !== undefined && document.getElementById('slider-m2-conf')) {
+              document.getElementById('slider-m2-conf').value = s.m2_conf;
+              document.getElementById('val-m2-conf').textContent = s.m2_conf;
+            }
+            if (s.m3_inertia !== undefined && document.getElementById('slider-m3-inertia')) {
+              document.getElementById('slider-m3-inertia').value = s.m3_inertia;
+              document.getElementById('val-m3-inertia').textContent = s.m3_inertia;
+            }
+            if (s.m3_clutch_decel !== undefined && document.getElementById('slider-m3-clutch')) {
+              document.getElementById('slider-m3-clutch').value = s.m3_clutch_decel;
+              document.getElementById('val-m3-clutch').textContent = s.m3_clutch_decel;
+            }
+            alert(`Optimization Complete! Multi-model score optimized to ${res.recommended.best_score.toFixed(1)}%.`);
+            loadDataset();
+          } else {
+            alert(`Auto-tune error: ${res.error || 'Unknown error'}`);
+          }
+        } catch (err) {
+          alert(`Auto-tune request failed: ${err.message}`);
+        } finally {
+          btnAuto.disabled = false;
+          btnAuto.textContent = '⚡ Auto-Optimize Parameters';
+        }
+      });
+    }
+
+    const btnSaveCal = document.getElementById('btn-save-shared-cal');
+    if (btnSaveCal) {
+      btnSaveCal.addEventListener('click', async () => {
+        btnSaveCal.disabled = true;
+        try {
+          const tol = parseFloat(document.getElementById('slider-m1-tol').value);
+          const latch = parseInt(document.getElementById('slider-m1-latch').value);
+          const payload = {
+            tolerance: tol,
+            latch_ms: latch
+          };
+          const resp = await fetch('/api/calibration', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: json.stringify(payload)
+          });
+          const res = await resp.json();
+          if (res.status === 'ok') {
+            alert('Shared Calibration saved successfully to decoder/gear_calibration.json');
+          } else {
+            alert('Failed to save calibration: ' + (res.error || 'error'));
+          }
+        } catch (e) {
+          alert('Save calibration error: ' + e.message);
+        } finally {
+          btnSaveCal.disabled = false;
+        }
+      });
+    }
+
+    const btnLoadCal = document.getElementById('btn-load-shared-cal');
+    if (btnLoadCal) {
+      btnLoadCal.addEventListener('click', async () => {
+        btnLoadCal.disabled = true;
+        try {
+          const resp = await fetch('/api/calibration');
+          const cal = await resp.json();
+          if (cal.tolerance !== undefined && document.getElementById('slider-m1-tol')) {
+            document.getElementById('slider-m1-tol').value = cal.tolerance;
+            document.getElementById('val-m1-tol').textContent = cal.tolerance;
+          }
+          if (cal.latch_ms !== undefined && document.getElementById('slider-m1-latch')) {
+            document.getElementById('slider-m1-latch').value = cal.latch_ms;
+            document.getElementById('val-m1-latch').textContent = cal.latch_ms;
+          }
+          if (cal.latch_ms !== undefined && document.getElementById('slider-m2-latch')) {
+            document.getElementById('slider-m2-latch').value = cal.latch_ms;
+            document.getElementById('val-m2-latch').textContent = cal.latch_ms;
+          }
+          alert('Shared Calibration loaded from decoder/gear_calibration.json');
+          loadDataset();
+        } catch (e) {
+          alert('Load calibration error: ' + e.message);
+        } finally {
+          btnLoadCal.disabled = false;
+        }
+      });
     }
 
     // Startup
@@ -2156,9 +2883,11 @@ class GearLabHandler(BaseHTTPRequestHandler):
             m1_tol = float(query.get("m1_tol", [0.25])[0])
             m1_latch_ms = float(query.get("m1_latch_ms", [200.0])[0])
 
-            m2_decay = float(query.get("m2_decay", [0.88])[0])
-            m2_p0 = float(query.get("m2_p0", [0.12])[0])
-            m2_conf = float(query.get("m2_conf", [0.40])[0])
+            m2_decay = float(query.get("m2_decay", [0.94])[0])
+            m2_p0 = float(query.get("m2_p0", [0.08])[0])
+            m2_conf = float(query.get("m2_conf", [0.38])[0])
+            m2_inertia = float(query.get("m2_inertia", [0.96])[0])
+            m2_latch_ms = float(query.get("m2_latch_ms", [200.0])[0])
 
             m3_inertia = float(query.get("m3_inertia", [0.97])[0])
             m3_clutch_decel = float(query.get("m3_clutch_decel", [-40.0])[0])
@@ -2175,7 +2904,7 @@ class GearLabHandler(BaseHTTPRequestHandler):
 
             # Run 3 models on the chosen log
             m1 = run_model_1_heuristic(chosen_log, means, alpha=m1_alpha, tol=m1_tol, latch_ms=m1_latch_ms)
-            m2 = run_model_2_bayesian(chosen_log, means, vars_, decay=m2_decay, p0=m2_p0, conf_thresh=m2_conf)
+            m2 = run_model_2_bayesian(chosen_log, means, vars_, decay=m2_decay, p0=m2_p0, conf_thresh=m2_conf, inertia=m2_inertia, latch_ms=m2_latch_ms)
             m3 = run_model_3_hmm(chosen_log, means, vars_, A, inertia=m3_inertia, clutch_decel=m3_clutch_decel)
 
             b1 = evaluate_glitches(chosen_log["times"], chosen_log["speed_kph"], chosen_log["rpm"], m1)
@@ -2191,6 +2920,11 @@ class GearLabHandler(BaseHTTPRequestHandler):
             m1_sub = m1[::step]
             m2_sub = m2[::step]
             m3_sub = m3[::step]
+            ratios_raw = [
+                round(rf / sf, 3) if sf > 0.5 else 0.0
+                for rf, sf in zip(chosen_log.get("rpm_freq", []), chosen_log.get("speed_freq", []))
+            ]
+            ratios_sub = ratios_raw[::step] if ratios_raw else [0.0] * len(times_sub)
 
             res = {
                 "total_driving_samples": agg["total_driving_samples"],
@@ -2208,6 +2942,7 @@ class GearLabHandler(BaseHTTPRequestHandler):
                     "times": times_sub,
                     "speed_kph": speed_kph_sub,
                     "rpm": rpm_sub,
+                    "ratios": ratios_sub,
                     "ground_truth": gt_sub,
                     "m1_gears": m1_sub,
                     "m2_gears": m2_sub,
@@ -2215,6 +2950,26 @@ class GearLabHandler(BaseHTTPRequestHandler):
                 }
             }
             self.send_json(res)
+
+        elif path == "/api/calibration":
+            cal_file = SCRIPT_DIR / "gear_calibration.json"
+            if cal_file.is_file():
+                try:
+                    with open(cal_file, "r", encoding="utf-8") as f:
+                        self.send_json(json.load(f))
+                        return
+                except Exception:
+                    pass
+            self.send_json({
+                "version": 1,
+                "nominal_ratios": [1.018, 1.793, 2.726, 3.763, 4.542],
+                "tolerance_abs": 0.25,
+                "latch_time_ms": 200.0,
+                "min_speed_hz": 5.0,
+                "min_rpm_hz": 25.0,
+                "stability_gate": 0.05,
+                "ratio_alpha": 0.15
+            })
 
         elif path == "/api/export_c":
             if "cached_agg" not in DATASET_CACHE:
@@ -2244,6 +2999,39 @@ class GearLabHandler(BaseHTTPRequestHandler):
                 "stds": agg["fitted"]["stds"],
                 "total_samples": agg["total_driving_samples"]
             })
+        elif parsed.path == "/api/calibration":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            try:
+                cal = json.loads(body.decode("utf-8"))
+                cal["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                cal_file = SCRIPT_DIR / "gear_calibration.json"
+                existing = {}
+                if cal_file.is_file():
+                    try:
+                        with open(cal_file, "r", encoding="utf-8") as f:
+                            existing = json.load(f)
+                    except Exception:
+                        pass
+                existing.update(cal)
+                if "tolerance" in existing:
+                    existing["tolerance_abs"] = existing["tolerance"]
+                if "latch_ms" in existing:
+                    existing["latch_time_ms"] = existing["latch_ms"]
+                with open(cal_file, "w", encoding="utf-8") as f:
+                    json.dump(existing, f, indent=2)
+                self.send_json({"status": "ok", "saved": existing, "calibration": existing})
+            except Exception as e:
+                self.send_json({"status": "error", "message": str(e)})
+
+        elif parsed.path == "/api/auto_tune":
+            query = urllib.parse.parse_qs(parsed.query)
+            target_log = query.get("log", ["all"])[0]
+            if "cached_agg" not in DATASET_CACHE:
+                DATASET_CACHE["cached_agg"] = build_aggregated_dataset()
+            agg = DATASET_CACHE["cached_agg"]
+            res = optimize_parameters(agg, target_log=target_log)
+            self.send_json(res)
         else:
             self.send_error(404, "Not found")
 

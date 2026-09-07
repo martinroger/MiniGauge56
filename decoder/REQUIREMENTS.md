@@ -78,6 +78,8 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TUN-GEAR-009** | Ratio Histogram & Auto-Peak Detection | The UI MUST display a sample ratio histogram with projected tolerance bands, accompanied by an **Auto-Detect Peaks** function that clusters driving ratios to seed nominal gear ratios $R_1..R_5$. |
 | **REQ-TUN-GEAR-010** | Synchronized Dynamics Timeline | The UI MUST plot a synchronized dual-axis graph of `ITF_speed_kph` and `ITF_rpm` alongside the ratio and estimated gear curves, maintaining time synchronization with pan/zoom and the GPS track drawer. |
 | **REQ-TUN-GEAR-011** | In-Scope Glitch Marker Annotations | The gear timeline scope MUST visually flag detected algorithm glitches directly on the plot: 🔴 Neutral Dropouts, 🟠 Micro-Dwell Chatter, and 🟣 Coast-Down Phantom Shifts with interactive hover diagnostics. |
+| **REQ-TUN-GEAR-012** | Drive Replayer & Simulated Gear Gauge | The UI MUST incorporate an interactive drive playback player with play/pause, step controls, variable playback speed (0.25x to 10x), scrub bar, and a simulated gear position gauge card with a show/hide toggle. Playback MUST synchronize in real time with the vertical timeline needle, telemetry scope, and Leaflet GPS vehicle track marker. |
+| **REQ-TUN-GEAR-013** | Cross-Tool Shared Calibration | The tool MUST provide standard `GET /api/calibration` and `POST /api/calibration` endpoints and UI buttons ("💾 Save Cal" / "📥 Load Cal") interoperating with `decoder/gear_calibration.json` to seamlessly exchange tuned parameters with `gear_lab.py`. |
 
 ### 4.3 Tab 2: Fuel Level Filter Requirements
 
@@ -110,7 +112,7 @@ This document defines the functional, technical, and architectural requirements 
 ## 5. Dedicated Gear Estimator Lab (`gear_lab.py`) Requirements
 
 ### 5.1 Scope & Purpose
-`gear_lab.py` is a dedicated algorithm development, machine learning, and calibration workstation designed to aggregate all available CAN binary logs, extract empirical global ratio distributions, train lightweight statistical models (Heuristic, Bayesian, and Hidden Markov Model), benchmark glitch performance side-by-side, and export ready-to-compile C headers for ESP32 firmware.
+`gear_lab.py` is a dedicated algorithm development, machine learning, and calibration workstation designed to aggregate all available CAN binary logs, extract empirical global ratio distributions, train lightweight statistical models (Heuristic, Kinematic Bayesian, and Hidden Markov Model), benchmark glitch performance side-by-side, and export ready-to-compile C headers for ESP32 firmware.
 
 ### 5.2 Functional Requirements
 
@@ -118,15 +120,18 @@ This document defines the functional, technical, and architectural requirements 
 |---|---|---|
 | **REQ-LAB-001** | Multi-Log Dataset Aggregation | The tool MUST automatically scan and parse all valid `*.bin` log captures in the directory, aggregating valid driving pairs ($f_{\text{speed}} \ge 5.0\text{ Hz}, f_{\text{RPM}} \ge 25.0\text{ Hz}$) into a unified multi-log dataset. |
 | **REQ-LAB-002** | Global Gaussian Mixture Clustering | The tool MUST fit 5 distinct Gaussian ratio cluster centers ($\mu_1..\mu_5$) and standard deviations ($\sigma_1..\sigma_5$) across the combined driving dataset to identify nominal ratios for 1st through 5th gear. |
-| **REQ-LAB-003** | Recursive Bayesian Classifier | The tool MUST implement and evaluate a Recursive Bayesian Classifier computing 1D Gaussian likelihoods per gear with temporal prior decay ($\lambda \in [0.80, 0.95]$) and a neutral baseline prior. |
+| **REQ-LAB-003** | Kinematic-Conditioned Bayesian Filter | The tool MUST implement and evaluate a Kinematic Bayesian Classifier conditioned on $[V, \dot{V}, \text{RPM}, \dot{\text{RPM}}]$ that predicts shifting intent, models loss-of-fix transition probabilities (upshift bias on acceleration, downshift bias on braking), suppresses phantom shifts during clutch disengagement ($\dot{\text{RPM}} < -35\text{ Hz/s}$), and applies guarded temporal latching. |
 | **REQ-LAB-004** | Hidden Markov Model (HMM) | The tool MUST implement a 6-state HMM using an empirical transition probability matrix $A_{6 \times 6}$ with high self-transition inertia, impossible skip penalties, and asymmetric engine-deceleration emission conditioning ($\Delta f_{\text{RPM}} < -40\text{ Hz/s}$) to eliminate clutch coast-down phantom upshifts. |
 | **REQ-LAB-005** | Standardized Glitch Evaluation | The tool MUST evaluate and display side-by-side performance metrics across all models: <br>• Neutral Dropouts ($N_{\text{dropout}}$): $k \to 0 \to k$ in $< 450\text{ ms}$ at $V \ge 20\text{ km/h}$.<br>• Micro-Dwell Chatter ($N_{\text{chatter}}$): forward gear dwell $< 300\text{ ms}$.<br>• Coast-Down Phantom Shifts ($N_{\text{phantom}}$): upward gear jumps while $\frac{d\text{RPM}}{dt} < -1200\text{ RPM/s}$ and speed is non-accelerating.<br>• Unified Glitch-Free Quality Score ($0\text{ to }100\%$). |
 | **REQ-LAB-006** | Turnkey ESP32 C Header Export | The tool MUST export a zero-heap-allocation, re-entrant C99 header (`gear_estimator_params.h`) containing calibrated ratio constants, variances, transition matrices, and complete static inference routines (`gear_heuristic_update`, `gear_bayesian_update`, `gear_hmm_update`) that compile with GCC/Clang under `-Wall -Wextra -Werror`. |
 | **REQ-LAB-007** | Concatenated Multi-Log Timeline | In aggregated mode, the tool MUST concatenate all individual drive sessions chronologically with a 5.0s separation buffer and dashed vertical boundary lines, while dynamically focusing strictly on single logs and recalculating isolated glitch scores when a specific log is selected. |
 | **REQ-LAB-008** | Stacked vs. Shared Multi-Model Layout | The timeline scope MUST support toggling between Stacked Subplots (individual time-synchronized subplots for M1, M2, M3, and Ground Truth) and Shared Overlay (single timeline with interactive show/hide checkboxes per trace). |
-| **REQ-LAB-009** | Interactive Model Tuning Drawer | The UI MUST feature an interactive tuning drawer permitting live adjustment of algorithmic parameters across all three models (M1: tolerance, latch time; M2: likelihood floor, prior decay; M3: transition inertia, emission threshold, clutch decel threshold) with instant 60fps re-simulation. |
+| **REQ-LAB-009** | Interactive Model Tuning Drawer | The UI MUST feature an interactive tuning drawer permitting live adjustment of algorithmic parameters across all three models (M1: tolerance, latch time; M2: prior decay, inertia, latch time, confidence threshold; M3: transition inertia, clutch decel threshold) with instant 60fps re-simulation. |
 | **REQ-LAB-010** | In-Scope Glitch Marker Annotations | All model timeline scopes MUST plot color-coded glyph markers at exact timestamps of detected glitches (🔴 Neutral Dropouts, 🟠 Chatter, 🟣 Coast Phantoms) with detailed hover cards. |
 | **REQ-LAB-011** | Model Theory & Assumptions Panel | The UI MUST incorporate a collapsible sidebar panel summarizing core assumptions, mathematical formulas, state-space representations, and operational tradeoffs for each model. |
+| **REQ-LAB-012** | Drive Replayer & Triple Gauge Pod | The UI MUST incorporate an interactive drive playback player with play/pause, step controls, variable playback speed (0.25x to 10x), scrub bar, and a Triple Simulated Gear Position Gauge Pod displaying M1 (Heuristic), M2 (Kinematic Bayes), and M3 (HMM) side-by-side with real-time gear, speed, RPM, and status. |
+| **REQ-LAB-013** | Automated Parameter Grid Search Optimizer | The tool MUST provide a 1-click **⚡ Auto-Optimize Parameters** function (`POST /api/auto_tune`) executing automated grid search across algorithmic parameters to maximize the Glitch-Free Quality Score across logs. |
+| **REQ-LAB-014** | Cross-Tool Shared Calibration | The tool MUST provide `GET /api/calibration` and `POST /api/calibration` endpoints and UI buttons ("💾 Save Shared Cal" / "📥 Load Shared Cal") interoperating with `decoder/gear_calibration.json`. |
 
 ---
 
@@ -165,10 +170,8 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TUN-GEAR-009** | `tuner.py` | `plot-gear-hist`, `btn-auto-gear-peaks` | Histogram render & peak detection test |
 | **REQ-TUN-GEAR-010** | `tuner.py` | `plot-gear-dynamics`, relayout handlers | Dynamics plot synchronization test |
 | **REQ-TUN-GEAR-011** | `tuner.py` | `computeAndRenderGear()` (glitch markers) | Visual glitch event markers on timeline |
-| **REQ-TUN-FUEL-001** | `tuner.py` | `computeAndRenderFuel()` (SMA vs. EMA) | Fuel filter algorithm simulation test |
-| **REQ-TUN-FUEL-002** | `tuner.py` | `computeAndRenderFuel()` (quantization step) | Discrete rounding simulation test |
-| **REQ-TUN-FUEL-003** | `tuner.py` | `computeAndRenderFuel()` (tight autoscale) | Autoscale and zoom retention test |
-| **REQ-TUN-FUEL-004** | `tuner.py` | `computeAndRenderFuel()` (slew & jitter metrics) | Error delta, slew rate, and jitter tests |
+| **REQ-TUN-GEAR-012** | `tuner.py` | `initTunerReplayer()`, `updateTunerReplayDisplay()` | Replayer playback, needle sync & GPS vehicle marker test |
+| **REQ-TUN-GEAR-013** | `tuner.py` | `/api/calibration` GET & POST handlers | Shared calibration save/load test |
 | **REQ-TUN-SPD-001** | `tuner.py` | `computeAndRenderSpeed()` ($k$ and $c$) | Speed correction formula test |
 | **REQ-TUN-SPD-002** | `tuner.py` | `computeAndRenderSpeed()` (ECE R39 corridor) | Legal boundary and violation marker tests |
 | **REQ-TUN-SPD-003** | `tuner.py` | `btn-auto-tune-speed` optimizer | Automated $k/c$ parameter solver test |
@@ -178,7 +181,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TUN-ANA-003** | `tuner.py` | `renderAnalyticsTable()`, `/api/export_analytics`| Interactive table & CSV download tests |
 | **REQ-LAB-001** | `gear_lab.py` | `build_aggregated_dataset()`, `extract_gear_log()`| Multi-log sample aggregation test (300k pts) |
 | **REQ-LAB-002** | `gear_lab.py` | `fit_gear_clusters()` | Cluster center fitting test ($\mu_1..\mu_5$) |
-| **REQ-LAB-003** | `gear_lab.py` | `run_model_2_bayesian()` | Recursive Bayes probability inference test |
+| **REQ-LAB-003** | `gear_lab.py` | `run_model_2_bayesian()` | Kinematic Bayesian inference & clutch drop test |
 | **REQ-LAB-004** | `gear_lab.py` | `run_model_3_hmm()`, `compute_empirical_transition_matrix()`| HMM transition matrix & clutch drop test |
 | **REQ-LAB-005** | `tuner.py`, `gear_lab.py` | `evaluate_glitches()` | Dropouts, chatter, phantom shifts scorecards |
 | **REQ-LAB-006** | `gear_lab.py` | `generate_esp32_c_header()`, `/api/export_c` | Automated GCC compilation test (-Wall -Werror)|
@@ -187,4 +190,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-LAB-009** | `gear_lab.py` | `recomputeAll()`, tuning drawer listeners | Live parameter tuning and 60fps update test |
 | **REQ-LAB-010** | `gear_lab.py` | `buildGlitchTraces()`, `renderTimeline()` | Visual glitch markers on model timelines |
 | **REQ-LAB-011** | `gear_lab.py` | Collapsible sidebar theory card | Theory & mathematical assumptions DOM check |
+| **REQ-LAB-012** | `gear_lab.py` | `initReplayer()`, `updateReplayDisplay()` | Triple Gauge Pod and needle synchronization test |
+| **REQ-LAB-013** | `gear_lab.py` | `optimize_parameters()`, `/api/auto_tune` | Automated parameter grid search test |
+| **REQ-LAB-014** | `gear_lab.py` | `/api/calibration` GET & POST handlers | Cross-tool JSON calibration exchange test |
 

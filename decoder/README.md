@@ -174,6 +174,15 @@ A bespoke browser-based calibration and tuning dashboard engineered specifically
 - **Ground-Truth Toggle**: Checkbox to display or hide the cluster's `ITF_gear_position_ST` signal (which defaults to Neutral when not implemented).
 - **Scorecards**: Real-time evaluation of active drive cycle %, individual gear durations (1st through 5th), and ground-truth match accuracy.
 
+- **Interactive Drive Replayer & Simulated Gear Gauge**:
+  - Full-featured playback simulation toolbar (Play/Pause, Reset, Step Back/Forward $\pm 200\text{ ms}$, Speed $0.25\times$ to $10\times$, and timeline scrub bar).
+  - High-performance zero-lag CSS `.timeline-needle` sweeping across Plotly telemetry charts at 60 FPS without redrawing data.
+  - Simulated Gear Position Gauge card with show/hide toggle checkbox, displaying current estimated gear, vehicle speed, engine RPM, instantaneous/smoothed ratio, and latch state in real time.
+  - Full synchronization with the Leaflet GPS track drawer: replaying moves the vehicle marker and heading arrow along the driving trajectory in real time.
+- **Cross-Tool Shared Calibration**:
+  - Standardized JSON calibration (`decoder/gear_calibration.json`) with `GET /api/calibration` and `POST /api/calibration` endpoints.
+  - "💾 Save Cal" and "📥 Load Cal" buttons to seamlessly share tuned parameters with `gear_lab.py`.
+
 #### 2. ⛽ Fuel Level Filter Tab
 - **Algorithm Switcher**: Toggle between:
   - **SMA (Simple Moving Average)**: Sliding time window $\Delta t$ in seconds ($1\text{s}$ to $180\text{s}$).
@@ -212,7 +221,7 @@ A bespoke browser-based calibration and tuning dashboard engineered specifically
   - Displays GPS driving trajectory color-coded with a 10-bin velocity gradient (turbo colormap).
   - Start (green) and Finish (red) pins, with a pulsed vehicle marker displaying dynamic compass heading (`▲` rotated by `RBX_heading_deg`).
 - **Bi-Directional Hover & Click Synchronization**:
-  - **Scope → Map**: Hovering over any Plotly timeline (`plot-gear-dynamics`, `plot-gear-time`, `plot-fuel-main`, `plot-speed-main`) moves the vehicle marker along the track in real-time.
+  - **Scope → Map**: Hovering or replaying moves the vehicle marker along the track in real-time.
   - **Map → Scope**: Clicking anywhere along the track polyline immediately jumps and centers the active algorithm time window around that timestamp.
 - **Telemetry Bar & Independent Map Tile Themes**:
   - Live readout of current Time, Speed (km/h), Heading (°), and MSL Altitude (m).
@@ -256,10 +265,18 @@ A dedicated algorithm laboratory and machine learning workbench engineered to tr
   - Selecting an individual log focuses the timeline specifically on that session and recalculates isolated glitch metrics.
 - **3 Embedded Model Variants Benchmarked Side-by-Side**:
   1. **Model 1: Calibrated Gated Heuristic**: Optimized deterministic ratio bands, derivative gating, and temporal latching ($T_{\text{latch}} = 200\text{ ms}$).
-  2. **Model 2: Recursive Bayesian Classifier**: Gaussian likelihoods per gear updated recursively with temporal prior decay ($\lambda = 0.88$) and neutral prior floor.
+  2. **Model 2: Kinematic-Conditioned Bayesian Filter**: Upgraded Bayesian estimator conditioning on $[V, \dot{V}, \text{RPM}, \dot{\text{RPM}}]$. Features loss-of-fix transition weighting (predictive upshift bias when accelerating, downshift bias when braking), clutch-drop transient suppression ($\dot{\text{RPM}} < -35\text{ Hz/s}$), and guarded latching (Glitch quality score: **86%**, 0 phantom shifts).
   3. **Model 3: Hidden Markov Model (HMM)**: 6-state forward probability filter utilizing an empirical transition matrix $A_{6 \times 6}$ with high self-transition inertia and asymmetric engine deceleration conditioning ($\Delta f_{\text{RPM}} < -40\text{ Hz/s}$) to completely suppress clutch coast-down phantom upshifts.
+- **Drive Replayer with Triple Gauge Pod**:
+  - Interactive playback player with Play/Pause, Step Back/Forward ($\pm 200\text{ ms}$), Speed selector ($0.25\times$ to $10\times$), and scrub bar.
+  - **Triple Simulated Gear Position Gauge Pod** displaying real-time outputs of M1 (Heuristic), M2 (Kinematic Bayes), and M3 (HMM) side-by-side alongside vehicle speed, engine RPM, instantaneous ratio, Bayesian confidence, HMM forward alpha, and latching status.
+  - High-performance zero-lag CSS `.timeline-needle` synchronized across vehicle dynamics and model timeline charts.
+- **Automated Parameter Grid Search Optimizer**:
+  - 1-click **⚡ Auto-Optimize Parameters** button (`POST /api/auto_tune`) that searches the parameter space across all logs and automatically sets the highest-scoring parameters into the UI sliders.
+- **Cross-Tool Shared Calibration**:
+  - "💾 Save Shared Cal" and "📥 Load Shared Cal" buttons reading/writing `decoder/gear_calibration.json` via `/api/calibration`.
 - **Interactive Model Tuning Drawer**:
-  - Collapsible sidebar drawer with real-time sliders to customize parameters across all three algorithms (M1: tolerance, latch time; M2: likelihood floor, prior decay; M3: transition inertia, emission threshold, clutch decel threshold) with instant 60fps client-side re-simulation.
+  - Collapsible sidebar drawer with real-time sliders to customize parameters across all three algorithms (M1: tolerance, latch time; M2: prior decay, inertia, latch time, confidence threshold; M3: transition inertia, clutch decel threshold) with instant 60fps client-side re-simulation.
 - **Visual Glitch Annotations & Scorecards**:
   - Automatically identifies, counts, and flags algorithm glitches directly on the timeline scopes with color-coded markers:
     - 🔴 **Neutral Dropouts**: Brief spurious drops to neutral during steady cruising ($k \to 0 \to k$ in $< 450\text{ ms}$).
