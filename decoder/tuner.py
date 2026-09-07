@@ -1227,10 +1227,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
           </div>
           <div class="ctrl-group">
             <div class="ctrl-label-row">
-              <span class="ctrl-label">Tolerance Window</span>
-              <span class="ctrl-val" id="val-gear-tol">±8.0%</span>
+              <span class="ctrl-label">Tolerance Window (Absolute ±Δ)</span>
+              <span class="ctrl-val" id="val-gear-tol">±0.25</span>
             </div>
-            <input type="range" id="slider-gear-tol" min="2.0" max="20.0" step="0.5" value="8.0">
+            <input type="range" id="slider-gear-tol" min="0.05" max="0.50" step="0.01" value="0.25">
           </div>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.4rem; font-size:0.78rem;">
             <div>
@@ -2165,7 +2165,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       alpha: 0.15,
       latchEnabled: false,
       latchHoldMs: 200,
-      tol: 8.0,
+      tol: 0.25,
       r: [1.01, 1.80, 2.73, 3.76, 4.54],
       showGroundTruth: false
     };
@@ -2177,7 +2177,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       document.getElementById('val-gear-minrpm').innerText = `${gearParams.minRpm.toFixed(0)} Hz (${rpmVal} RPM)`;
       document.getElementById('val-gear-stab').innerText = gearParams.stabGate.toFixed(3);
       document.getElementById('val-gear-alpha').innerText = gearParams.alpha.toFixed(2);
-      document.getElementById('val-gear-tol').innerText = '±' + gearParams.tol.toFixed(1) + '%';
+      document.getElementById('val-gear-tol').innerText = '±' + gearParams.tol.toFixed(2);
       if (document.getElementById('val-gear-rpm-param')) {
         document.getElementById('val-gear-rpm-param').innerText = gearParams.rpmFilterTau.toFixed(2) + ' s';
       }
@@ -2256,8 +2256,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
         <div>
           <strong>Step ${stepNum++}: Tolerance Classification:</strong>
-          <div style="color:var(--text-muted); font-size:0.7rem;">
-            Candidate gear <em>i</em> &isin; [1..5] if <code>|r_EMA - R_i| &le; tol &times; R_i</code> (&plusmn;${gearParams.tol.toFixed(1)}%).<br>
+            Candidate gear <em>i</em> &isin; [1..5] if <code>|r_EMA - R_i| &le; tol</code> (&plusmn;${gearParams.tol.toFixed(2)} ratio units, with Voronoi collision protection).<br>
             Fails tolerance or gating &rarr; Neutral (N / 0).
           </div>
         </div>
@@ -2466,7 +2465,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       gearParams.alpha = 0.15;
       gearParams.latchEnabled = false;
       gearParams.latchHoldMs = 200;
-      gearParams.tol = 8.0;
+      gearParams.tol = 0.25;
       gearParams.r = [1.01, 1.80, 2.73, 3.76, 4.54];
       gearParams.showGroundTruth = false;
       saveGearSettings();
@@ -2632,8 +2631,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
         if (currentEma !== null) {
           for (let gi = 0; gi < 5; gi++) {
             const nominal = gearParams.r[gi];
-            const tolWindow = nominal * (gearParams.tol / 100.0);
-            if (Math.abs(currentEma - nominal) <= tolWindow) {
+            let maxTol = gearParams.tol;
+            if (gi > 0) {
+              maxTol = Math.min(maxTol, (nominal - gearParams.r[gi - 1]) * 0.48);
+            }
+            if (gi < 4) {
+              maxTol = Math.min(maxTol, (gearParams.r[gi + 1] - nominal) * 0.48);
+            }
+            if (Math.abs(currentEma - nominal) <= maxTol) {
               candGear = gi + 1;
               break;
             }
@@ -2778,7 +2783,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const gearColors = ['#94a3b8', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
       for (let gi = 0; gi < 5; gi++) {
         const nom = gearParams.r[gi];
-        const span = nom * (gearParams.tol / 100.0);
+        let span = gearParams.tol;
+        if (gi > 0) span = Math.min(span, (nom - gearParams.r[gi - 1]) * 0.48);
+        if (gi < 4) span = Math.min(span, (gearParams.r[gi + 1] - nom) * 0.48);
         histShapes.push({
           type: 'rect',
           xref: 'x',

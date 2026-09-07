@@ -285,15 +285,15 @@ def fit_gear_clusters(all_ratios: List[float], initial_seeds: List[float]) -> Di
     for _ in range(4):
         clusters = [[] for _ in range(5)]
         for r in all_ratios:
-            # Pick closest seed
+            # Pick closest seed with Voronoi partitioning & absolute boundary check
             best_idx = 0
             best_dist = 999.0
             for i, s in enumerate(seeds):
-                d = abs(r - s) / s
-                if d < best_dist and d <= 0.15:
+                d = abs(r - s)
+                if d < best_dist and d <= 0.35:
                     best_dist = d
                     best_idx = i
-            if best_dist <= 0.15:
+            if best_dist <= 0.35:
                 clusters[best_idx].append(r)
 
         for i in range(5):
@@ -340,7 +340,13 @@ def compute_empirical_transition_matrix(all_logs_data: List[Dict[str, Any]], mea
             return 0
         r = sf / rf
         for gi, m in enumerate(means):
-            if abs(r - m) <= m * 0.08:
+            # Constant absolute tolerance of ±0.25 with Voronoi collision protection
+            max_tol = 0.25
+            if gi > 0:
+                max_tol = min(max_tol, (m - means[gi - 1]) * 0.48)
+            if gi < len(means) - 1:
+                max_tol = min(max_tol, (means[gi + 1] - m) * 0.48)
+            if abs(r - m) <= max_tol:
                 return gi + 1
         return 0
 
@@ -450,8 +456,12 @@ def run_model_1_heuristic(g: Dict[str, Any], means: List[float], latch_ms: float
         cand = 0
         if current_ema is not None:
             for gi, nom in enumerate(means):
-                span = nom * 0.08
-                if abs(current_ema - nom) <= span:
+                max_tol = 0.25
+                if gi > 0:
+                    max_tol = min(max_tol, (nom - means[gi - 1]) * 0.48)
+                if gi < len(means) - 1:
+                    max_tol = min(max_tol, (means[gi + 1] - nom) * 0.48)
+                if abs(current_ema - nom) <= max_tol:
                     cand = gi + 1
                     break
 
@@ -672,6 +682,7 @@ extern "C" {{
 
 /* Calibrated Nominal Gear Ratios & Variances (1st through 5th gear) */
 #define GEAR_NUM_FORWARD_GEARS 5
+#define GEAR_TOLERANCE_ABS     (0.25f)
 
 static const float GEAR_RATIO_MEANS[GEAR_NUM_FORWARD_GEARS] = {{ {c_means} }};
 static const float GEAR_RATIO_VARS[GEAR_NUM_FORWARD_GEARS]  = {{ {c_vars} }};
@@ -726,7 +737,16 @@ static inline uint8_t gear_heuristic_update(gear_heuristic_state_t *st, float sp
     uint8_t cand = 0;
     for (int gi = 0; gi < GEAR_NUM_FORWARD_GEARS; gi++) {{
         float nom = GEAR_RATIO_MEANS[gi];
-        if (fabsf(st->latched_ratio_ema - nom) <= (nom * 0.080f)) {{
+        float max_tol = GEAR_TOLERANCE_ABS;
+        if (gi > 0) {{
+            float d_prev = (nom - GEAR_RATIO_MEANS[gi - 1]) * 0.48f;
+            if (d_prev < max_tol) max_tol = d_prev;
+        }}
+        if (gi < GEAR_NUM_FORWARD_GEARS - 1) {{
+            float d_next = (GEAR_RATIO_MEANS[gi + 1] - nom) * 0.48f;
+            if (d_next < max_tol) max_tol = d_next;
+        }}
+        if (fabsf(st->latched_ratio_ema - nom) <= max_tol) {{
             cand = (uint8_t)(gi + 1);
             break;
         }}

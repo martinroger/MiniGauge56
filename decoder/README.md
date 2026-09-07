@@ -163,13 +163,13 @@ A bespoke browser-based calibration and tuning dashboard engineered specifically
      $$r_{\text{EMA}}(t) = \alpha \cdot r_{\text{inst}}(t) + (1 - \alpha) \cdot r_{\text{EMA}}(t - \Delta t)$$
      **Crucial physical principle**: The EMA filter is strictly applied to the **ratio**, *not* independently to raw speed and RPM. Filtering speed and RPM separately would introduce severe differential phase lag during throttle changes due to disparate rotational inertias, creating large artificial ratio spikes.
   4. *Stage 4 (Tolerance Classification & Output Latch)*:
-     Classifies 5 forward gears ($i \in \{1, 2, 3, 4, 5\}$) if $|r_{\text{EMA}} - R_i| \le \text{Tol} \cdot R_i$. When latching is active, gear transitions require continuous confirmation for $\ge T_{\text{latch}}$ ms, with immediate fallback to Neutral upon vehicle standstill.
+     Classifies 5 forward gears ($i \in \{1, 2, 3, 4, 5\}$) if $|r_{\text{EMA}} - R_i| \le \min(\text{Tol}_{\text{abs}}, \Delta_{\text{Voronoi}})$. When latching is active, gear transitions require continuous confirmation for $\ge T_{\text{latch}}$ ms, with immediate fallback to Neutral upon vehicle standstill.
 - **Synchronized Vehicle Dynamics Timeline**:
   - Displays a synchronized dual-axis time-series of `ITF_speed_kph` (km/h, left axis) and `ITF_rpm` (RPM, right axis) alongside the ratio and classified gear trace.
   - Zooming, panning, and hovering are fully synchronized across both timelines and the GPS track map.
 - **Gear Ratio Distribution Histogram**:
   - Real-time sample histogram revealing discrete cluster peaks corresponding to physical gear ratios.
-  - Shaded tolerance window bands ($\pm \text{Tol}\%$) projected over both the histogram and the time-series scope.
+  - Shaded constant tolerance window bands ($\pm \text{Tol}_{\text{abs}}$) projected over both the histogram and the time-series scope.
 - **⚡ Auto-Detect Peaks**: 1-click peak detection that scans the drive cycle and automatically populates the 1st through 5th gear center ratios.
 - **Ground-Truth Toggle**: Checkbox to display or hide the cluster's `ITF_gear_position_ST` signal (which defaults to Neutral when not implemented).
 - **Scorecards**: Real-time evaluation of active drive cycle %, individual gear durations (1st through 5th), and ground-truth match accuracy.
