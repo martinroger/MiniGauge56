@@ -2865,6 +2865,18 @@ HTML_PAGE = r"""<!DOCTYPE html>
       let chatterEvents = 0;
       let phantomShifts = 0;
 
+      const dropoutTimes = [];
+      const dropoutGears = [];
+      const dropoutTexts = [];
+
+      const chatterTimes = [];
+      const chatterGears = [];
+      const chatterTexts = [];
+
+      const phantomTimes = [];
+      const phantomGears = [];
+      const phantomTexts = [];
+
       const m = filteredTimes.length;
       if (m > 2) {
         const segments = [];
@@ -2892,18 +2904,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
           endTime: filteredTimes[m - 1],
           duration: filteredTimes[m - 1] - filteredTimes[curStart]
         });
-
-        const dropoutTimes = [];
-        const dropoutGears = [];
-        const dropoutTexts = [];
-
-        const chatterTimes = [];
-        const chatterGears = [];
-        const chatterTexts = [];
-
-        const phantomTimes = [];
-        const phantomGears = [];
-        const phantomTexts = [];
 
         for (let s = 0; s < segments.length; s++) {
           const seg = segments[s];
