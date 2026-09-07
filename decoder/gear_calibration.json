@@ -1,7 +1,7 @@
 {
   "version": 1,
   "source": "gear_lab",
-  "updated_at": "2026-09-07T14:45:05Z",
+  "updated_at": "2026-09-07T18:43:36Z",
   "nominal_ratios": [
     1.018,
     1.793,
@@ -9,12 +9,20 @@
     3.763,
     4.542
   ],
-  "tolerance": 0.26,
-  "tolerance_abs": 0.25,
-  "latch_ms": 210,
-  "latch_time_ms": 220,
-  "min_speed_kph": 3.0,
-  "min_rpm": 650.0,
+  "tolerance": 0.18,
+  "tolerance_abs": 0.18,
+  "latch_ms": 325,
+  "latch_time_ms": 325,
+  "min_speed_kph": 9.963,
+  "min_speed_hz": 4.5,
+  "min_rpm": 930,
+  "min_rpm_hz": 31,
   "stability_gate": 0.05,
-  "ratio_alpha": 0.15
+  "ratio_alpha": 0.15,
+  "m2_decay": 0.94,
+  "m2_inertia": 0.96,
+  "m2_conf": 0.38,
+  "m2_latch_ms": 200,
+  "m3_inertia": 0.97,
+  "m3_clutch_decel": -40.0
 }

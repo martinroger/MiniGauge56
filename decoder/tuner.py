@@ -1198,10 +1198,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
           </div>
           <div class="ctrl-group">
             <div class="ctrl-label-row">
-              <span class="ctrl-label">Min RPM Freq</span>
-              <span class="ctrl-val" id="val-gear-minrpm">25.0 Hz (750 RPM)</span>
+              <span class="ctrl-label">Min RPM Freq (Idle Cutoff)</span>
+              <span class="ctrl-val" id="val-gear-minrpm">33.3 Hz (1000 RPM)</span>
             </div>
-            <input type="range" id="slider-gear-minrpm" min="5" max="80" step="1" value="25.0">
+            <input type="range" id="slider-gear-minrpm" min="5" max="80" step="0.5" value="33.3">
           </div>
           <div class="ctrl-group">
             <div class="ctrl-label-row">
@@ -1622,7 +1622,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <button class="map-btn-mini" id="btnMapClose" title="Close map drawer">✕</button>
         </div>
       </div>
-      <div class="map-container-inner" id="mapContainer"></div>
+      <div class="map-container-inner" style="position:relative; width:100%; height:100%; min-height:220px; overflow:hidden;">
+        <div id="mapContainer" style="width:100%; height:100%;"></div>
+        <div id="mapNoGpsOverlay" style="display:none; position:absolute; inset:0; background:var(--bg-panel); color:var(--text-muted); align-items:center; justify-content:center; padding:2rem; text-align:center; z-index:1000;">No valid GPS coordinates in this log.</div>
+      </div>
       <div class="map-telemetry-bar" id="mapTelemetryBar">
         <div class="map-telemetry-item">
           <span class="map-telemetry-label">Time</span>
@@ -1771,11 +1774,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
       const gps = (algoData && algoData.gps) ? algoData.gps : null;
       const badge = document.getElementById('mapPointsCount');
+      const noGpsEl = document.getElementById('mapNoGpsOverlay');
       if (!gps || !gps.has_gps || !gps.points || gps.points.length === 0) {
         if (badge) badge.innerText = '0 pts';
-        container.innerHTML = '<div style="color:var(--text-muted);padding:2rem;text-align:center;">No valid GPS coordinates in this log.</div>';
+        if (noGpsEl) noGpsEl.style.display = 'flex';
         return;
       }
+      if (noGpsEl) noGpsEl.style.display = 'none';
 
       const points = gps.points;
       if (badge) badge.innerText = `${points.length} pts`;
@@ -2265,7 +2270,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       rpmFilterType: 'EMA',
       rpmFilterTau: 0.10,
       minSpeed: 5.0,
-      minRpm: 25.0,
+      minRpm: 33.33,
       stabGate: 0.050,
       alpha: 0.15,
       latchEnabled: false,
@@ -2649,7 +2654,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
         try {
           const payload = {
             tolerance: gearParams.tol,
-            latch_ms: gearParams.latchHoldMs
+            latch_ms: gearParams.latchHoldMs,
+            min_speed_hz: gearParams.minSpeed,
+            min_speed_kph: parseFloat((gearParams.minSpeed * 0.2444).toFixed(1)),
+            min_rpm: Math.round(gearParams.minRpm * 30),
+            min_rpm_hz: gearParams.minRpm
           };
           const resp = await fetch('/api/calibration', {
             method: 'POST',
@@ -2686,6 +2695,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
             gearParams.latchHoldMs = cal.latch_ms;
             const el = document.getElementById('slider-gear-latch');
             if (el) el.value = cal.latch_ms;
+          }
+          if (cal.min_rpm_hz !== undefined) {
+            gearParams.minRpm = cal.min_rpm_hz;
+            const el = document.getElementById('slider-gear-minrpm');
+            if (el) el.value = cal.min_rpm_hz;
+          } else if (cal.min_rpm !== undefined) {
+            gearParams.minRpm = cal.min_rpm / 30.0;
+            const el = document.getElementById('slider-gear-minrpm');
+            if (el) el.value = gearParams.minRpm;
+          }
+          if (cal.min_speed_hz !== undefined) {
+            gearParams.minSpeed = cal.min_speed_hz;
+            const el = document.getElementById('slider-gear-minspeed');
+            if (el) el.value = cal.min_speed_hz;
           }
           saveGearSettings();
           updateGearLabels();
@@ -2801,7 +2824,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
         }
 
         let candGear = 0;
-        if (currentEma !== null) {
+        if (!speedValid || !rpmValid) {
+          candGear = 0; // Neutral (stopped or engine idling < 1000 RPM)
+        } else if (currentEma !== null) {
           for (let gi = 0; gi < 5; gi++) {
             const nominal = gearParams.r[gi];
             let maxTol = gearParams.tol;
@@ -2816,6 +2841,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
               break;
             }
           }
+          if (candGear === 0) {
+            candGear = 14; // Uncertain (speed and RPM valid, but ratio out of calibrated bands)
+          }
+        } else {
+          candGear = 14; // Uncertain (speed and RPM valid, but ratio unstable or clutch disengaged)
         }
 
         let finalGear = candGear;
@@ -2907,7 +2937,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
         for (let s = 0; s < segments.length; s++) {
           const seg = segments[s];
-          if (seg.gear > 0 && seg.duration < 0.30) {
+          if (seg.gear > 0 && seg.gear < 14 && seg.duration < 0.30) {
             chatterEvents++;
             chatterTimes.push(seg.startTime);
             chatterGears.push(seg.gear);
@@ -2916,7 +2946,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           if (seg.gear === 0 && s > 0 && s < segments.length - 1) {
             const prevSeg = segments[s - 1];
             const nextSeg = segments[s + 1];
-            if (prevSeg.gear > 0 && prevSeg.gear === nextSeg.gear && seg.duration < 0.45) {
+            if (prevSeg.gear > 0 && prevSeg.gear < 14 && prevSeg.gear === nextSeg.gear && seg.duration < 0.45) {
               const avgSpeed = (filteredSpeeds[seg.startIdx] + filteredSpeeds[seg.endIdx]) / 2.0;
               if (avgSpeed >= 20.0) {
                 dropouts++;
@@ -2931,7 +2961,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         for (let s = 1; s < segments.length; s++) {
           const prevSeg = segments[s - 1];
           const curSeg = segments[s];
-          if (curSeg.gear > prevSeg.gear && prevSeg.gear > 0) {
+          if (curSeg.gear > prevSeg.gear && prevSeg.gear > 0 && curSeg.gear < 14 && prevSeg.gear < 14) {
             const idx = curSeg.startIdx;
             const backIdx = Math.max(0, idx - 4);
             const dt = filteredTimes[idx] - filteredTimes[backIdx];
@@ -3079,10 +3109,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
         },
         {
           x: filteredTimes,
-          y: estimatedGears,
+          y: estimatedGears.map(g => g === 14 ? 6 : g),
           mode: 'lines',
           name: 'Estimated Gear',
           line: { color: '#10b981', width: 2, shape: 'hv' },
+          text: estimatedGears.map(g => g === 14 ? 'Gear: Uncertain (14)' : (g === 0 ? 'Gear: Neutral (0)' : `Gear: ${g}`)),
+          hoverinfo: 'text+x',
           yaxis: 'y2'
         }
       ];
@@ -3090,10 +3122,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
       if (gearParams.showGroundTruth) {
         timeTraces.push({
           x: filteredTimes,
-          y: groundTruthGears,
+          y: groundTruthGears.map(g => g === 14 ? 6 : g),
           mode: 'lines',
           name: 'ITF_gear_position_ST',
           line: { color: '#f59e0b', width: 1.5, dash: 'dot', shape: 'hv' },
+          text: groundTruthGears.map(g => g === 14 ? 'GT: Uncertain (14)' : (g === 0 ? 'GT: Neutral (0)' : `GT: ${g}`)),
+          hoverinfo: 'text+x',
           yaxis: 'y2'
         });
       }
@@ -3145,8 +3179,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
           title: 'Gear',
           gridcolor: theme.gridcolor,
           domain: [0.0, 0.30],
-          tickvals: [0, 1, 2, 3, 4, 5],
-          ticktext: ['N', '1st', '2nd', '3rd', '4th', '5th']
+          tickvals: [0, 1, 2, 3, 4, 5, 6],
+          ticktext: ['N', '1st', '2nd', '3rd', '4th', '5th', '? (Uncert)'],
+          range: [-0.4, 6.6]
         },
         legend: { orientation: 'h', y: 1.1, x: 0 }
       }, { responsive: true });
@@ -3269,8 +3304,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
       const gEl = document.getElementById('pod-tuner-gear');
       if (gEl) {
-        gEl.textContent = gear === 0 ? 'N' : String(gear);
-        gEl.style.color = gear === 0 ? 'var(--text-muted)' : '#3b82f6';
+        if (gear === 14) {
+          gEl.textContent = '?';
+          gEl.style.color = '#f59e0b';
+        } else if (gear === 0) {
+          gEl.textContent = 'N';
+          gEl.style.color = 'var(--text-muted)';
+        } else {
+          gEl.textContent = String(gear);
+          gEl.style.color = '#3b82f6';
+        }
       }
       const sEl = document.getElementById('pod-tuner-speed');
       if (sEl) sEl.textContent = `${spd.toFixed(1)} km/h`;
@@ -3280,8 +3323,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
       if (ratEl) ratEl.textContent = ratio > 0.01 ? ratio.toFixed(2) : '--';
       const statEl = document.getElementById('pod-tuner-status');
       if (statEl) {
-        statEl.textContent = gear === 0 ? 'NEUTRAL/COAST' : 'LATCHED';
-        statEl.className = `model-badge ${gear === 0 ? 'badge-neutral' : 'badge-latched'}`;
+        if (gear === 14) {
+          statEl.textContent = 'UNCERTAIN (14)';
+          statEl.className = 'model-badge badge-warn';
+        } else if (gear === 0) {
+          statEl.textContent = 'NEUTRAL';
+          statEl.className = 'model-badge badge-neutral';
+        } else {
+          statEl.textContent = 'LATCHED';
+          statEl.className = 'model-badge badge-latched';
+        }
       }
     }
 

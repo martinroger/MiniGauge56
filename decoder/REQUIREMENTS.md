@@ -132,6 +132,9 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-LAB-012** | Drive Replayer & Triple Gauge Pod | The UI MUST incorporate an interactive drive playback player with play/pause, step controls, variable playback speed (0.25x to 10x), scrub bar, and a Triple Simulated Gear Position Gauge Pod displaying M1 (Heuristic), M2 (Kinematic Bayes), and M3 (HMM) side-by-side with real-time gear, speed, RPM, and status. |
 | **REQ-LAB-013** | Automated Parameter Grid Search Optimizer | The tool MUST provide a 1-click **⚡ Auto-Optimize Parameters** function (`POST /api/auto_tune`) executing automated grid search across algorithmic parameters to maximize the Glitch-Free Quality Score across logs. |
 | **REQ-LAB-014** | Cross-Tool Shared Calibration | The tool MUST provide `GET /api/calibration` and `POST /api/calibration` endpoints and UI buttons ("💾 Save Shared Cal" / "📥 Load Shared Cal") interoperating with `decoder/gear_calibration.json`. |
+| **REQ-LAB-015** | Dedicated Submodel Tabs | The UI MUST provide dedicated tabs for each algorithm (M1 Heuristic, M2 Kinematic Bayes, M3 HMM State-Space) featuring focused dynamic visualizations, individual parameter calibration sliders, and two-way parameter synchronization with the main overview tab and JSON calibration. |
+| **REQ-LAB-016** | DBC Uncertain State (State 14) Handling | The algorithms MUST distinguish between true Neutral (vehicle stationary or engine below idle) and Uncertain (State 14 in DBC: rolling vehicle above cutoff with engine above idle, e.g. mid-shift or unclassified ratio). |
+| **REQ-LAB-017** | Dual-Chart Needle Synchronization | In all active tabs, the interactive playback timeline needle MUST scroll simultaneously across both the dynamics plot (speed/RPM) and the gear/model timeline plot with exact vertical pixel alignment. |
 
 ---
 
@@ -193,4 +196,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-LAB-012** | `gear_lab.py` | `initReplayer()`, `updateReplayDisplay()` | Triple Gauge Pod and needle synchronization test |
 | **REQ-LAB-013** | `gear_lab.py` | `optimize_parameters()`, `/api/auto_tune` | Automated parameter grid search test |
 | **REQ-LAB-014** | `gear_lab.py` | `/api/calibration` GET & POST handlers | Cross-tool JSON calibration exchange test |
+| **REQ-LAB-015** | `gear_lab.py` | `switchTab()`, `renderActiveTabPlots()`, submodel tabs | Multi-tab UI and bidirectional parameter sync test |
+| **REQ-LAB-016** | `gear_lab.py`, `tuner.py` | State 14 classification (`Uncertain`) | Neutral (0) vs. Uncertain (14) classification tests |
+| **REQ-LAB-017** | `gear_lab.py` | `ensureNeedles()`, `updateReplayDisplay()` | Multi-plot needle positioning and margin sync test |
 

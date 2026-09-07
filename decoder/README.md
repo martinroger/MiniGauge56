@@ -267,10 +267,15 @@ A dedicated algorithm laboratory and machine learning workbench engineered to tr
   1. **Model 1: Calibrated Gated Heuristic**: Optimized deterministic ratio bands, derivative gating, and temporal latching ($T_{\text{latch}} = 200\text{ ms}$).
   2. **Model 2: Kinematic-Conditioned Bayesian Filter**: Upgraded Bayesian estimator conditioning on $[V, \dot{V}, \text{RPM}, \dot{\text{RPM}}]$. Features loss-of-fix transition weighting (predictive upshift bias when accelerating, downshift bias when braking), clutch-drop transient suppression ($\dot{\text{RPM}} < -35\text{ Hz/s}$), and guarded latching (Glitch quality score: **86%**, 0 phantom shifts).
   3. **Model 3: Hidden Markov Model (HMM)**: 6-state forward probability filter utilizing an empirical transition matrix $A_{6 \times 6}$ with high self-transition inertia and asymmetric engine deceleration conditioning ($\Delta f_{\text{RPM}} < -40\text{ Hz/s}$) to completely suppress clutch coast-down phantom upshifts.
-- **Drive Replayer with Triple Gauge Pod**:
+- **Dedicated Submodel Tabs**:
+  - Separate dedicated tabs for each algorithm variant: **M1 (Heuristic)**, **M2 (Kinematic Bayes)**, and **M3 (HMM State-Space)**.
+  - Each tab features full-fidelity vehicle dynamics graphs (`ITF_speed_kph`, `ITF_rpm`), dedicated model timeline plots with visual glitch glyphs, algorithm-specific calibration controls, and bidirectional parameter synchronization with the main comparison tab and `gear_calibration.json`.
+- **DBC State 14 (Uncertain) & State 0 (Neutral) Distinction**:
+  - Distinguishes physical Neutral (vehicle standstill or engine below idle cutoff) from Uncertain (State 14 in DBC): vehicle rolling above speed cutoff with engine above idle, but ratio unclassified or in transient shift.
+- **Drive Replayer with Triple Gauge Pod & Synchronized Dynamics Needle**:
   - Interactive playback player with Play/Pause, Step Back/Forward ($\pm 200\text{ ms}$), Speed selector ($0.25\times$ to $10\times$), and scrub bar.
   - **Triple Simulated Gear Position Gauge Pod** displaying real-time outputs of M1 (Heuristic), M2 (Kinematic Bayes), and M3 (HMM) side-by-side alongside vehicle speed, engine RPM, instantaneous ratio, Bayesian confidence, HMM forward alpha, and latching status.
-  - High-performance zero-lag CSS `.timeline-needle` synchronized across vehicle dynamics and model timeline charts.
+  - High-performance zero-lag CSS `.timeline-needle` synchronized across both the vehicle dynamics (speed/RPM) and model timeline charts simultaneously with pixel-perfect vertical alignment.
 - **Automated Parameter Grid Search Optimizer**:
   - 1-click **⚡ Auto-Optimize Parameters** button (`POST /api/auto_tune`) that searches the parameter space across all logs and automatically sets the highest-scoring parameters into the UI sliders.
 - **Cross-Tool Shared Calibration**:
