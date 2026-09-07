@@ -1,7 +1,7 @@
 # MiniGauge56 — System Requirements & Traceability Matrix
 
 ## 1. Executive Summary
-MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN logger, and RaceBox companion. It visualizes vehicle telemetry on a 1.75" AMOLED touch display, captures CAN traffic directly to an on-board SD card, and connects over BLE to any nearby RaceBox (Mini, Mini S, Micro) to synchronize system time and broadcast high-rate GPS & IMU telemetry onto the CAN bus.
+MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN logger, and RaceBox companion. It visualizes vehicle telemetry on a 1.75" AMOLED touch display, captures CAN traffic directly to an on-board SD card, and connects over BLE to any nearby RaceBox (Mini, Mini S, Micro) to synchronize system time and broadcast high-rate GPS & IMU telemetry onto the CAN bus. Additionally, MiniGauge56 features a real-time kinematic-conditioned Bayesian gear estimation engine and live frequency/ratio telemetry screens.
 
 ---
 
@@ -15,7 +15,11 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN logger, a
 - **TWAI CAN Telemetry Broadcasting**: Broadcast 25 Hz RaceBox telemetry (`0x600` through `0x605`) onto the CAN bus via `twai_daemon`'s zero-copy asynchronous TX pool.
 - **Transceiver Pinout Preservation**: Preserve hardware wiring of the Waveshare AMOLED board (`GPIO 43` for CAN TX, `GPIO 44` for CAN RX).
 - **Decoupled Architecture**: Separate CAN bus initialization from the SD card logger lifecycle.
-- **Top-Level CAN Router**: Support routing incoming frames to multiple consumers (SD logging, future gauge UI decoders).
+- **Top-Level CAN Router**: Support routing incoming frames to multiple consumers (SD logging, gauge UI decoders, gear estimator).
+- **CAN Frequency Telemetry Ingestion**: Unpack vehicle speed frequency (`0x300`) and engine RPM frequency (`0x301`) from CAN debug interface messages.
+- **Real-Time Kinematic Bayesian Gear Classification**: Execute continuous probabilistic gear estimation (Neutral, Gears 1..5, Uncertain) conditioned on speed/RPM frequency ratios, signed acceleration, and clutch drop suppression.
+- **AMOLED Multi-Tab UI**: Provide touch tab navigation between logging controls (`main`) and live telemetry readouts (`gear_estimator`).
+- **AMOLED Backlight Management & Override**: Support automatic inactivity sleep timer (10 s) with a manual "Always on" override mode dimmed to 50% brightness to mitigate OLED burn-in.
 - **Asynchronous DMA Logging**: Buffer frames in PSRAM and stream to FATFS SD card in 8 KB DMA-aligned blocks with complete drain on stop.
 - **Full Doxygen Documentation**: Maintain comprehensive Doxygen docstrings across public headers and application source files.
 
@@ -34,6 +38,8 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN logger, a
 | **REQ-CAN-02** | Pinout Configuration in Kconfig | `CONFIG_CAN_TX=43` and `CONFIG_CAN_RX=44` configured in `sdkconfig.defaults`. |
 | **REQ-CAN-03** | Bidirectional CAN Readiness | Driver operates in normal mode (out of listen-only), enabling TX packet generation. |
 | **REQ-CAN-04** | Frame Dispatch Architecture | `app_can_frame_router` in `main.cpp` delegates frames to `log_can_frame_handler()`. |
+| **REQ-CAN-05** | Hardware Loopback for Self-Transmission Logging | Enable hardware loopback in `twai_daemon` via `CONFIG_CAN_ENABLE_LOOPBACK` so self-transmitted frames are received and logged. |
+| **REQ-CAN-06** | Diagnostic Speed & RPM Signal Ingestion | Unpack `BINOCAN_DBG_ITF_SPEED_FRAME_ID` (`0x300`) and `BINOCAN_DBG_ITF_RPM_FRAME_ID` (`0x301`) to update live frequency states. |
 | **REQ-LOG-01** | PSRAM Ringbuffer Buffering | Statically allocate 32 KB ringbuffer in PSRAM (`MALLOC_CAP_SPIRAM`) without runtime allocations. |
 | **REQ-LOG-02** | DMA Batch File Flushing | Stream 512-frame batches (8 KB) to SD card with lazy flush timer fallback. |
 | **REQ-LOG-03** | Complete Drain & Fresh Purge | `sd_writer_task` completely drains `can_rb` on stop; `start_logging()` purges stale records. |
@@ -41,8 +47,10 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN logger, a
 | **REQ-RB-02** | GPS 3D Fix Clock Sync | Update ESP32 RTC system clock via `settimeofday()` on first valid 3D GPS fix (`num_sv >= 4`). |
 | **REQ-RB-03** | Timestamped Log Filenames | Switch log file naming to `/sdcard/YYYYMMDD_log_HHMMSS.bin` when GPS time is synchronized. |
 | **REQ-RB-04** | RaceBox CAN Broadcasting | Broadcast 25 Hz messages `0x600`-`0x605` onto CAN bus via `racebox_twai` and `twai_daemon`. |
-| **REQ-CAN-05** | Hardware Loopback for Self-Transmission Logging | Enable hardware loopback in `twai_daemon` via `CONFIG_CAN_ENABLE_LOOPBACK` so self-transmitted frames are received and logged. |
+| **REQ-GEAR-01** | Kinematic-Conditioned Bayesian Gear Estimation | Classify gear state (N, 1..5, Uncertain) at 40 Hz using dynamic transition matrix, Gaussian emission likelihood, and 200 ms latch filter. |
 | **REQ-UI-01** | RaceBox Connection & Fix Status Display | Update `objects.rbx_status` label with real-time BLE connection state and satellite count during fix. |
+| **REQ-UI-02** | Real-Time Telemetry & Gear Readouts | Refresh gear readout, speed frequency (Hz), RPM frequency (Hz), and ratio labels on the `gear_estimator` tab. |
+| **REQ-UI-03** | AMOLED Backlight Management & Override | Power down AMOLED display after 10 s inactivity; support Always-On switch setting brightness to 50% and stopping sleep timer. |
 | **REQ-DOC-01** | Doxygen Compliance | All exported functions and file headers in `main/` include Doxygen docstrings. |
 
 ---
@@ -55,6 +63,8 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN logger, a
 | **REQ-CAN-02** | [`sdkconfig.defaults`](../sdkconfig.defaults) | `CONFIG_CAN_TX=43`, `CONFIG_CAN_RX=44` | Verified in generated `sdkconfig` |
 | **REQ-CAN-03** | [`components/twai_daemon/src/twai_daemon.cpp`](../components/twai_daemon/src/twai_daemon.cpp) | `twai_new_node_onchip()` | Unmodified component configuration |
 | **REQ-CAN-04** | [`main/main.cpp`](../main/main.cpp)<br>[`main/logging.h`](../main/logging.h) | `app_can_frame_router()`, `log_can_frame_handler()` | Static analysis & task routing check |
+| **REQ-CAN-05** | [`components/twai_daemon/Kconfig`](../components/twai_daemon/Kconfig)<br>[`components/twai_daemon/src/twai_daemon.cpp`](../components/twai_daemon/src/twai_daemon.cpp) | `CONFIG_CAN_ENABLE_LOOPBACK`, `enable_loopback` | Hardware loopback self-reception review |
+| **REQ-CAN-06** | [`main/main.cpp`](../main/main.cpp)<br>[`main/binocan.h`](../main/binocan.h) | `BINOCAN_DBG_ITF_SPEED_FRAME_ID`, `binocan_dbg_itf_speed_unpack()` | CAN signal decoding logic review |
 | **REQ-LOG-01** | [`main/logging.cpp`](../main/logging.cpp) | `can_rb`, `init_can_logging()` | Memory allocation verification |
 | **REQ-LOG-02** | [`main/logging.cpp`](../main/logging.cpp) | `sd_writer_task()`, `BLOCK_SIZE` | File write loop review |
 | **REQ-LOG-03** | [`main/logging.cpp`](../main/logging.cpp) | `sd_writer_running`, `xRingbufferReceive` | Lifecycle drain & purge check |
@@ -62,7 +72,8 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN logger, a
 | **REQ-RB-02** | [`main/main.cpp`](../main/main.cpp) | `on_racebox_telemetry()`, `settimeofday()` | 3D fix clock sync logic check |
 | **REQ-RB-03** | [`main/logging.cpp`](../main/logging.cpp)<br>[`main/logging.h`](../main/logging.h) | `is_gps_time_synced`, `current_log_filename` | Filename format verification |
 | **REQ-RB-04** | [`components/racebox_twai/racebox_twai.c`](../components/racebox_twai/racebox_twai.c) | `racebox_twai_broadcast_pvt()`, `0x600` | Telemetry CAN broadcast review |
-| **REQ-CAN-05** | [`components/twai_daemon/Kconfig`](../components/twai_daemon/Kconfig)<br>[`components/twai_daemon/src/twai_daemon.cpp`](../components/twai_daemon/src/twai_daemon.cpp) | `CONFIG_CAN_ENABLE_LOOPBACK`, `enable_loopback` | Hardware loopback self-reception review |
+| **REQ-GEAR-01** | [`main/gear_estimator_params.h`](../main/gear_estimator_params.h)<br>[`main/main.cpp`](../main/main.cpp) | `gear_bayesian_update()`, `update_gear_estimator()` | Mathematical model and latch timing check |
 | **REQ-UI-01** | [`main/main.cpp`](../main/main.cpp)<br>[`components/ui/src/screens.h`](../components/ui/src/screens.h) | `update_display()`, `objects.rbx_status` | UI label formatting and rendering check |
+| **REQ-UI-02** | [`main/main.cpp`](../main/main.cpp)<br>[`components/ui/src/screens.h`](../components/ui/src/screens.h) | `objects.gear_readout`, `objects.kph_readout` | LVGL readout refresh verification |
+| **REQ-UI-03** | [`main/main.cpp`](../main/main.cpp) | `wakeDisplay()`, `action_backlight_sw_checked()` | Power management and brightness check |
 | **REQ-DOC-01** | [`main/logging.h`](../main/logging.h)<br>[`main/logging.cpp`](../main/logging.cpp)<br>[`main/main.cpp`](../main/main.cpp) | `@file`, `@brief`, `@param`, `@note` | Doxygen syntax compliance review |
-

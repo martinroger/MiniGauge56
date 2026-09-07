@@ -8,7 +8,7 @@
 | **Framework Version** | ESP-IDF v5.5.5 | Selected build toolchain installed in `~/.espressif/v5.5.5`. |
 | **CAN Transceiver TX** | GPIO 43 | Hardwired on board transceiver path. |
 | **CAN Transceiver RX** | GPIO 44 | Hardwired on board transceiver path. |
-| **Display Controller** | RM69090 / AMOLED 1.75" | Managed via `waveshare/esp32_s3_touch_amoled_1_75`. |
+| **Display Controller** | RM69090 / AMOLED 1.75" (466x466) | Managed via `waveshare/esp32_s3_touch_amoled_1_75`. |
 | **SD Storage** | MicroSD via 4-wire SDMMC / SPI | Mounted to `/sdcard` via BSP FATFS driver. |
 
 ---
@@ -39,3 +39,11 @@
 - `CAN_RX_Task` is pinned to Core 1 via `CONFIG_CAN_CORE_AFFINITY` to prevent contention with display rendering on Core 0.
 - LVGL UI operations (including periodic telemetry and `objects.rbx_status` label updates) are synchronized using `bsp_display_lock()` mutex with bounded timeouts (100 ms).
 
+### 2.6 Real-Time Bayesian Gear Estimation Constraints
+- **Zero Dynamic Allocation**: `gear_bayesian_update()` operates exclusively on static `gear_bayesian_state_t` structures and stack memory; no heap operations (`malloc`, `free`, `new`, `delete`) are executed in the 40 Hz loop.
+- **Microsecond Timestamp Precision**: Elapsed time (`dt_s`) must be computed by calculating the 64-bit microsecond integer difference (`now_us - prev_us`) before converting to floating-point seconds, avoiding integer division truncation and preserving 32-bit single-precision float mantissa resolution.
+- **Task Scheduling**: The `upd_gear` task runs at FreeRTOS priority 5 with a 4096-byte stack depth, preventing starvation from lower-priority UI rendering tasks (priority 3).
+
+### 2.7 AMOLED Display Power Management & Burn-In Mitigation
+- **Inactivity Sleep Timeout**: The AMOLED display backlight powers off completely after 10 seconds of touch inactivity to minimize power consumption and protect the OLED panel.
+- **Always-On Brightness Clamping**: When the "Always on" override mode is engaged via `objects.backlight_switch`, display brightness is clamped to 50% (`bsp_display_brightness_set(50)`) rather than full 100% brightness to mitigate permanent OLED burn-in during prolonged static telemetry display.

@@ -7,6 +7,8 @@
 #include "logging.h"
 #include "twai_daemon.h"
 #include "racebox_companion.h"
+#include "gear_estimator_params.h"
+#include "binocan.h"
 
 /**
  * @file main.cpp
@@ -20,8 +22,16 @@
 /** @brief Global LVGL display object pointer */
 lv_display_t *main_display = NULL;
 
+static gear_bayesian_state_t gear_estimator;
+static float speed_freq = 0.0;
+static binocan_dbg_itf_speed_t temp_speed_frame;
+static float rpm_freq = 0.0;
+static binocan_dbg_itf_rpm_t temp_rpm_frame;
+
 /** @brief Flag indicating whether the AMOLED display backlight is asleep/off */
 bool display_off = false;
+
+bool backlight_override = false;
 
 /** @brief Software timer handle for display inactivity sleep timeout */
 static TimerHandle_t sleepDisplayTimer = NULL;
@@ -97,8 +107,7 @@ static void on_racebox_telemetry(const racebox_pvt_t *pvt, void *user_data)
         {
             struct timeval tv = {
                 .tv_sec = epoch_sec,
-                .tv_usec = (suseconds_t)(pvt->nanoseconds > 0 ? pvt->nanoseconds / 1000 : 0)
-            };
+                .tv_usec = (suseconds_t)(pvt->nanoseconds > 0 ? pvt->nanoseconds / 1000 : 0)};
             settimeofday(&tv, NULL);
             logging_set_gps_synced(true);
             ESP_LOGI("GPS_SYNC", "System time synchronized with RaceBox 3D fix: %04d-%02d-%02d %02d:%02d:%02d UTC (SVs: %d)",
@@ -159,6 +168,21 @@ static esp_err_t app_can_frame_router(const twai_frame_t *rx_frame)
 {
     log_can_frame_handler(rx_frame);
     // Future gauge decoders (RPM, speed, sensors) hook in here
+    switch (rx_frame->header.id)
+    {
+    case BINOCAN_DBG_ITF_SPEED_FRAME_ID:
+        binocan_dbg_itf_speed_unpack(&temp_speed_frame, rx_frame->buffer, rx_frame->buffer_len);
+        speed_freq = (float)binocan_dbg_itf_speed_dbg_speed_freq_decode(temp_speed_frame.dbg_speed_freq);
+        break;
+
+    case BINOCAN_DBG_ITF_RPM_FRAME_ID:
+        binocan_dbg_itf_rpm_unpack(&temp_rpm_frame, rx_frame->buffer, rx_frame->buffer_len);
+        rpm_freq = (float)binocan_dbg_itf_rpm_dbg_rpm_freq_decode(temp_rpm_frame.dbg_rpm_freq);
+        break;
+
+    default:
+        break;
+    }
     return ESP_OK;
 }
 
@@ -179,7 +203,23 @@ void wakeDisplay(void)
             bsp_display_unlock();
         }
     }
-    xTimerReset(sleepDisplayTimer, pdMS_TO_TICKS(100));
+    else // If the display is on already
+    {
+        if (bsp_display_lock(100) == ESP_OK)
+        {
+            backlight_override ? bsp_display_brightness_set(50) : bsp_display_backlight_on();
+            bsp_display_unlock();
+        }
+    }
+    // Manage timer
+    if (!backlight_override)
+    {
+        xTimerReset(sleepDisplayTimer, pdMS_TO_TICKS(100));
+    }
+    else
+    {
+        xTimerStop(sleepDisplayTimer, pdMS_TO_TICKS(100));
+    }
 }
 
 /**
@@ -248,6 +288,34 @@ extern "C" void action_global_pressed(lv_event_t *e)
 }
 
 /**
+ * @brief LVGL event callback triggered when the backlight override switch is turned on.
+ *
+ * Forces the display to remain always on at a reduced 50% brightness and cancels inactivity sleep timer.
+ *
+ * @param[in] e Pointer to LVGL event descriptor.
+ * @note Thread-safety: Must be called from the LVGL task context.
+ */
+extern "C" void action_backlight_sw_checked(lv_event_t *e)
+{
+    backlight_override = true;
+    wakeDisplay();
+}
+
+/**
+ * @brief LVGL event callback triggered when the backlight override switch is turned off.
+ *
+ * Restores automatic display power management (100% active brightness with inactivity sleep timeout).
+ *
+ * @param[in] e Pointer to LVGL event descriptor.
+ * @note Thread-safety: Must be called from the LVGL task context.
+ */
+extern "C" void action_backlight_sw_unchecked(lv_event_t *e)
+{
+    backlight_override = false;
+    wakeDisplay(); // For good measure to restart the sleep timer
+}
+
+/**
  * @brief FreeRTOS UI update task that refreshes LVGL telemetry labels periodically.
  *
  * @param[in] pvParameters Task parameters passed by FreeRTOS (unused).
@@ -287,9 +355,50 @@ void update_display(void *pvParameters)
                 }
             }
 
+            switch (gear_estimator.latched_gear)
+            {
+            case GEAR_NEUTRAL:
+                lv_label_set_text(objects.gear_readout, "N");
+                break;
+
+            case GEAR_UNCERTAIN:
+                lv_label_set_text(objects.gear_readout, "-");
+                break;
+
+            default:
+                lv_label_set_text_fmt(objects.gear_readout, "%u", gear_estimator.latched_gear);
+                break;
+            }
+
+            lv_label_set_text_fmt(objects.kph_readout, "Spd freq %.1f Hz", speed_freq);
+            lv_label_set_text_fmt(objects.rpm_readout, "RPM freq %.1f Hz", rpm_freq);
+            lv_label_set_text_fmt(objects.ratio_readout, "%.2f", rpm_freq > 0 ? speed_freq / rpm_freq : 0);
+
             bsp_display_unlock();
         }
         vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+/**
+ * @brief FreeRTOS task that periodically evaluates the Bayesian gear estimation filter.
+ *
+ * Runs at 40 Hz (25 ms interval), calculating microsecond delta time and updating the
+ * kinematic transition matrix, emission likelihoods, and hysteresis latches.
+ *
+ * @param[in] pvParameters Task parameters passed by FreeRTOS (unused).
+ * @note Thread-safety: Mutates gear_estimator state; reads speed_freq and rpm_freq.
+ */
+void update_gear_estimator(void *pvParameters)
+{
+    int64_t previous_us = esp_timer_get_time();
+    while (1)
+    {
+        vTaskDelay(pdMS_TO_TICKS(25));
+        int64_t now_us = esp_timer_get_time();
+        float dt_s = (float)(now_us - previous_us) / 1000000.0f;
+        previous_us = now_us;
+        gear_bayesian_update(&gear_estimator, speed_freq, rpm_freq, dt_s);
     }
 }
 
@@ -302,6 +411,13 @@ void update_display(void *pvParameters)
 extern "C" void app_main(void)
 {
     sleepDisplayTimer = xTimerCreate("slp_disp", pdMS_TO_TICKS(10000), pdFALSE, NULL, sleepDisplayTimer_cb);
+
+    // Initialize necessary frames
+    binocan_dbg_itf_speed_init(&temp_speed_frame);
+    binocan_dbg_itf_rpm_init(&temp_rpm_frame);
+
+    // Initialise the bayesian gear estimator
+    gear_bayesian_init(&gear_estimator);
 
     if (bsp_sdcard_mount() != ESP_OK)
     {
@@ -336,8 +452,7 @@ extern "C" void app_main(void)
         .auto_can_forward = true,
         .pvt_cb = on_racebox_telemetry,
         .ble_evt_cb = on_racebox_ble_event,
-        .user_data = NULL
-    };
+        .user_data = NULL};
 
     if (racebox_companion_init(&companion_cfg) == ESP_OK)
     {
@@ -372,6 +487,7 @@ extern "C" void app_main(void)
     wakeDisplay();
 
     xTaskCreate(update_display, "upd_disp", 4096, NULL, 3, NULL);
+    xTaskCreate(update_gear_estimator, "upd_gear", 4096, NULL, 5, NULL);
     while (true)
     {
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -379,4 +495,3 @@ extern "C" void app_main(void)
                  current_log_filename, current_file_size / 1024, current_buffered_bytes);
     }
 }
-

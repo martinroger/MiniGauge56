@@ -130,6 +130,24 @@
       "componentGroups": [],
       "userProperties": [],
       "name": "global_pressed"
+    },
+    {
+      "objID": "8c8bb7b5-0865-43ca-fb6b-1a427ed1dab4",
+      "components": [],
+      "connectionLines": [],
+      "localVariables": [],
+      "componentGroups": [],
+      "userProperties": [],
+      "name": "backlight_sw_checked"
+    },
+    {
+      "objID": "2e72f588-9878-4d21-cd2f-116c0db31988",
+      "components": [],
+      "connectionLines": [],
+      "localVariables": [],
+      "componentGroups": [],
+      "userProperties": [],
+      "name": "backlight_sw_unchecked"
     }
   ],
   "userPages": [
@@ -182,7 +200,15 @@
                 "childStyles": []
               },
               "timeline": [],
-              "eventHandlers": [],
+              "eventHandlers": [
+                {
+                  "objID": "2a8f1ea1-1abe-4883-c84c-ba36abd9f921",
+                  "eventName": "PRESSED",
+                  "handlerType": "action",
+                  "action": "global_pressed",
+                  "userData": 0
+                }
+              ],
               "leftUnit": "px",
               "topUnit": "px",
               "widthUnit": "%",
@@ -204,7 +230,15 @@
                     "childStyles": []
                   },
                   "timeline": [],
-                  "eventHandlers": [],
+                  "eventHandlers": [
+                    {
+                      "objID": "399e10c9-d4f9-4806-9282-fe5caeb235f2",
+                      "eventName": "PRESSED",
+                      "handlerType": "action",
+                      "action": "global_pressed",
+                      "userData": 0
+                    }
+                  ],
                   "leftUnit": "px",
                   "topUnit": "px",
                   "widthUnit": "px",
@@ -582,10 +616,10 @@
                     {
                       "objID": "edc02ce3-951d-4f6c-b37e-318c829ade8c",
                       "type": "LVGLSwitchWidget",
-                      "left": 192,
-                      "top": 452,
-                      "width": 50,
-                      "height": 25,
+                      "left": 165,
+                      "top": 446,
+                      "width": 104,
+                      "height": 45,
                       "customInputs": [],
                       "customOutputs": [],
                       "style": {
@@ -595,7 +629,22 @@
                         "childStyles": []
                       },
                       "timeline": [],
-                      "eventHandlers": [],
+                      "eventHandlers": [
+                        {
+                          "objID": "95d5ed2c-f2e9-4848-8fb3-37c76a3a5048",
+                          "eventName": "CHECKED",
+                          "handlerType": "action",
+                          "action": "backlight_sw_checked",
+                          "userData": 0
+                        },
+                        {
+                          "objID": "cb13bae5-c6a4-449e-bd7d-db7a73b78b7e",
+                          "eventName": "UNCHECKED",
+                          "handlerType": "action",
+                          "action": "backlight_sw_unchecked",
+                          "userData": 0
+                        }
+                      ],
                       "identifier": "backlight_switch",
                       "leftUnit": "px",
                       "topUnit": "px",
@@ -623,7 +672,7 @@
                       "objID": "4a9455fb-7652-41ce-f8e0-355ef36e09a4",
                       "type": "LVGLLabelWidget",
                       "left": 0,
-                      "top": 273,
+                      "top": 301,
                       "width": 405,
                       "height": 27,
                       "customInputs": [],
@@ -666,7 +715,7 @@
                       },
                       "group": "",
                       "groupIndex": 0,
-                      "text": "Auto backlight",
+                      "text": "Always on",
                       "textType": "literal",
                       "longMode": "SCROLL_CIRCULAR",
                       "recolor": false
