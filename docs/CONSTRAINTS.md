@@ -16,7 +16,8 @@
 ## 2. Software & Architectural Constraints
 
 ### 2.1 Unmodified Component Boundary
-- The `components/twai_daemon/`, `components/racebox_ble/`, and `components/racebox_twai/` components were developed and tested across other projects. They must remain **strictly unmodified**.
+- The `twai_daemon` and `binocan` components are maintained as external Git repositories (`https://github.com/martinroger/twai_daemon` and `https://github.com/martinroger/binocan`) and consumed via the ESP-IDF Component Manager into `managed_components/` (strictly read-only).
+- The remaining in-tree shared components (`components/racebox_ble/` and `components/racebox_twai/`) were developed and tested across other projects. They must remain **strictly unmodified**.
 - Application code in `main/` adapts to the existing component APIs without altering component source files.
 - Compiler warnings in external components (e.g. GCC 14 `-Wstringop-truncation`) are suppressed at the root project CMake level (`-Wno-stringop-truncation`) rather than modifying component code.
 

@@ -15,9 +15,13 @@ dependencies:
   #   # All dependencies of `main` are public by default.
   #   public: true
   waveshare/esp32_s3_touch_amoled_1_75: ^2.0.0
+  binocan:
+    git: https://github.com/martinroger/binocan.git
+    version: "v0.1.0"
+  twai_daemon:
+    git: https://github.com/martinroger/twai_daemon.git
+    version: "v0.1.0"
   # waveshare/esp32_s3_touch_amoled_1_75:
   #   git: https://github.com/waveshareteam/Waveshare-ESP32-components.git
   #   version: 3dcdac3957aebdb1d3b3219b3159552725da0a1e
   #   path: ../managed_components/waveshare__esp32_s3_touch_amoled_1_75/bsp/esp32_s3_touch_amoled_1_75
-
-

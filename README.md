@@ -17,13 +17,14 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN telemetry
 | Sub-Project | External Dependency | Locally Installed Version | Version Requirement |
 | :--- | :--- | :--- | :--- |
 | `main` | `waveshare/esp32_s3_touch_amoled_1_75` | `2.0.6` | `^2.0.0` |
+| `main` | `binocan` | `v0.1.0` (`622660e`) | `git: https://github.com/martinroger/binocan.git` (tag `v0.1.0`) |
+| `main` | `twai_daemon` | `v0.1.0` (`588c470`) | `git: https://github.com/martinroger/twai_daemon.git` (tag `v0.1.0`) |
 
 ## Documentation
 - [System Requirements & Traceability Matrix](docs/REQUIREMENTS.md)
 - [Platform & Architectural Constraints](docs/CONSTRAINTS.md)
 - [Theory of Operation (TOO)](docs/TOO.MD)
-- [TWAI Daemon Component Guide](components/twai_daemon/README.md)
-- [TWAI Daemon Integration HOWTO](components/twai_daemon/HOWTO.md)
-- [TWAI Daemon Theory of Operation](components/twai_daemon/TOO.MD)
+- [TWAI Daemon Component Repository](https://github.com/martinroger/twai_daemon)
+- [Binocan Component Repository](https://github.com/martinroger/binocan)
 - [RaceBox BLE Component Guide](components/racebox_ble/HOWTO.md)
 - [RaceBox TWAI Component Guide](components/racebox_twai/HOWTO.md)

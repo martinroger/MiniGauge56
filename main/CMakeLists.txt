@@ -1,2 +1,2 @@
-idf_component_register(SRCS "main.cpp" "logging.cpp" "binocan.c"
+idf_component_register(SRCS "main.cpp" "logging.cpp"
                     INCLUDE_DIRS ".")
