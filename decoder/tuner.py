@@ -1438,6 +1438,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
       </div>
     </div>
+
+    <!-- TAB 2: FUEL LEVEL FILTERING -->
+    <div id="tab-fuel" class="tab-pane">
+      <div class="algo-sidebar">
         <div class="card">
           <div class="card-title">
             <span>Filter Algorithm</span>
