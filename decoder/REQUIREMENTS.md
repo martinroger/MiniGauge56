@@ -16,6 +16,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-SYS-003** | DBC Parsing Fidelity | Tools MUST support parsing the official CAN database (`binocan.dbc`), decoding integer, float, signed/unsigned endianness (Intel little-endian and Motorola big-endian), scaling factors, offsets, min/max limits, unit strings, and discrete value enumeration tables. |
 | **REQ-SYS-004** | Dual Theme Support | All web-based interfaces MUST support automatic OS light/dark detection and dynamic manual switching (Auto / Light / Dark) without page reloads, persisting preference in `localStorage`. |
 | **REQ-SYS-005** | Portable Relative Linking | All internal documentation references MUST use relative file paths without machine-specific absolute filesystem paths. |
+| **REQ-SYS-006** | Interactive Parameter Tooltips | All algorithmic sliders, parameter inputs, and stage toggles in `tuner.py` and `gear_lab.py` MUST provide informative hover tooltips (using styled info badges `ⓘ` and native HTML attributes) detailing physical roles and operational effects. |
 
 ---
 
@@ -148,6 +149,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-SYS-003** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py` | `DbcDatabase.parse()`, `DbcMessage.decode()` | DBC parse verification with signed/scale/enum/float |
 | **REQ-SYS-004** | `visualize.py`, `tuner.py`, `gear_lab.py` | `initTheme()`, `setTheme()`, CSS tokens | Theme toggle verification in browser |
 | **REQ-SYS-005** | All `.md` files | Markdown relative links | Static doc link validation |
+| **REQ-SYS-006** | `tuner.py`, `gear_lab.py` | `.info-icon`, `title` attributes on controls | DOM verification of hover tooltips across all tabs |
 | **REQ-DEC-001** | `decode.py` | `write_asc()` | Vector CANoe format validation test |
 | **REQ-DEC-002** | `decode.py` | `write_csv()` | CSV column structure validation |
 | **REQ-DEC-003** | `decode.py` | `write_signals_csv()` | Normalized time-series test with `-s` flag |

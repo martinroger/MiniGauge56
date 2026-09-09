@@ -730,6 +730,32 @@ HTML_PAGE = r"""<!DOCTYPE html>
     .ctrl-label {
       color: var(--text);
       font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .info-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: var(--hover-bg);
+      border: 1px solid var(--panel-border);
+      color: var(--text-muted);
+      font-size: 0.65rem;
+      font-family: serif;
+      font-style: italic;
+      cursor: help;
+      flex-shrink: 0;
+      user-select: none;
+      transition: all 0.15s ease;
+    }
+    .info-icon:hover {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
     }
     .ctrl-val {
       font-family: monospace;
@@ -1150,9 +1176,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <div id="tab-gear" class="tab-pane active">
       <div class="algo-sidebar">
         <div class="card" style="border-left: 3px solid var(--primary);">
-          <div class="card-title">Algorithm Preset</div>
+          <div class="card-title">
+            <span>Algorithm Preset</span>
+            <span class="info-icon" title="Switches between standard pipeline architectures: pure gated EMA, pre-filtered RPM, or full production latched pipeline.">i</span>
+          </div>
           <div class="ctrl-group">
-            <select id="select-gear-preset" style="width:100%; font-weight:600;">
+            <select id="select-gear-preset" style="width:100%; font-weight:600;" title="Select an algorithm formulation preset">
               <option value="baseline" selected>1. Baseline (Gated Ratio EMA)</option>
               <option value="rpm_filter">2. RPM Pre-Filtered + Ratio EMA</option>
               <option value="latched">3. Full Pipeline (RPM Filter + Latch)</option>
@@ -1164,79 +1193,85 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div class="card">
           <div class="card-title">
             <span>Stage 1: Input RPM Pre-Filter</span>
-            <label style="font-size:0.75rem; font-weight:normal; display:flex; align-items:center; gap:0.3rem; text-transform:none; cursor:pointer;">
+            <label style="font-size:0.75rem; font-weight:normal; display:flex; align-items:center; gap:0.3rem; text-transform:none; cursor:pointer;" title="Enables low-pass filtering on raw engine frequency before computing the ratio to suppress ignition tooth jitter.">
               <input type="checkbox" id="chk-gear-rpm-filter"> Enable
             </label>
           </div>
           <div id="gear-rpm-filter-controls" style="display:none; flex-direction:column; gap:0.6rem; margin-top:0.4rem;">
             <div style="display:flex; gap:0.6rem;">
-              <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.78rem; cursor:pointer;">
+              <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.78rem; cursor:pointer;" title="Exponential Moving Average: smooth continuous IIR filter with exponential decay.">
                 <input type="radio" name="gear-rpm-algo" value="EMA" checked id="radio-gear-rpm-ema"> EMA
               </label>
-              <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.78rem; cursor:pointer;">
+              <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.78rem; cursor:pointer;" title="Simple Moving Average: sliding rectangular FIR time window.">
                 <input type="radio" name="gear-rpm-algo" value="SMA" id="radio-gear-rpm-sma"> SMA
               </label>
             </div>
             <div class="ctrl-group">
               <div class="ctrl-label-row">
-                <span class="ctrl-label" id="lbl-gear-rpm-param">Time Constant (τ)</span>
+                <span class="ctrl-label" id="lbl-gear-rpm-param">Time Constant (τ) <span class="info-icon" title="Width of the smoothing window. Higher values eliminate ignition pulse ripple; lower values minimize phase lag during fast revving.">i</span></span>
                 <span class="ctrl-val" id="val-gear-rpm-param">0.10 s</span>
               </div>
-              <input type="range" id="slider-gear-rpm-param" min="0.02" max="1.00" step="0.02" value="0.10">
+              <input type="range" id="slider-gear-rpm-param" min="0.02" max="1.00" step="0.02" value="0.10" title="Adjust RPM pre-filter smoothing window / time constant">
             </div>
           </div>
         </div>
 
         <div class="card">
-          <div class="card-title">Stage 2: Gating Filters</div>
+          <div class="card-title">
+            <span>Stage 2: Gating Filters</span>
+            <span class="info-icon" title="Rejects physically invalid driving states (standstill division by zero, engine idle/stall, and clutch slip transients).">i</span>
+          </div>
           <div class="ctrl-group">
             <div class="ctrl-label-row">
-              <span class="ctrl-label">Min Speed Freq</span>
+              <span class="ctrl-label">Min Speed Freq <span class="info-icon" title="Road speed threshold below which vehicle is considered stationary. Frequency converts to road speed via V = f × 0.2444 km/h (defaults to Neutral 0).">i</span></span>
               <span class="ctrl-val" id="val-gear-minspeed">5.0 Hz (~1.2 km/h)</span>
             </div>
-            <input type="range" id="slider-gear-minspeed" min="0" max="40" step="0.5" value="5.0">
+            <input type="range" id="slider-gear-minspeed" min="0" max="40" step="0.5" value="5.0" title="Adjust minimum speed frequency cutoff">
           </div>
           <div class="ctrl-group">
             <div class="ctrl-label-row">
-              <span class="ctrl-label">Min RPM Freq (Idle Cutoff)</span>
+              <span class="ctrl-label">Min RPM Freq (Idle Cutoff) <span class="info-icon" title="Rejects engine idle/stall conditions (< 1000 RPM) to prevent false tall gear ratios while rolling in neutral or with clutch disengaged.">i</span></span>
               <span class="ctrl-val" id="val-gear-minrpm">33.3 Hz (1000 RPM)</span>
             </div>
-            <input type="range" id="slider-gear-minrpm" min="5" max="80" step="0.5" value="33.3">
+            <input type="range" id="slider-gear-minrpm" min="5" max="80" step="0.5" value="33.3" title="Adjust minimum engine RPM frequency cutoff">
           </div>
           <div class="ctrl-group">
             <div class="ctrl-label-row">
-              <span class="ctrl-label">Stability Gate |dRatio/dt|</span>
+              <span class="ctrl-label">Stability Gate |dRatio/dt| <span class="info-icon" title="Rejects samples where instantaneous ratio changes too rapidly between frames (e.g. clutch slip, heel-and-toe revs, or gear change transients).">i</span></span>
               <span class="ctrl-val" id="val-gear-stab">0.050</span>
             </div>
-            <input type="range" id="slider-gear-stab" min="0.005" max="0.200" step="0.005" value="0.050">
+            <input type="range" id="slider-gear-stab" min="0.005" max="0.200" step="0.005" value="0.050" title="Adjust ratio derivative stability threshold">
           </div>
         </div>
 
         <div class="card">
-          <div class="card-title">Stage 3: Ratio Smoothing</div>
+          <div class="card-title">
+            <span>Stage 3: Ratio Smoothing</span>
+            <span class="info-icon" title="Exponential filter applied directly to the speed/RPM ratio. Smoothing the ratio directly avoids differential phase lag distortion between speed and RPM.">i</span>
+          </div>
           <div class="ctrl-group">
             <div class="ctrl-label-row">
-              <span class="ctrl-label">EMA Alpha (α)</span>
+              <span class="ctrl-label">EMA Alpha (α) <span class="info-icon" title="Exponential smoothing factor on the ratio: r = α·r_inst + (1-α)·r_prev. Lower values reject driveline chatter; higher values track fast shifts.">i</span></span>
               <span class="ctrl-val" id="val-gear-alpha">0.15</span>
             </div>
-            <input type="range" id="slider-gear-alpha" min="0.01" max="1.00" step="0.01" value="0.15">
+            <input type="range" id="slider-gear-alpha" min="0.01" max="1.00" step="0.01" value="0.15" title="Adjust ratio EMA alpha smoothing factor">
           </div>
         </div>
 
         <div class="card">
           <div class="card-title">
             <span>Stage 4: Output Latch / Debounce</span>
-            <label style="font-size:0.75rem; font-weight:normal; display:flex; align-items:center; gap:0.3rem; text-transform:none; cursor:pointer;">
+            <label style="font-size:0.75rem; font-weight:normal; display:flex; align-items:center; gap:0.3rem; text-transform:none; cursor:pointer;" title="Enables confirmation debouncing before committing to a new gear output, preventing shift chatter.">
               <input type="checkbox" id="chk-gear-latch"> Enable
             </label>
           </div>
           <div id="gear-latch-controls" style="display:none; flex-direction:column; gap:0.6rem; margin-top:0.4rem;">
             <div class="ctrl-group">
               <div class="ctrl-label-row">
-                <span class="ctrl-label">Hold Confirmation Time</span>
+                <span class="ctrl-label">Hold Confirmation Time <span class="info-icon" title="Minimum continuous dwell time required in candidate gear before confirming output transition. Higher values eliminate chatter; lower values reduce dash delay.">i</span></span>
                 <span class="ctrl-val" id="val-gear-latch">200 ms</span>
               </div>
-              <input type="range" id="slider-gear-latch" min="50" max="600" step="25" value="200">
+              <input type="range" id="slider-gear-latch" min="50" max="600" step="25" value="200" title="Adjust gear latch hold confirmation time">
             </div>
             <div style="font-size:0.72rem; color:var(--text-muted); line-height:1.35;">
               Requires candidate gear to hold continuously before confirming transition, suppressing shift chatter.
@@ -1247,35 +1282,35 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div class="card">
           <div class="card-title">
             <span>Gear Ratio Centers</span>
-            <button class="btn-accent" id="btn-auto-gear-peaks" style="padding:0.15rem 0.45rem; font-size:0.7rem;">⚡ Auto-Detect</button>
+            <button class="btn-accent" id="btn-auto-gear-peaks" style="padding:0.15rem 0.45rem; font-size:0.7rem;" title="Auto-detect gear ratio cluster peaks from drive cycle histogram">⚡ Auto-Detect</button>
           </div>
           <div class="ctrl-group">
             <div class="ctrl-label-row">
-              <span class="ctrl-label">Tolerance Window (Absolute ±Δ)</span>
+              <span class="ctrl-label">Tolerance Window (Absolute ±Δ) <span class="info-icon" title="Half-width acceptance corridor around nominal gear ratios (μ ± Δ). Voronoi midpoint protection strictly prevents adjacent gear corridor overlaps.">i</span></span>
               <span class="ctrl-val" id="val-gear-tol">±0.25</span>
             </div>
-            <input type="range" id="slider-gear-tol" min="0.05" max="0.50" step="0.01" value="0.25">
+            <input type="range" id="slider-gear-tol" min="0.05" max="0.50" step="0.01" value="0.25" title="Adjust absolute tolerance corridor half-width">
           </div>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.4rem; font-size:0.78rem;">
             <div>
-              <label>1st Gear</label>
-              <input type="number" id="gear-r-1" step="0.01" value="1.01" style="width:100%;">
+              <label title="Calibrated ratio (f_speed / f_RPM) for 1st gear">1st Gear</label>
+              <input type="number" id="gear-r-1" step="0.01" value="1.01" style="width:100%;" title="1st gear ratio center">
             </div>
             <div>
-              <label>2nd Gear</label>
-              <input type="number" id="gear-r-2" step="0.01" value="1.80" style="width:100%;">
+              <label title="Calibrated ratio (f_speed / f_RPM) for 2nd gear">2nd Gear</label>
+              <input type="number" id="gear-r-2" step="0.01" value="1.80" style="width:100%;" title="2nd gear ratio center">
             </div>
             <div>
-              <label>3rd Gear</label>
-              <input type="number" id="gear-r-3" step="0.01" value="2.73" style="width:100%;">
+              <label title="Calibrated ratio (f_speed / f_RPM) for 3rd gear">3rd Gear</label>
+              <input type="number" id="gear-r-3" step="0.01" value="2.73" style="width:100%;" title="3rd gear ratio center">
             </div>
             <div>
-              <label>4th Gear</label>
-              <input type="number" id="gear-r-4" step="0.01" value="3.76" style="width:100%;">
+              <label title="Calibrated ratio (f_speed / f_RPM) for 4th gear">4th Gear</label>
+              <input type="number" id="gear-r-4" step="0.01" value="3.76" style="width:100%;" title="4th gear ratio center">
             </div>
             <div>
-              <label>5th Gear</label>
-              <input type="number" id="gear-r-5" step="0.01" value="4.54" style="width:100%;">
+              <label title="Calibrated ratio (f_speed / f_RPM) for 5th gear">5th Gear</label>
+              <input type="number" id="gear-r-5" step="0.01" value="4.54" style="width:100%;" title="5th gear ratio center">
             </div>
           </div>
           <div style="font-size:0.72rem; color:var(--text-muted); margin-top:0.4rem;">
@@ -1285,20 +1320,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
         <div class="card">
           <div class="card-title">Display Options</div>
-          <label style="display:flex; align-items:center; gap:0.45rem; font-size:0.8rem; cursor:pointer;">
+          <label style="display:flex; align-items:center; gap:0.45rem; font-size:0.8rem; cursor:pointer;" title="Overlay the cluster's ground truth gear state signal recorded in the CAN log">
             <input type="checkbox" id="chk-gear-groundtruth">
             <span>Show ITF_gear_position_ST trace</span>
           </label>
-          <label style="display:flex; align-items:center; gap:0.45rem; font-size:0.8rem; cursor:pointer; margin-top:0.35rem;">
+          <label style="display:flex; align-items:center; gap:0.45rem; font-size:0.8rem; cursor:pointer; margin-top:0.35rem;" title="Show simulated gear position gauge card during replayer simulation">
             <input type="checkbox" id="chk-gear-gauge-pod" checked>
             <span>Show Simulated Gear Gauge</span>
           </label>
           <div style="display:flex; gap:0.4rem; margin-top:0.75rem;">
-            <button id="btn-save-shared-cal" style="flex:1; font-size:0.75rem;" title="Save current tolerance and latch to gear_calibration.json">💾 Save Cal</button>
-            <button id="btn-load-shared-cal" style="flex:1; font-size:0.75rem;" title="Load parameters from gear_calibration.json">📥 Load Cal</button>
+            <button id="btn-save-shared-cal" style="flex:1; font-size:0.75rem;" title="Save current tolerance, latch, and nominal ratios to decoder/gear_calibration.json">💾 Save Cal</button>
+            <button id="btn-load-shared-cal" style="flex:1; font-size:0.75rem;" title="Load shared parameters from decoder/gear_calibration.json">📥 Load Cal</button>
           </div>
           <div style="margin-top:0.4rem;">
-            <button id="btn-reset-gear-defaults" style="width:100%;">Reset Gear Defaults</button>
+            <button id="btn-reset-gear-defaults" style="width:100%;" title="Reset gear parameters to factory defaults">Reset Gear Defaults</button>
           </div>
         </div>
 
@@ -1403,34 +1438,36 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
       </div>
     </div>
-
-    <!-- TAB 2: FUEL LEVEL FILTERING -->
-    <div id="tab-fuel" class="tab-pane">
-      <div class="algo-sidebar">
         <div class="card">
-          <div class="card-title">Filter Algorithm</div>
+          <div class="card-title">
+            <span>Filter Algorithm</span>
+            <span class="info-icon" title="Choose between sliding Simple Moving Average (SMA) or continuous Exponential Moving Average (EMA).">i</span>
+          </div>
           <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem;">
-            <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.8rem; cursor:pointer;">
+            <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.8rem; cursor:pointer;" title="Simple Moving Average: sliding window with equal weight over past W seconds.">
               <input type="radio" name="fuel-algo" value="SMA" checked id="radio-fuel-sma"> SMA (Moving Avg)
             </label>
-            <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.8rem; cursor:pointer;">
+            <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.8rem; cursor:pointer;" title="Exponential Moving Average: continuous recursive IIR filter with time constant τ.">
               <input type="radio" name="fuel-algo" value="EMA" id="radio-fuel-ema"> EMA (Exponential)
             </label>
           </div>
           <div class="ctrl-group">
             <div class="ctrl-label-row">
-              <span class="ctrl-label" id="lbl-fuel-param">Time Window</span>
+              <span class="ctrl-label" id="lbl-fuel-param">Time Window <span class="info-icon" title="Slosh damping duration to suppress tank fuel sloshing during vehicle acceleration, braking, and cornering. Higher values give a rock-steady gauge; lower values react faster to refueling.">i</span></span>
               <span class="ctrl-val" id="val-fuel-window">30 s</span>
             </div>
-            <input type="range" id="slider-fuel-window" min="1" max="180" step="1" value="30">
+            <input type="range" id="slider-fuel-window" min="1" max="180" step="1" value="30" title="Adjust fuel filter damping window / time constant">
           </div>
         </div>
 
         <div class="card">
-          <div class="card-title">Quantization Simulation</div>
+          <div class="card-title">
+            <span>Quantization Simulation</span>
+            <span class="info-icon" title="Simulates embedded firmware ADC and CAN bus discrete quantization resolution (0.5% standard vs 1.0% integer).">i</span>
+          </div>
           <div class="ctrl-group">
-            <label style="font-size:0.8rem; margin-bottom:0.3rem;">Rounding Step</label>
-            <select id="select-fuel-quant" style="width:100%;">
+            <label style="font-size:0.8rem; margin-bottom:0.3rem;" title="Quantization rounding step applied to filtered fuel level">Rounding Step</label>
+            <select id="select-fuel-quant" style="width:100%;" title="Select discrete quantization resolution">
               <option value="0">Continuous (No Rounding)</option>
               <option value="0.5">0.5% (DBC Standard)</option>
               <option value="1.0" selected>1.0% (Integer Percent)</option>
@@ -1444,7 +1481,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             Compares theoretical moving average filter against real unfiltered raw sensor measurements and firmware-recorded filtered level.
           </p>
           <div style="margin-top:0.75rem;">
-            <button id="btn-reset-fuel-defaults" style="width:100%;">Reset Fuel Defaults</button>
+            <button id="btn-reset-fuel-defaults" style="width:100%;" title="Reset fuel filter parameters to factory defaults">Reset Fuel Defaults</button>
           </div>
         </div>
       </div>
@@ -1464,19 +1501,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <span class="sc-val warn" id="sc-fuel-maxerr">-- %</span>
           </div>
           <div class="scorecard">
-            <span class="sc-label">Sim Max Slew</span>
-            <span class="sc-val" id="sc-fuel-sim-slew">-- %/s</span>
+            <span class="sc-label">Max Slew Rate</span>
+            <span class="sc-val" id="sc-fuel-slew">-- %/s</span>
           </div>
           <div class="scorecard">
-            <span class="sc-label">Sim Max Jitter</span>
-            <span class="sc-val" id="sc-fuel-sim-jitter">-- %</span>
+            <span class="sc-label">Sim Jitter (&Delta;y)</span>
+            <span class="sc-val" id="sc-fuel-jitter">-- %</span>
           </div>
           <div class="scorecard">
-            <span class="sc-label">Meas Max Slew</span>
-            <span class="sc-val" id="sc-fuel-meas-slew">-- %/s</span>
-          </div>
-          <div class="scorecard">
-            <span class="sc-label">Meas Max Jitter</span>
+            <span class="sc-label">Firmware Jitter</span>
             <span class="sc-val" id="sc-fuel-meas-jitter">-- %</span>
           </div>
           <div class="scorecard">
@@ -1495,20 +1528,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <div id="tab-speed" class="tab-pane">
       <div class="algo-sidebar">
         <div class="card">
-          <div class="card-title">Calibration Tuning</div>
-          <div class="ctrl-group">
-            <div class="ctrl-label-row">
-              <span class="ctrl-label">Gain Multiplier (k)</span>
-              <span class="ctrl-val" id="val-speed-gain">1.000</span>
-            </div>
-            <input type="range" id="slider-speed-gain" min="0.800" max="1.250" step="0.002" value="1.000">
+          <div class="card-title">
+            <span>Calibration Tuning</span>
+            <span class="info-icon" title="Linear speedometer calibration formula: V_corr = k · V_ind + c. Compensates for tire diameter variance and instrument gearing.">i</span>
           </div>
           <div class="ctrl-group">
             <div class="ctrl-label-row">
-              <span class="ctrl-label">Offset (c)</span>
+              <span class="ctrl-label">Gain Multiplier (k) <span class="info-icon" title="Proportional scaling factor on indicated speed to compensate for tire rolling circumference and gearing.">i</span></span>
+              <span class="ctrl-val" id="val-speed-gain">1.000</span>
+            </div>
+            <input type="range" id="slider-speed-gain" min="0.800" max="1.250" step="0.002" value="1.000" title="Adjust speedometer gain multiplier k">
+          </div>
+          <div class="ctrl-group">
+            <div class="ctrl-label-row">
+              <span class="ctrl-label">Offset (c) <span class="info-icon" title="Constant velocity offset (km/h) added to corrected speed across all speeds.">i</span></span>
               <span class="ctrl-val" id="val-speed-offset">0.0 km/h</span>
             </div>
-            <input type="range" id="slider-speed-offset" min="-10.0" max="15.0" step="0.2" value="0.0">
+            <input type="range" id="slider-speed-offset" min="-10.0" max="15.0" step="0.2" value="0.0" title="Adjust speedometer offset c (km/h)">
           </div>
           <div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.4rem;">
             Formula: <code class="mono" style="color:var(--text);">V_corr = k · V_ind + c</code>
@@ -1522,38 +1558,41 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <p style="font-size:0.76rem; color:var(--text-muted); margin-bottom:0.6rem; line-height:1.4;">
             Solves optimal gain <code class="mono">k</code> and offset <code class="mono">c</code> to meet UNECE R39 (<code class="mono">V_gps &le; V_ind &le; 1.1·V_gps + 4</code>) while minimizing excess over-read.
           </p>
-          <button class="btn-accent" id="btn-auto-opt-speed" style="width:100%;">⚡ Auto-Optimize for ECE R39</button>
+          <button class="btn-accent" id="btn-auto-opt-speed" style="width:100%;" title="Run grid search solver to optimize k and c for maximum ECE R39 compliance">⚡ Auto-Optimize for ECE R39</button>
         </div>
 
         <div class="card">
-          <div class="card-title">Dynamic Lag & Fix Masking</div>
-          <label style="display:flex; align-items:center; gap:0.45rem; font-size:0.8rem; cursor:pointer;">
+          <div class="card-title">
+            <span>Dynamic Lag & Fix Masking</span>
+            <span class="info-icon" title="Filters out GPS fix dropouts and dynamic sensor phase lag transients during acceleration or braking.">i</span>
+          </div>
+          <label style="display:flex; align-items:center; gap:0.45rem; font-size:0.8rem; cursor:pointer;" title="Excludes GPS points without valid 3D satellite navigation fixes (fix status < 3).">
             <input type="checkbox" id="chk-speed-require-gps" checked>
             <span>Ignore invalid GPS fixes (&lt; 3D fix)</span>
           </label>
-          <label style="display:flex; align-items:center; gap:0.45rem; font-size:0.8rem; cursor:pointer; margin-top:0.5rem;">
+          <label style="display:flex; align-items:center; gap:0.45rem; font-size:0.8rem; cursor:pointer; margin-top:0.5rem;" title="Disqualifies high acceleration/braking samples where GPS sensor latency causes artificial ECE R39 violations.">
             <input type="checkbox" id="chk-speed-filter-accel" checked>
             <span>Filter high |dv/dt| (GPS phase lag)</span>
           </label>
           <div class="ctrl-group" style="margin-top:0.6rem;">
             <div class="ctrl-label-row">
-              <span class="ctrl-label">Max Speed Change Rate</span>
+              <span class="ctrl-label">Max Speed Change Rate <span class="info-icon" title="Maximum acceleration/deceleration rate allowed for ECE R39 evaluation. Disqualifies transient lag during hard braking or throttle application.">i</span></span>
               <span class="ctrl-val" id="val-speed-maxaccel">4.0 km/h/s</span>
             </div>
-            <input type="range" id="slider-speed-maxaccel" min="0.5" max="15.0" step="0.5" value="4.0">
+            <input type="range" id="slider-speed-maxaccel" min="0.5" max="15.0" step="0.5" value="4.0" title="Adjust maximum allowed speed rate of change (|dv/dt|)">
           </div>
           <div class="ctrl-group" style="margin-top:0.6rem;">
             <div class="ctrl-label-row">
-              <span class="ctrl-label">Min Evaluation Speed</span>
+              <span class="ctrl-label">Min Evaluation Speed <span class="info-icon" title="Lower speed limit for ECE R39 evaluation. Excludes parking maneuvers and standstill.">i</span></span>
               <span class="ctrl-val" id="val-speed-mineval">5.0 km/h</span>
             </div>
-            <input type="range" id="slider-speed-mineval" min="0" max="25" step="1" value="5.0">
+            <input type="range" id="slider-speed-mineval" min="0" max="25" step="1" value="5.0" title="Adjust minimum road speed for ECE R39 compliance checking">
           </div>
           <div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.5rem; line-height:1.35;">
             Disqualifies transient points during hard acceleration or braking where sensor phase lag distorts ECE R39 bounds.
           </div>
           <div style="margin-top:0.75rem;">
-            <button id="btn-reset-speed-defaults" style="width:100%;">Reset Speed Defaults</button>
+            <button id="btn-reset-speed-defaults" style="width:100%;" title="Reset speed calibration parameters to factory defaults">Reset Speed Defaults</button>
           </div>
         </div>
       </div>

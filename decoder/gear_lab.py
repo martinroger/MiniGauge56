@@ -1411,6 +1411,31 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
     button.btn-accent:hover { opacity: 0.9; }
 
+    .info-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: var(--hover-bg);
+      border: 1px solid var(--panel-border);
+      color: var(--text-muted);
+      font-size: 0.65rem;
+      font-family: serif;
+      font-style: italic;
+      cursor: help;
+      flex-shrink: 0;
+      user-select: none;
+      vertical-align: middle;
+      transition: all 0.15s ease;
+    }
+    .info-icon:hover {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+
     .main-layout {
       flex: 1;
       display: flex;
@@ -1645,18 +1670,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
       <!-- Global Low Cutoffs -->
       <div class="card" style="border-left:3px solid var(--primary);">
-        <div class="card-title">⚡ Low Cutoff Thresholds</div>
+        <div class="card-title">
+          <span>⚡ Low Cutoff Thresholds</span>
+          <span class="info-icon" title="Global vehicle standstill and engine idle gating thresholds shared across all algorithms. Below these cutoffs, the car is in Neutral (0).">i</span>
+        </div>
         <div style="font-size:0.74rem; color:var(--text-muted); line-height:1.4;">
           <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
-            <span>Min Speed:</span>
+            <span>Min Speed: <span class="info-icon" title="Threshold below which vehicle is considered stationary. Low speeds cause noisy ratio spikes; below this cutoff, output defaults to Neutral (0).">i</span></span>
             <span class="ctrl-val" id="val-cutoff-speed" style="font-family:monospace; color:var(--primary);">11.28 Hz (25 km/h)</span>
           </div>
-          <input type="range" id="slider-cutoff-speed" min="2.0" max="25.0" step="0.5" value="11.28" style="width:100%;">
+          <input type="range" id="slider-cutoff-speed" min="2.0" max="25.0" step="0.5" value="11.28" style="width:100%;" title="Adjust minimum road speed cutoff">
           <div style="display:flex; justify-content:space-between; margin-top:0.35rem;">
-            <span>Min RPM:</span>
+            <span>Min RPM: <span class="info-icon" title="Rejects engine idle/stall conditions. When coasting in neutral or with clutch disengaged, RPM drops to idle while road speed is high, creating false gear ratios.">i</span></span>
             <span class="ctrl-val" id="val-cutoff-rpm" style="font-family:monospace; color:var(--warning);">33.33 Hz (1000 RPM)</span>
           </div>
-          <input type="range" id="slider-cutoff-rpm" min="15.0" max="60.0" step="1.0" value="33.33" style="width:100%;">
+          <input type="range" id="slider-cutoff-rpm" min="15.0" max="60.0" step="1.0" value="33.33" style="width:100%;" title="Adjust minimum engine RPM cutoff">
           <div style="font-size:0.68rem; color:var(--text-muted); margin-top:0.35rem;">
             Below cutoffs &rarr; <strong>Neutral (0)</strong>.<br>
             Rolling above cutoffs &rarr; <strong>Uncertain (14)</strong> during shifts.
@@ -1717,63 +1745,72 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div style="border-left:2px solid #3b82f6; padding-left:0.45rem; margin-bottom:0.45rem;">
             <strong style="color:#3b82f6;">M1: Gated Heuristic</strong>
             <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
-              <span>EMA &alpha;:</span><span class="ctrl-val" id="val-m1-alpha">0.15</span>
+              <span>EMA &alpha;: <span class="info-icon" title="Controls smoothing on the speed/RPM ratio. Lower values filter out transient noise and clutch chatter; higher values respond faster to physical gear shifts.">i</span></span>
+              <span class="ctrl-val" id="val-m1-alpha">0.15</span>
             </div>
-            <input type="range" id="slider-m1-alpha" min="0.05" max="0.50" step="0.01" value="0.15" style="width:100%;">
+            <input type="range" id="slider-m1-alpha" min="0.05" max="0.50" step="0.01" value="0.15" style="width:100%;" title="Adjust M1 ratio EMA alpha smoothing factor">
             <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
-              <span>Abs Tolerance:</span><span class="ctrl-val" id="val-m1-tol">&plusmn;0.25</span>
+              <span>Abs Tolerance: <span class="info-icon" title="Half-width acceptance band around nominal gear ratios (μ ± Δ). Wider bands catch loose ratios; narrower bands prevent adjacent gear misclassification.">i</span></span>
+              <span class="ctrl-val" id="val-m1-tol">&plusmn;0.25</span>
             </div>
-            <input type="range" id="slider-m1-tol" min="0.10" max="0.45" step="0.01" value="0.25" style="width:100%;">
+            <input type="range" id="slider-m1-tol" min="0.10" max="0.45" step="0.01" value="0.25" style="width:100%;" title="Adjust M1 absolute ratio tolerance corridor half-width">
             <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
-              <span>Latch Debounce:</span><span class="ctrl-val" id="val-m1-latch">200 ms</span>
+              <span>Latch Debounce: <span class="info-icon" title="Minimum continuous hold time required before confirming a gear transition. Suppresses momentary shift chatter and transient spikes.">i</span></span>
+              <span class="ctrl-val" id="val-m1-latch">200 ms</span>
             </div>
-            <input type="range" id="slider-m1-latch" min="50" max="500" step="25" value="200" style="width:100%;">
+            <input type="range" id="slider-m1-latch" min="50" max="500" step="25" value="200" style="width:100%;" title="Adjust M1 output latch confirmation time">
           </div>
 
           <!-- Model 2 Params -->
           <div style="border-left:2px solid #f59e0b; padding-left:0.45rem; margin-bottom:0.45rem;">
             <strong style="color:#f59e0b;">M2: Kinematic Bayes</strong>
             <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
-              <span>Prior Decay &lambda;:</span><span class="ctrl-val" id="val-m2-decay">0.94</span>
+              <span>Prior Decay &lambda;: <span class="info-icon" title="Forgetting factor for previous belief (P_t|t-1 = P_prev^λ). Higher values maintain stable belief during sensor dropouts; lower values adapt faster to gear transitions.">i</span></span>
+              <span class="ctrl-val" id="val-m2-decay">0.94</span>
             </div>
-            <input type="range" id="slider-m2-decay" min="0.70" max="0.99" step="0.01" value="0.94" style="width:100%;">
+            <input type="range" id="slider-m2-decay" min="0.70" max="0.99" step="0.01" value="0.94" style="width:100%;" title="Adjust M2 Bayesian prior decay factor lambda">
             <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
-              <span>Inertia T<sub>kk</sub>:</span><span class="ctrl-val" id="val-m2-inertia">0.960</span>
+              <span>Inertia T<sub>kk</sub>: <span class="info-icon" title="Diagonal self-transition weight in kinematic transition matrix. High inertia favors staying in the current gear and penalizes erratic gear switching during throttle transients.">i</span></span>
+              <span class="ctrl-val" id="val-m2-inertia">0.960</span>
             </div>
-            <input type="range" id="slider-m2-inertia" min="0.85" max="0.995" step="0.005" value="0.96" style="width:100%;">
+            <input type="range" id="slider-m2-inertia" min="0.85" max="0.995" step="0.005" value="0.96" style="width:100%;" title="Adjust M2 kinematic transition matrix diagonal self-inertia">
             <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
-              <span>Latch Debounce:</span><span class="ctrl-val" id="val-m2-latch">200 ms</span>
+              <span>Latch Debounce: <span class="info-icon" title="Enforces continuous stability of the MAP gear decision before switching the physical output.">i</span></span>
+              <span class="ctrl-val" id="val-m2-latch">200 ms</span>
             </div>
-            <input type="range" id="slider-m2-latch" min="50" max="500" step="25" value="200" style="width:100%;">
+            <input type="range" id="slider-m2-latch" min="50" max="500" step="25" value="200" style="width:100%;" title="Adjust M2 Bayesian output latch confirmation time">
             <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
-              <span>Min Confidence:</span><span class="ctrl-val" id="val-m2-conf">0.38</span>
+              <span>Min Confidence: <span class="info-icon" title="Minimum posterior probability required to declare a gear. Below this threshold, estimator outputs Uncertain (14) instead of guessing.">i</span></span>
+              <span class="ctrl-val" id="val-m2-conf">0.38</span>
             </div>
-            <input type="range" id="slider-m2-conf" min="0.20" max="0.60" step="0.02" value="0.38" style="width:100%;">
+            <input type="range" id="slider-m2-conf" min="0.20" max="0.60" step="0.02" value="0.38" style="width:100%;" title="Adjust M2 minimum posterior confidence threshold">
           </div>
 
           <!-- Model 3 Params -->
           <div style="border-left:2px solid #10b981; padding-left:0.45rem; margin-bottom:0.45rem;">
             <strong style="color:#10b981;">M3: HMM State-Space</strong>
             <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
-              <span>Self-Inertia A<sub>ii</sub>:</span><span class="ctrl-val" id="val-m3-inertia">0.970</span>
+              <span>Self-Inertia A<sub>ii</sub>: <span class="info-icon" title="Diagonal persistence in the 6x6 transition matrix. High values prevent erratic gear jumping and enforce Markov state stability.">i</span></span>
+              <span class="ctrl-val" id="val-m3-inertia">0.970</span>
             </div>
-            <input type="range" id="slider-m3-inertia" min="0.85" max="0.999" step="0.005" value="0.97" style="width:100%;">
+            <input type="range" id="slider-m3-inertia" min="0.85" max="0.999" step="0.005" value="0.97" style="width:100%;" title="Adjust M3 HMM transition matrix diagonal self-inertia">
             <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
-              <span>Clutch Decel Cutoff:</span><span class="ctrl-val" id="val-m3-decel">-40 Hz/s</span>
+              <span>Clutch Decel Cutoff: <span class="info-icon" title="Detects rapid engine deceleration during clutch-in coasting (e.g. < -40 Hz/s ≈ -1200 RPM/s). Suppresses false upward gear transitions while engine speed falls towards idle.">i</span></span>
+              <span class="ctrl-val" id="val-m3-decel">-40 Hz/s</span>
             </div>
-            <input type="range" id="slider-m3-decel" min="-80" max="-15" step="5" value="-40" style="width:100%;">
+            <input type="range" id="slider-m3-decel" min="-80" max="-15" step="5" value="-40" style="width:100%;" title="Adjust M3 clutch-in deceleration detection threshold">
           </div>
 
           <div style="display:flex; gap:0.35rem; margin-top:0.4rem;">
-            <button id="btn-apply-tuning" class="btn-primary" style="flex:1; padding:0.25rem 0.4rem; font-size:0.72rem;">⚡ Apply & Evaluate</button>
-            <button id="btn-reset-tuning" style="padding:0.25rem 0.4rem; font-size:0.72rem;">↺ Reset</button>
+            <button id="btn-apply-tuning" class="btn-primary" style="flex:1; padding:0.25rem 0.4rem; font-size:0.72rem;" title="Re-evaluate all 3 models across the dataset using current tuning parameters">⚡ Apply & Evaluate</button>
+            <button id="btn-reset-tuning" style="padding:0.25rem 0.4rem; font-size:0.72rem;" title="Reset model parameters to calibrated baseline">↺ Reset</button>
           </div>
           <div style="display:flex; gap:0.35rem; margin-top:0.35rem;">
-            <button id="btn-auto-optimize" data-alias="btn-auto-tune" class="btn-accent" style="width:100%; padding:0.3rem 0.4rem; font-size:0.72rem;">⚡ Auto-Optimize Parameters</button>
+            <button id="btn-auto-optimize" data-alias="btn-auto-tune" class="btn-accent" style="width:100%; padding:0.3rem 0.4rem; font-size:0.72rem;" title="Run automated parameter grid search to maximize glitch-free scores">⚡ Auto-Optimize Parameters</button>
           </div>
           <div style="display:flex; gap:0.35rem; margin-top:0.35rem;">
-            <button id="btn-save-shared-cal" style="flex:1; padding:0.22rem 0.35rem; font-size:0.68rem;">💾 Save Shared Cal</button>
-            <button id="btn-load-shared-cal" style="flex:1; padding:0.22rem 0.35rem; font-size:0.68rem;">📥 Load Shared Cal</button>
+            <button id="btn-save-shared-cal" style="flex:1; padding:0.22rem 0.35rem; font-size:0.68rem;" title="Save current tuning parameters to decoder/gear_calibration.json">💾 Save Shared Cal</button>
+            <button id="btn-load-shared-cal" style="flex:1; padding:0.22rem 0.35rem; font-size:0.68rem;" title="Load parameters from decoder/gear_calibration.json">📥 Load Shared Cal</button>
           </div>
         </div>
       </div>

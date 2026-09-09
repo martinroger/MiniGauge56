@@ -182,6 +182,8 @@ A bespoke browser-based calibration and tuning dashboard engineered specifically
 - **Cross-Tool Shared Calibration**:
   - Standardized JSON calibration (`decoder/gear_calibration.json`) with `GET /api/calibration` and `POST /api/calibration` endpoints.
   - "💾 Save Cal" and "📥 Load Cal" buttons to seamlessly share tuned parameters with `gear_lab.py`.
+- **Interactive Parameter Tooltips & Physical Guidance**:
+  - Information glyphs (`ⓘ`) and rich native hover tooltips on all controls explaining physical mechanisms, mathematical roles, and the effects of increasing vs. decreasing parameter values.
 
 #### 2. ⛽ Fuel Level Filter Tab
 - **Algorithm Switcher**: Toggle between:
