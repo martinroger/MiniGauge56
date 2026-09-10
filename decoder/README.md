@@ -324,7 +324,32 @@ python3 gear_lab.py --port 8086 --no-browser
 
 ## 5. Requirements & Implementation Traceability
 
-For the full architectural specification, functional requirement statements, and Implementation Traceability Matrix mapping each requirement (`REQ-DEC-*`, `REQ-VIS-*`, `REQ-TUN-*`, `REQ-LAB-*`) to exact code implementations and test procedures, refer to:
+For the full architectural specification, functional requirement statements, and Implementation Traceability Matrix mapping each requirement (`REQ-DEC-*`, `REQ-VIS-*`, `REQ-TUN-*`, `REQ-LAB-*`, `REQ-SYS-*`) to exact code implementations and test procedures, refer to:
 
 👉 **[REQUIREMENTS.md](REQUIREMENTS.md)**
+
+---
+
+## 6. Automated Test Suite (`decoder/tests/`)
+
+The decoder toolset includes an automated integration and regression test suite under `decoder/tests/` providing zero-dependency test verification using Python's standard `unittest` library:
+
+- **`test_tuner.py`**: Validates `tuner.py` server lifecycles, log discovery, `/api/algo_data`, `/api/calibration` GET/POST mutations, and audits all 118 client-side JavaScript `document.getElementById` calls against the served HTML DOM to prevent UI crashes.
+- **`test_gear_lab.py`**: Validates `gear_lab.py` server initialization, multi-model evaluation benchmarks, `/api/auto_tune` parameter search, `/api/calibration`, and verifies that `/api/export_c` generates a clean C99 header that compiles with GCC under strict `-Wall -Wextra -Werror` flags.
+- **`test_gear_algorithms.py`**: Evaluates offline algorithm simulations (Baseline vs. RPM Pre-Filter vs. Latched Debouncing) directly against real `.bin` log frames, asserting chatter suppression ($74 \to 17$ transitions).
+
+### Running the Tests
+
+```bash
+# Run the entire test suite from repository root
+python3 -m unittest discover -s decoder/tests -v
+
+# Or run individual test modules directly
+python3 decoder/tests/test_tuner.py
+python3 decoder/tests/test_gear_lab.py
+python3 decoder/tests/test_gear_algorithms.py
+```
+
+*(Note: Test suites automatically back up and restore configuration files such as `gear_calibration.json`, ensuring your git working tree remains clean after testing).*
+
 

@@ -1505,15 +1505,19 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <span class="sc-val warn" id="sc-fuel-maxerr">-- %</span>
           </div>
           <div class="scorecard">
-            <span class="sc-label">Max Slew Rate</span>
-            <span class="sc-val" id="sc-fuel-slew">-- %/s</span>
+            <span class="sc-label">Sim Max Slew</span>
+            <span class="sc-val" id="sc-fuel-sim-slew">-- %/s</span>
           </div>
           <div class="scorecard">
-            <span class="sc-label">Sim Jitter (&Delta;y)</span>
-            <span class="sc-val" id="sc-fuel-jitter">-- %</span>
+            <span class="sc-label">Sim Max Jitter</span>
+            <span class="sc-val" id="sc-fuel-sim-jitter">-- %</span>
           </div>
           <div class="scorecard">
-            <span class="sc-label">Firmware Jitter</span>
+            <span class="sc-label">Meas Max Slew</span>
+            <span class="sc-val" id="sc-fuel-meas-slew">-- %/s</span>
+          </div>
+          <div class="scorecard">
+            <span class="sc-label">Meas Max Jitter</span>
             <span class="sc-val" id="sc-fuel-meas-jitter">-- %</span>
           </div>
           <div class="scorecard">
