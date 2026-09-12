@@ -116,6 +116,7 @@ class TestGearLabServer(unittest.TestCase):
             self.assertEqual(resp.status, 200)
             c_header = resp.read().decode('utf-8')
             self.assertIn("gear_estimator_params.h", c_header)
+            self.assertIn("Calibration Snapshot", c_header)
             self.assertIn("gear_heuristic_update", c_header)
             self.assertIn("gear_bayesian_update", c_header)
             self.assertIn("gear_hmm_update", c_header)

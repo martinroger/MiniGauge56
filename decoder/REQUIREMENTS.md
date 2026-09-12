@@ -1,9 +1,11 @@
 # MiniGauge Decoder Toolset Requirements Specification
 
-This document defines the functional, technical, and architectural requirements for the Python 3 offline diagnostic and calibration toolset located in `decoder/`. The toolset consists of three complementary programs:
+This document defines the functional, technical, and architectural requirements for the Python 3 offline diagnostic, calibration, and slicing toolset located in `decoder/`. The toolset consists of 5 modular utilities:
 1. **Batch Decoder & Exporter (`decode.py`)**
 2. **Interactive Signal Visualizer (`visualize.py`)**
 3. **Algorithm Calibration & Tuning Lab (`tuner.py`)**
+4. **Dedicated Gear Estimator Lab & Model Trainer (`gear_lab.py`)**
+5. **CAN Log Trimmer & Slicer (`trim_log.py`)**
 
 ---
 
@@ -14,7 +16,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-SYS-001** | Zero Pip Dependencies | All decoder utilities MUST operate strictly using the Python 3 standard library (`struct`, `json`, `http.server`, `urllib`, `pathlib`, etc.). No external pip package installations (`pandas`, `numpy`, `cantools`) shall be required. |
 | **REQ-SYS-002** | Binary Frame Layout | Tools MUST correctly unpack the 16-byte packed CAN frame format emitted by `main/logging.cpp`: 4-byte uptime timestamp (ms), 2-byte CAN ID (little-endian), 1-byte DLC, 8-byte payload, and 1-byte padding. |
 | **REQ-SYS-003** | DBC Parsing Fidelity | Tools MUST support parsing the official CAN database (`binocan.dbc`), decoding integer, float, signed/unsigned endianness (Intel little-endian and Motorola big-endian), scaling factors, offsets, min/max limits, unit strings, and discrete value enumeration tables. |
-| **REQ-SYS-004** | Dual Theme Support | All web-based interfaces MUST support automatic OS light/dark detection and dynamic manual switching (Auto / Light / Dark) without page reloads, persisting preference in `localStorage`. |
+| **REQ-SYS-004** | Unified Design System & OS Theme Sync | All web-based interfaces MUST implement the unified design palette (Ubuntu Yaru Dark with faded orange accents and dark slider tracks; Cold White Light with faded royal blue accents, pure white slider tracks, and 1px container accent borders). All tools MUST automatically detect and adapt to the host OS color scheme (`prefers-color-scheme: light`) with live reactive updates and manual overrides persisted in `localStorage`. |
 | **REQ-SYS-005** | Portable Relative Linking | All internal documentation references MUST use relative file paths without machine-specific absolute filesystem paths. |
 | **REQ-SYS-006** | Interactive Parameter Tooltips | All algorithmic sliders, parameter inputs, and stage toggles in `tuner.py` and `gear_lab.py` MUST provide informative hover tooltips (using styled info badges `ⓘ` and native HTML attributes) detailing physical roles and operational effects. |
 | **REQ-SYS-007** | Automated Regression & DOM Verification Suite | The decoder toolset MUST maintain automated, repeatable integration test suites in `decoder/tests/` verifying server lifecycles, API endpoints, C99 export compilation with GCC (`-Wall -Wextra -Werror`), DOM ID integrity between client-side JavaScript and HTML templates, and algorithm offline simulations without leaving working tree artifacts. |
@@ -69,13 +71,13 @@ This document defines the functional, technical, and architectural requirements 
 
 | ID | Title | Requirement Statement |
 |---|---|---|
-| **REQ-TUN-GEAR-001** | Algorithm Formulations | The tool MUST provide three switchable algorithm configurations accessible via presets and modular sub-operation controls: <br>1. *Baseline*: Pure ratio gating and ratio-domain EMA.<br>2. *RPM Pre-Filtered*: Optional input pre-filtering (EMA or SMA) applied to `DBG_RPM_freq` prior to ratio computation.<br>3. *Latched Output*: Temporal latching/debouncing applied to the classified gear output. |
-| **REQ-TUN-GEAR-002** | RPM Input Pre-Filter (Stage 1) | When enabled, the tool MUST smooth `DBG_RPM_freq` using either an Exponential Moving Average ($f_{\text{RPM,filt}}(t) = \alpha f + (1-\alpha) f_{\text{prev}}$ with time constant $\tau \in [0.02, 0.50]\text{ s}$) or a Simple Moving Average ($W \in [0.02, 0.50]\text{ s}$), feeding the filtered frequency into the ratio denominator. |
-| **REQ-TUN-GEAR-003** | Triple Gating Corridor (Stage 2) | The ratio $r(t) = f_{\text{speed}} / f_{\text{RPM}}$ MUST only be processed when meeting three physical gates: <br>1. $f_{\text{speed}} \ge f_{\text{speed,min}}$ (rejects standstill).<br>2. $f_{\text{RPM}} \ge f_{\text{RPM,min}}$ (rejects engine stall/idle).<br>3. $\|dr/dt\| \le \text{Gate}_{\text{stab}}$ (rejects clutch slip and gear shift transients). |
-| **REQ-TUN-GEAR-004** | Dual-Unit Cutoff Sliders | Gating sliders MUST display dual units in real-time: <br>• Speed cutoff: frequency in `Hz` and equivalent vehicle speed in `km/h` ($V = f \times 0.2444$).<br>• RPM cutoff: frequency in `Hz` and equivalent engine speed in `RPM` ($\text{RPM} = f \times 30.0$). |
-| **REQ-TUN-GEAR-005** | Ratio-Domain Smoothing (Stage 3) | Primary smoothing MUST be applied directly to the ratio ($r_{\text{EMA}}(t) = \alpha r + (1-\alpha) r_{\text{EMA,prev}}$) to prevent artificial ratio spikes caused by engine vs. driveline inertia differential phase lag. |
-| **REQ-TUN-GEAR-006** | 5-Speed + Neutral Classification | The tool MUST classify candidate gear $i \in \{1..5\}$ if $\|r_{\text{EMA}} - R_i\| \le \min(\text{tol}_{\text{abs}}, \Delta_{\text{Voronoi}})$. Values falling outside all gear bands or failing gating conditions MUST classify as Neutral (0). |
-| **REQ-TUN-GEAR-007** | Output Latching & Debouncing (Stage 4) | When latching is enabled, a gear transition from $G_{\text{cur}}$ to $G_{\text{new}}$ MUST only take effect if $G_{\text{new}}$ is sustained continuously for at least $T_{\text{latch}}$ ms ($50\text{ to }600\text{ ms}$). If vehicle speed or RPM drops below absolute minimum gating thresholds, output MUST transition immediately to Neutral without delay. |
+| **REQ-TUN-GEAR-001** | Kinematic-Conditioned Bayesian Model | The gear estimation tab MUST implement the Kinematic-Conditioned Bayesian Model (Model 2 from `gear_lab.py`), calculating posterior probability distributions over gears at 60 FPS client-side during parameter adjustments. |
+| **REQ-TUN-GEAR-002** | Prior Decay & Inertia Weighting | The tool MUST provide sliders for Prior Decay factor (`m2_decay`, range 0.70 to 0.99) and Transition Inertia (`m2_inertia`, range 0.50 to 0.98) to control recursive state memory persistence and shift resistance. |
+| **REQ-TUN-GEAR-003** | Physical Dual Cutoff Gating | The tool MUST enforce minimum vehicle speed (`slider-gear-minspeed`) and engine RPM (`slider-gear-minrpm`) cutoffs with dual-unit tooltips/labels (Hz and km/h / RPM). Samples below either cutoff MUST immediately transition to Neutral (0) without delay. |
+| **REQ-TUN-GEAR-004** | Confidence Thresholding & State 14 | The tool MUST provide a confidence cutoff slider (`slider-m2-conf`, range 0.10 to 0.90). When posterior confidence fails the threshold, the output MUST report DBC State 14 (*Uncertain*) rather than spuriously holding stale gears. |
+| **REQ-TUN-GEAR-005** | Ratio Tolerance & Cluster Peaks | The tool MUST support adjusting ratio tolerance (`slider-gear-tol`, range 0.05 to 0.60) and 5 individual gear center ratios (`gear-r-1` through `gear-r-5`), supported by 1-click **Auto-Detect Peaks** clustering. |
+| **REQ-TUN-GEAR-006** | Temporal Output Latching | The tool MUST provide a temporal latch duration slider (`slider-m2-latch`, range 0 to 600 ms) to suppress transient shift chatter by requiring sustained probability commitment. |
+| **REQ-TUN-GEAR-007** | Shared Calibration Auto-Loading & Persistence | The tool MUST automatically fetch and load `decoder/gear_calibration.json` via `GET /api/calibration` on startup if present, and support saving updated Bayesian parameters via `POST /api/calibration`. |
 | **REQ-TUN-GEAR-008** | Dynamic Math Explainer | The sidebar MUST display a dynamic mathematical explainer card that rebuilds its formulas, active parameter values, and explanatory text in real time as presets or modular stage checkboxes change. |
 | **REQ-TUN-GEAR-009** | Ratio Histogram & Auto-Peak Detection | The UI MUST display a sample ratio histogram with projected tolerance bands, accompanied by an **Auto-Detect Peaks** function that clusters driving ratios to seed nominal gear ratios $R_1..R_5$. |
 | **REQ-TUN-GEAR-010** | Synchronized Dynamics Timeline | The UI MUST plot a synchronized dual-axis graph of `ITF_speed_kph` and `ITF_rpm` alongside the ratio and estimated gear curves, maintaining time synchronization with pan/zoom and the GPS track drawer. |
@@ -126,7 +128,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-LAB-003** | Kinematic-Conditioned Bayesian Filter | The tool MUST implement and evaluate a Kinematic Bayesian Classifier conditioned on $[V, \dot{V}, \text{RPM}, \dot{\text{RPM}}]$ that predicts shifting intent, models loss-of-fix transition probabilities (upshift bias on acceleration, downshift bias on braking), suppresses phantom shifts during clutch disengagement ($\dot{\text{RPM}} < -35\text{ Hz/s}$), and applies guarded temporal latching. |
 | **REQ-LAB-004** | Hidden Markov Model (HMM) | The tool MUST implement a 6-state HMM using an empirical transition probability matrix $A_{6 \times 6}$ with high self-transition inertia, impossible skip penalties, and asymmetric engine-deceleration emission conditioning ($\Delta f_{\text{RPM}} < -40\text{ Hz/s}$) to eliminate clutch coast-down phantom upshifts. |
 | **REQ-LAB-005** | Standardized Glitch Evaluation | The tool MUST evaluate and display side-by-side performance metrics across all models: <br>• Neutral Dropouts ($N_{\text{dropout}}$): $k \to 0 \to k$ in $< 450\text{ ms}$ at $V \ge 20\text{ km/h}$.<br>• Micro-Dwell Chatter ($N_{\text{chatter}}$): forward gear dwell $< 300\text{ ms}$.<br>• Coast-Down Phantom Shifts ($N_{\text{phantom}}$): upward gear jumps while $\frac{d\text{RPM}}{dt} < -1200\text{ RPM/s}$ and speed is non-accelerating.<br>• Unified Glitch-Free Quality Score ($0\text{ to }100\%$). |
-| **REQ-LAB-006** | Turnkey ESP32 C Header Export | The tool MUST export a zero-heap-allocation, re-entrant C99 header (`gear_estimator_params.h`) containing calibrated ratio constants, variances, transition matrices, and complete static inference routines (`gear_heuristic_update`, `gear_bayesian_update`, `gear_hmm_update`) that compile with GCC/Clang under `-Wall -Wextra -Werror`. |
+| **REQ-LAB-006** | Turnkey ESP32 C Header Export | The tool MUST export a zero-heap-allocation, re-entrant C99 header (`gear_estimator_params.h`) containing calibrated ratio constants, variances, transition matrices, complete static inference routines (`gear_heuristic_update`, `gear_bayesian_update`, `gear_hmm_update`) that compile with GCC/Clang under `-Wall -Wextra -Werror`, and automatically embeds the active configuration/JSON calibration as a structured C comment block. |
 | **REQ-LAB-007** | Concatenated Multi-Log Timeline | In aggregated mode, the tool MUST concatenate all individual drive sessions chronologically with a 5.0s separation buffer and dashed vertical boundary lines, while dynamically focusing strictly on single logs and recalculating isolated glitch scores when a specific log is selected. |
 | **REQ-LAB-008** | Stacked vs. Shared Multi-Model Layout | The timeline scope MUST support toggling between Stacked Subplots (individual time-synchronized subplots for M1, M2, M3, and Ground Truth) and Shared Overlay (single timeline with interactive show/hide checkboxes per trace). |
 | **REQ-LAB-009** | Interactive Model Tuning Drawer | The UI MUST feature an interactive tuning drawer permitting live adjustment of algorithmic parameters across all three models (M1: tolerance, latch time; M2: prior decay, inertia, latch time, confidence threshold; M3: transition inertia, clutch decel threshold) with instant 60fps re-simulation. |
@@ -134,24 +136,43 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-LAB-011** | Model Theory & Assumptions Panel | The UI MUST incorporate a collapsible sidebar panel summarizing core assumptions, mathematical formulas, state-space representations, and operational tradeoffs for each model. |
 | **REQ-LAB-012** | Drive Replayer & Triple Gauge Pod | The UI MUST incorporate an interactive drive playback player with play/pause, step controls, variable playback speed (0.25x to 10x), scrub bar, and a Triple Simulated Gear Position Gauge Pod displaying M1 (Heuristic), M2 (Kinematic Bayes), and M3 (HMM) side-by-side with real-time gear, speed, RPM, and status. |
 | **REQ-LAB-013** | Automated Parameter Grid Search Optimizer | The tool MUST provide a 1-click **⚡ Auto-Optimize Parameters** function (`POST /api/auto_tune`) executing automated grid search across algorithmic parameters to maximize the Glitch-Free Quality Score across logs. |
-| **REQ-LAB-014** | Cross-Tool Shared Calibration | The tool MUST provide `GET /api/calibration` and `POST /api/calibration` endpoints and UI buttons ("💾 Save Shared Cal" / "📥 Load Shared Cal") interoperating with `decoder/gear_calibration.json`. |
+| **REQ-LAB-014** | Cross-Tool Shared Calibration | The tool MUST provide `GET /api/calibration` and `POST /api/calibration` endpoints and UI buttons ("💾 Save Shared Cal" / "📥 Load Shared Cal") interoperating with `decoder/gear_calibration.json`, and auto-load existing calibration upon page initialization. |
 | **REQ-LAB-015** | Dedicated Submodel Tabs | The UI MUST provide dedicated tabs for each algorithm (M1 Heuristic, M2 Kinematic Bayes, M3 HMM State-Space) featuring focused dynamic visualizations, individual parameter calibration sliders, and two-way parameter synchronization with the main overview tab and JSON calibration. |
 | **REQ-LAB-016** | DBC Uncertain State (State 14) Handling | The algorithms MUST distinguish between true Neutral (vehicle stationary or engine below idle) and Uncertain (State 14 in DBC: rolling vehicle above cutoff with engine above idle, e.g. mid-shift or unclassified ratio). |
 | **REQ-LAB-017** | Dual-Chart Needle Synchronization | In all active tabs, the interactive playback timeline needle MUST scroll simultaneously across both the dynamics plot (speed/RPM) and the gear/model timeline plot with exact vertical pixel alignment. |
 
 ---
 
-## 6. Implementation Traceability Matrix
+## 6. CAN Log Trimmer & Slicer (`trim_log.py`) Requirements
+
+### 6.1 Scope & Purpose
+`trim_log.py` provides non-destructive slicing, filtering, and inspection of 16-byte packed binary CAN logs (`*.bin`) via both CLI and an interactive browser-based UI (`--web`).
+
+### 6.2 Functional Requirements
+
+| ID | Title | Requirement Statement |
+|---|---|---|
+| **REQ-TRIM-001** | Zero-Pip Architecture & Interfaces | The trimmer MUST be implemented in standard Python 3 with zero pip dependencies, providing both an automated CLI and an interactive web GUI (`--web`). |
+| **REQ-TRIM-002** | Temporal Slicing | The tool MUST support cutting logs by relative start time (`--start <sec>`) and end time (`--end <sec>`), strictly preserving frames within the requested temporal boundary. |
+| **REQ-TRIM-003** | Frame Index Slicing | The tool MUST support cutting logs by exact start frame index (`--start-frame <N>`) and end frame index (`--end-frame <N>`). |
+| **REQ-TRIM-004** | Timestamp Normalization & Rebasing | Output logs MUST rebase timestamps to start from `t = 0 ms` by default, while supporting `--preserve-timestamps` to retain raw ESP32 millisecond uptimes. |
+| **REQ-TRIM-005** | CAN ID Whitelisting | The tool MUST support filtering frames by a comma-separated list of CAN arbitration IDs (`--ids`) specified in hex or decimal format. |
+| **REQ-TRIM-006** | Safe Naming & Overwrite Protection | The tool MUST auto-generate descriptive non-colliding destination names (`<stem>_cut_...bin`), refuse to overwrite existing files unless `--force` / `-f` is specified, and strictly prohibit overwriting the input file. |
+| **REQ-TRIM-007** | Interactive Browser GUI | When invoked with `--web`, the tool MUST serve an interactive Web interface allowing file upload/selection, live duration scrubbing, instant frame count feedback, CAN ID whitelisting, and direct binary download of sliced captures. |
+
+---
+
+## 7. Implementation Traceability Matrix
 
 | Requirement ID | Implementing File | Function / Component / Handler | Verification Method |
 |---|---|---|---|
-| **REQ-SYS-001** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py` | Top-level imports (stdlib only) | Automated headless test (no pip dependencies) |
-| **REQ-SYS-002** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py` | `read_bin_file()`, `CAN_FRAME_STRUCT` | Binary unpack test against `.bin` captures |
+| **REQ-SYS-001** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py` | Top-level imports (stdlib only) | Automated headless test (no pip dependencies) |
+| **REQ-SYS-002** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py` | `read_bin_file()`, `CAN_FRAME_STRUCT`, `CANFrame` | Binary unpack test against `.bin` captures |
 | **REQ-SYS-003** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py` | `DbcDatabase.parse()`, `DbcMessage.decode()` | DBC parse verification with signed/scale/enum/float |
-| **REQ-SYS-004** | `visualize.py`, `tuner.py`, `gear_lab.py` | `initTheme()`, `setTheme()`, CSS tokens | Theme toggle verification in browser |
+| **REQ-SYS-004** | `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py` | CSS variables, `initTheme()`, `prefers-color-scheme` | Theme toggle & OS scheme auto-detection tests |
 | **REQ-SYS-005** | All `.md` files | Markdown relative links | Static doc link validation |
 | **REQ-SYS-006** | `tuner.py`, `gear_lab.py` | `.info-icon`, `title` attributes on controls | DOM verification of hover tooltips across all tabs |
-| **REQ-SYS-007** | `decoder/tests/` | `test_tuner.py`, `test_gear_lab.py`, `test_gear_algorithms.py` | Full test suite execution via `python3 -m unittest` |
+| **REQ-SYS-007** | `decoder/tests/` | `test_trim_log.py`, `test_tuner.py`, `test_gear_lab.py`, `test_gear_algorithms.py` | Full test suite execution via `python3 -m unittest` |
 | **REQ-DEC-001** | `decode.py` | `write_asc()` | Vector CANoe format validation test |
 | **REQ-DEC-002** | `decode.py` | `write_csv()` | CSV column structure validation |
 | **REQ-DEC-003** | `decode.py` | `write_signals_csv()` | Normalized time-series test with `-s` flag |
@@ -167,13 +188,13 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-VIS-007** | `visualize.py` | `renderYScaleControls()`, drawer UI | Per-axis nudge and zoom test |
 | **REQ-VIS-008** | `visualize.py` | `initMap()`, `renderGpsTrack()` | Leaflet map render and resize tests |
 | **REQ-VIS-009** | `visualize.py` | `syncMapFromHover()`, map click listener | Bi-directional cursor synchronization test |
-| **REQ-TUN-GEAR-001** | `tuner.py` | `select-gear-preset`, `computeAndRenderGear()` | Preset switcher & algorithm simulation tests |
-| **REQ-TUN-GEAR-002** | `tuner.py` | `computeAndRenderGear()` (effRpmFreqs EMA/SMA) | Pre-filter calculation test against noisy RPM |
-| **REQ-TUN-GEAR-003** | `tuner.py` | `computeAndRenderGear()` (triple gating logic) | Standstill and shift transient rejection tests |
-| **REQ-TUN-GEAR-004** | `tuner.py` | `updateGearLabels()` (dual units: Hz + RPM/kph) | Real-time label string formatting verification |
-| **REQ-TUN-GEAR-005** | `tuner.py` | `computeAndRenderGear()` (ratio-domain EMA) | Ratio smoothing & inertia test |
-| **REQ-TUN-GEAR-006** | `tuner.py` | `computeAndRenderGear()` (band classification) | 5-speed + Neutral classification test |
-| **REQ-TUN-GEAR-007** | `tuner.py` | `computeAndRenderGear()` (latching state machine) | Transient debouncing test (transitions 74 -> 17) |
+| **REQ-TUN-GEAR-001** | `tuner.py` | `computeAndRenderGear()` (Bayesian Model 2) | Bayesian inference calculation test |
+| **REQ-TUN-GEAR-002** | `tuner.py` | `slider-m2-decay`, `slider-m2-inertia` listeners | Prior decay and transition inertia updates |
+| **REQ-TUN-GEAR-003** | `tuner.py` | `slider-gear-minspeed`, `slider-gear-minrpm` | Dual-unit gating and standstill Neutral tests |
+| **REQ-TUN-GEAR-004** | `tuner.py` | `slider-m2-conf`, state 14 emission | Confidence cutoff and Uncertain state test |
+| **REQ-TUN-GEAR-005** | `tuner.py` | `slider-gear-tol`, `gear-r-1..5` inputs | Tolerance band and peak detection tests |
+| **REQ-TUN-GEAR-006** | `tuner.py` | `slider-m2-latch`, latch state tracking | Temporal latching and debouncing verification |
+| **REQ-TUN-GEAR-007** | `tuner.py` | `autoLoadSharedCal()`, `/api/calibration` | Startup auto-load and JSON save/load tests |
 | **REQ-TUN-GEAR-008** | `tuner.py` | `renderGearMathExplanation()` | Dynamic math card DOM generation test |
 | **REQ-TUN-GEAR-009** | `tuner.py` | `plot-gear-hist`, `btn-auto-gear-peaks` | Histogram render & peak detection test |
 | **REQ-TUN-GEAR-010** | `tuner.py` | `plot-gear-dynamics`, relayout handlers | Dynamics plot synchronization test |
@@ -193,7 +214,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-LAB-003** | `gear_lab.py` | `run_model_2_bayesian()` | Kinematic Bayesian inference & clutch drop test |
 | **REQ-LAB-004** | `gear_lab.py` | `run_model_3_hmm()`, `compute_empirical_transition_matrix()`| HMM transition matrix & clutch drop test |
 | **REQ-LAB-005** | `tuner.py`, `gear_lab.py` | `evaluate_glitches()` | Dropouts, chatter, phantom shifts scorecards |
-| **REQ-LAB-006** | `gear_lab.py` | `generate_esp32_c_header()`, `/api/export_c` | Automated GCC compilation test (-Wall -Werror)|
+| **REQ-LAB-006** | `gear_lab.py` | `generate_esp32_c_header()`, `/api/export_c` | Automated GCC compilation test with comment block |
 | **REQ-LAB-007** | `gear_lab.py` | `build_aggregated_dataset()`, `renderTimeline()`| Concatenated timeline & boundary markers test |
 | **REQ-LAB-008** | `gear_lab.py` | `renderTimeline()`, layout mode toggle | Stacked subplots vs. shared overlay test |
 | **REQ-LAB-009** | `gear_lab.py` | `recomputeAll()`, tuning drawer listeners | Live parameter tuning and 60fps update test |
@@ -201,8 +222,15 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-LAB-011** | `gear_lab.py` | Collapsible sidebar theory card | Theory & mathematical assumptions DOM check |
 | **REQ-LAB-012** | `gear_lab.py` | `initReplayer()`, `updateReplayDisplay()` | Triple Gauge Pod and needle synchronization test |
 | **REQ-LAB-013** | `gear_lab.py` | `optimize_parameters()`, `/api/auto_tune` | Automated parameter grid search test |
-| **REQ-LAB-014** | `gear_lab.py` | `/api/calibration` GET & POST handlers | Cross-tool JSON calibration exchange test |
+| **REQ-LAB-014** | `gear_lab.py` | `/api/calibration` GET & POST, startup load | Cross-tool JSON calibration exchange & auto-load |
 | **REQ-LAB-015** | `gear_lab.py` | `switchTab()`, `renderActiveTabPlots()`, submodel tabs | Multi-tab UI and bidirectional parameter sync test |
 | **REQ-LAB-016** | `gear_lab.py`, `tuner.py` | State 14 classification (`Uncertain`) | Neutral (0) vs. Uncertain (14) classification tests |
 | **REQ-LAB-017** | `gear_lab.py` | `ensureNeedles()`, `updateReplayDisplay()` | Multi-plot needle positioning and margin sync test |
+| **REQ-TRIM-001** | `trim_log.py` | `parse_args()`, `run_server()`, stdlib imports | Standalone execution and zero-pip verification |
+| **REQ-TRIM-002** | `trim_log.py` | `trim_bin_log()` (`start_s`, `end_s`) | Temporal boundaries cutting test |
+| **REQ-TRIM-003** | `trim_log.py` | `trim_bin_log()` (`start_frame`, `end_frame`) | Frame-index boundaries slicing test |
+| **REQ-TRIM-004** | `trim_log.py` | `trim_bin_log()` (`rebase_timestamps`) | Timestamp rebasing and preservation tests |
+| **REQ-TRIM-005** | `trim_log.py` | `trim_bin_log()` (`filter_ids`) | CAN ID whitelisting and rejection tests |
+| **REQ-TRIM-006** | `trim_log.py` | `default_output_name()`, overwrite checks | Non-destructive naming & safety tests |
+| **REQ-TRIM-007** | `trim_log.py` | `HTML_PAGE`, `TrimRequestHandler` | Web GUI endpoint and download validation |
 

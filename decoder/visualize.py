@@ -211,34 +211,40 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     :root, [data-theme="dark"] {
-      --bg: #121417;
-      --card-bg: #1a1d23;
-      --panel-border: #2c323d;
-      --text: #e2e8f0;
-      --text-muted: #94a3b8;
-      --primary: #3b82f6;
-      --primary-hover: #2563eb;
-      --accent: #10b981;
+      --bg: #0a0a0a;
+      --card-bg: #181818;
+      --panel-border: rgba(221, 107, 61, 0.40); /* thin 1px faded warm orange accent border */
+      --card-border-active: #dd6b3d;
+      --text: #f5f5f5;
+      --text-muted: #9ca3af;
+      --primary: #dd6b3d;        /* Faded warm orange, desaturated */
+      --primary-hover: #e87a4d;
+      --accent: #2b5c92;        /* Faded royal blue / steel blue */
       --danger: #ef4444;
-      --tag-bg: #222731;
-      --badge-bg: #1e3a8a;
-      --badge-text: #93c5fd;
-      --hover-bg: rgba(255, 255, 255, 0.04);
+      --tag-bg: #222222;
+      --badge-bg: rgba(221, 107, 61, 0.20);
+      --badge-text: #f0956b;
+      --hover-bg: rgba(221, 107, 61, 0.12);
+      --input-bg: #141414;
+      --input-border: rgba(221, 107, 61, 0.40);
     }
     [data-theme="light"] {
       --bg: #f8fafc;
       --card-bg: #ffffff;
-      --panel-border: #cbd5e1;
+      --panel-border: rgba(43, 92, 146, 0.38); /* thin 1px faded royal blue accent border */
+      --card-border-active: #2b5c92;
       --text: #0f172a;
       --text-muted: #64748b;
-      --primary: #2563eb;
-      --primary-hover: #1d4ed8;
-      --accent: #059669;
+      --primary: #2b5c92;        /* Faded royal blue */
+      --primary-hover: #376ea8;
+      --accent: #dd6b3d;        /* Faded warm orange */
       --danger: #dc2626;
       --tag-bg: #f1f5f9;
-      --badge-bg: #dbeafe;
-      --badge-text: #1e40af;
-      --hover-bg: rgba(0, 0, 0, 0.04);
+      --badge-bg: rgba(43, 92, 146, 0.15);
+      --badge-text: #204570;
+      --hover-bg: rgba(43, 92, 146, 0.08);
+      --input-bg: #ffffff;
+      --input-border: rgba(43, 92, 146, 0.35);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -1070,14 +1076,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const isDark = getEffectiveTheme() === 'dark';
       return {
         isDark,
-        paper_bgcolor: isDark ? '#121417' : '#f8fafc',
-        plot_bgcolor: isDark ? '#16191f' : '#ffffff',
-        text: isDark ? '#e2e8f0' : '#0f172a',
-        text_muted: isDark ? '#94a3b8' : '#64748b',
-        gridcolor: isDark ? '#242a35' : '#e2e8f0',
-        zerolinecolor: isDark ? '#2c323d' : '#cbd5e1',
-        slider_bg: isDark ? '#16191f' : '#f1f5f9',
-        slider_border: isDark ? '#2c323d' : '#cbd5e1'
+        paper_bgcolor: isDark ? '#181818' : '#ffffff',
+        plot_bgcolor: isDark ? '#0a0a0a' : '#f8fafc',
+        text: isDark ? '#f5f5f5' : '#0f172a',
+        text_muted: isDark ? '#9ca3af' : '#64748b',
+        gridcolor: isDark ? 'rgba(221, 107, 61, 0.15)' : 'rgba(43, 92, 146, 0.12)',
+        zerolinecolor: isDark ? '#dd6b3d' : '#2b5c92',
+        slider_bg: isDark ? '#141414' : '#ffffff',
+        slider_border: isDark ? 'rgba(221, 107, 61, 0.40)' : 'rgba(43, 92, 146, 0.35)'
       };
     }
 
@@ -1132,6 +1138,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
           }
         });
       }
+
+      // Auto-load shared calibration if available
+      try {
+        const calResp = await fetch('/api/calibration');
+        if (calResp.ok) {
+          window.gearCalibration = await calResp.json();
+        }
+      } catch (e) {}
 
       await loadLogs();
       setupEventListeners();
@@ -2663,6 +2677,21 @@ class VisualizerHandler(BaseHTTPRequestHandler):
                         result[s] = decoded_info["signals"][s]
 
                 self.send_json(result)
+
+            elif path == "/api/calibration":
+                cal_file = SCRIPT_DIR / "gear_calibration.json"
+                if cal_file.is_file():
+                    try:
+                        with open(cal_file, "r", encoding="utf-8") as f:
+                            self.send_json(json.load(f))
+                            return
+                    except Exception:
+                        pass
+                self.send_json({
+                    "version": 1,
+                    "nominal_ratios": [1.018, 1.793, 2.726, 3.763, 4.542],
+                    "tolerance": 0.25
+                })
 
             else:
                 self.send_error(404, "Not Found")

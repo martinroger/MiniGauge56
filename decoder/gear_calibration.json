@@ -1,7 +1,7 @@
 {
   "version": 1,
   "source": "gear_lab",
-  "updated_at": "2026-09-07T19:50:55Z",
+  "updated_at": "2026-09-12T22:25:24Z",
   "nominal_ratios": [
     1.018,
     1.793,
@@ -11,8 +11,8 @@
   ],
   "tolerance": 0.18,
   "tolerance_abs": 0.18,
-  "latch_ms": 325,
-  "latch_time_ms": 325,
+  "latch_ms": 320,
+  "latch_time_ms": 320,
   "min_speed_kph": 9.963,
   "min_speed_hz": 4.5,
   "min_rpm": 930,

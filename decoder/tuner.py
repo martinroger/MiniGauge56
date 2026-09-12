@@ -479,42 +479,52 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <style>
     :root, [data-theme="dark"] {
-      --bg: #0f1115;
-      --card-bg: #181b21;
-      --panel-border: #262c36;
-      --text: #f1f5f9;
-      --text-muted: #94a3b8;
-      --primary: #3b82f6;
-      --primary-hover: #2563eb;
-      --accent: #10b981;
-      --accent-hover: #059669;
-      --warning: #f59e0b;
+      --bg: #0a0a0a;
+      --card-bg: #181818;
+      --panel-border: rgba(221, 107, 61, 0.40); /* thin 1px faded warm orange accent border */
+      --card-border-active: #dd6b3d;
+      --text: #f5f5f5;
+      --text-muted: #9ca3af;
+      --primary: #dd6b3d;        /* Faded warm orange, desaturated */
+      --primary-hover: #e87a4d;
+      --accent: #2b5c92;        /* Faded royal blue / steel blue */
+      --accent-hover: #376ea8;
+      --warning: #d97706;
       --danger: #ef4444;
-      --tag-bg: #222731;
-      --badge-bg: #1e3a8a;
-      --badge-text: #93c5fd;
-      --hover-bg: rgba(255, 255, 255, 0.04);
-      --input-bg: #13151b;
-      --input-border: #333a48;
+      --tag-bg: #222222;
+      --badge-bg: rgba(221, 107, 61, 0.20);
+      --badge-text: #f0956b;
+      --hover-bg: rgba(221, 107, 61, 0.12);
+      --input-bg: #141414;
+      --input-border: rgba(221, 107, 61, 0.40);
+      --slider-track-bg: #222222;
+      --slider-track-border: rgba(221, 107, 61, 0.45);
+      --thumb-ring: #1a1a1a;
+      --divider: rgba(221, 107, 61, 0.25);
     }
     [data-theme="light"] {
       --bg: #f8fafc;
       --card-bg: #ffffff;
-      --panel-border: #cbd5e1;
+      --panel-border: rgba(43, 92, 146, 0.38); /* thin 1px faded royal blue accent border */
+      --card-border-active: #2b5c92;
       --text: #0f172a;
       --text-muted: #64748b;
-      --primary: #2563eb;
-      --primary-hover: #1d4ed8;
-      --accent: #059669;
-      --accent-hover: #047857;
+      --primary: #2b5c92;        /* Faded royal blue */
+      --primary-hover: #376ea8;
+      --accent: #dd6b3d;        /* Faded warm orange */
+      --accent-hover: #e87a4d;
       --warning: #d97706;
       --danger: #dc2626;
       --tag-bg: #f1f5f9;
-      --badge-bg: #dbeafe;
-      --badge-text: #1e40af;
-      --hover-bg: rgba(0, 0, 0, 0.04);
+      --badge-bg: rgba(43, 92, 146, 0.15);
+      --badge-text: #204570;
+      --hover-bg: rgba(43, 92, 146, 0.08);
       --input-bg: #ffffff;
-      --input-border: #cbd5e1;
+      --input-border: rgba(43, 92, 146, 0.35);
+      --slider-track-bg: #ffffff; /* pure white slider background in light mode */
+      --slider-track-border: rgba(43, 92, 146, 0.45);
+      --thumb-ring: #ffffff;
+      --divider: rgba(43, 92, 146, 0.25);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -763,13 +773,41 @@ HTML_PAGE = r"""<!DOCTYPE html>
       color: var(--primary);
     }
     input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
       width: 100%;
-      accent-color: var(--primary);
+      height: 8px;
+      border-radius: 4px;
+      outline: none;
+      border: 1px solid var(--slider-track-border);
+      background: linear-gradient(to right, var(--primary) 0%, var(--primary) var(--slider-pct, 50%), var(--slider-track-bg) var(--slider-pct, 50%), var(--slider-track-bg) 100%);
       cursor: pointer;
-      height: 6px;
-      background: var(--input-border);
-      border-radius: 3px;
-      border: none;
+      transition: border-color 0.15s;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--primary);
+      cursor: pointer;
+      border: 2px solid var(--thumb-ring);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+      transition: transform 0.1s, background-color 0.15s;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      background: var(--primary-hover);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--primary);
+      cursor: pointer;
+      border: 2px solid var(--thumb-ring);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.35);
     }
 
     .scorecards-row {
@@ -1177,105 +1215,72 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="algo-sidebar">
         <div class="card" style="border-left: 3px solid var(--primary);">
           <div class="card-title">
-            <span>Algorithm Preset</span>
-            <span class="info-icon" title="Switches between standard pipeline architectures: pure gated EMA, pre-filtered RPM, or full production latched pipeline.">i</span>
+            <span>Algorithm Formulation</span>
+            <span class="info-icon" title="Kinematic-Conditioned Bayesian Filter with Markov state persistence, dynamic torque/acceleration priors, and guarded temporal latching.">i</span>
           </div>
           <div class="ctrl-group">
-            <select id="select-gear-preset" style="width:100%; font-weight:600;" title="Select an algorithm formulation preset">
-              <option value="baseline" selected>1. Baseline (Gated Ratio EMA)</option>
-              <option value="rpm_filter">2. RPM Pre-Filtered + Ratio EMA</option>
-              <option value="latched">3. Full Pipeline (RPM Filter + Latch)</option>
-              <option value="custom">Custom Pipeline</option>
+            <select id="select-gear-preset" style="width:100%; font-weight:600;" title="Select Bayesian parameter preset">
+              <option value="baseline" selected>1. Calibrated Bayesian (Default)</option>
+              <option value="highway">2. High Inertia (Highway Cruise)</option>
+              <option value="sport">3. Fast Response (Sport / Track)</option>
+              <option value="custom">Custom Bayesian Pipeline</option>
             </select>
           </div>
         </div>
 
         <div class="card">
           <div class="card-title">
-            <span>Stage 1: Input RPM Pre-Filter</span>
-            <label style="font-size:0.75rem; font-weight:normal; display:flex; align-items:center; gap:0.3rem; text-transform:none; cursor:pointer;" title="Enables low-pass filtering on raw engine frequency before computing the ratio to suppress ignition tooth jitter.">
-              <input type="checkbox" id="chk-gear-rpm-filter"> Enable
-            </label>
+            <span>Bayesian Hyperparameters</span>
+            <span class="info-icon" title="Core recursive Bayesian probability tracking parameters from gear_lab.">i</span>
           </div>
-          <div id="gear-rpm-filter-controls" style="display:none; flex-direction:column; gap:0.6rem; margin-top:0.4rem;">
-            <div style="display:flex; gap:0.6rem;">
-              <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.78rem; cursor:pointer;" title="Exponential Moving Average: smooth continuous IIR filter with exponential decay.">
-                <input type="radio" name="gear-rpm-algo" value="EMA" checked id="radio-gear-rpm-ema"> EMA
-              </label>
-              <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.78rem; cursor:pointer;" title="Simple Moving Average: sliding rectangular FIR time window.">
-                <input type="radio" name="gear-rpm-algo" value="SMA" id="radio-gear-rpm-sma"> SMA
-              </label>
+          <div class="ctrl-group">
+            <div class="ctrl-label-row">
+              <span class="ctrl-label">Prior Decay (λ) <span class="info-icon" title="Weight given to prior state distribution versus uniform exploration. Higher values preserve state across noise.">i</span></span>
+              <span class="ctrl-val" id="val-m2-decay">0.94</span>
             </div>
-            <div class="ctrl-group">
-              <div class="ctrl-label-row">
-                <span class="ctrl-label" id="lbl-gear-rpm-param">Time Constant (τ) <span class="info-icon" title="Width of the smoothing window. Higher values eliminate ignition pulse ripple; lower values minimize phase lag during fast revving.">i</span></span>
-                <span class="ctrl-val" id="val-gear-rpm-param">0.10 s</span>
-              </div>
-              <input type="range" id="slider-gear-rpm-param" min="0.02" max="1.00" step="0.02" value="0.10" title="Adjust RPM pre-filter smoothing window / time constant">
+            <input type="range" id="slider-m2-decay" min="0.70" max="0.99" step="0.01" value="0.94" title="Adjust M2 Bayesian prior decay factor lambda">
+          </div>
+          <div class="ctrl-group">
+            <div class="ctrl-label-row">
+              <span class="ctrl-label">Self-Inertia (T_ii) <span class="info-icon" title="Diagonal transition persistence in the kinematic transition matrix. Prevents unwanted inter-gear hunting.">i</span></span>
+              <span class="ctrl-val" id="val-m2-inertia">0.960</span>
             </div>
+            <input type="range" id="slider-m2-inertia" min="0.850" max="0.995" step="0.005" value="0.960" title="Adjust kinematic transition matrix diagonal self-inertia">
+          </div>
+          <div class="ctrl-group">
+            <div class="ctrl-label-row">
+              <span class="ctrl-label">Min Confidence <span class="info-icon" title="Posterior probability threshold required to commit to a forward gear; otherwise classifies as State 14 (Uncertain).">i</span></span>
+              <span class="ctrl-val" id="val-m2-conf">0.38</span>
+            </div>
+            <input type="range" id="slider-m2-conf" min="0.20" max="0.60" step="0.02" value="0.38" title="Adjust minimum posterior confidence threshold">
+          </div>
+          <div class="ctrl-group">
+            <div class="ctrl-label-row">
+              <span class="ctrl-label">Guarded Latch Time <span class="info-icon" title="Minimum continuous dwell time in candidate gear before confirming output transition.">i</span></span>
+              <span class="ctrl-val" id="val-m2-latch">200 ms</span>
+            </div>
+            <input type="range" id="slider-m2-latch" min="50" max="500" step="25" value="200" title="Adjust Bayesian output latch confirmation time">
           </div>
         </div>
 
         <div class="card">
           <div class="card-title">
-            <span>Stage 2: Gating Filters</span>
-            <span class="info-icon" title="Rejects physically invalid driving states (standstill division by zero, engine idle/stall, and clutch slip transients).">i</span>
+            <span>Physical Gating & Limits</span>
+            <span class="info-icon" title="Physical thresholds rejecting standstill division-by-zero, engine stall, and idle roll.">i</span>
           </div>
           <div class="ctrl-group">
             <div class="ctrl-label-row">
-              <span class="ctrl-label">Min Speed Freq <span class="info-icon" title="Road speed threshold below which vehicle is considered stationary. Frequency converts to road speed via V = f × 0.2444 km/h (defaults to Neutral 0).">i</span></span>
-              <span class="ctrl-val" id="val-gear-minspeed">5.0 Hz (~1.2 km/h)</span>
+              <span class="ctrl-label">Min Speed Cutoff <span class="info-icon" title="Road speed threshold below which vehicle is stationary / neutral.">i</span></span>
+              <span class="ctrl-val" id="val-gear-minspeed">4.5 Hz (~1.0 km/h)</span>
             </div>
-            <input type="range" id="slider-gear-minspeed" min="0" max="40" step="0.5" value="5.0" title="Adjust minimum speed frequency cutoff">
+            <input type="range" id="slider-gear-minspeed" min="0" max="40" step="0.5" value="4.5" title="Adjust minimum speed frequency cutoff">
           </div>
           <div class="ctrl-group">
             <div class="ctrl-label-row">
-              <span class="ctrl-label">Min RPM Freq (Idle Cutoff) <span class="info-icon" title="Rejects engine idle/stall conditions (< 1000 RPM) to prevent false tall gear ratios while rolling in neutral or with clutch disengaged.">i</span></span>
-              <span class="ctrl-val" id="val-gear-minrpm">33.3 Hz (1000 RPM)</span>
+              <span class="ctrl-label">Min RPM (Idle Cutoff) <span class="info-icon" title="Rejects engine idle/stall conditions (< 1000 RPM).">i</span></span>
+              <span class="ctrl-val" id="val-gear-minrpm">31.0 Hz (930 RPM)</span>
             </div>
-            <input type="range" id="slider-gear-minrpm" min="5" max="80" step="0.5" value="33.3" title="Adjust minimum engine RPM frequency cutoff">
-          </div>
-          <div class="ctrl-group">
-            <div class="ctrl-label-row">
-              <span class="ctrl-label">Stability Gate |dRatio/dt| <span class="info-icon" title="Rejects samples where instantaneous ratio changes too rapidly between frames (e.g. clutch slip, heel-and-toe revs, or gear change transients).">i</span></span>
-              <span class="ctrl-val" id="val-gear-stab">0.050</span>
-            </div>
-            <input type="range" id="slider-gear-stab" min="0.005" max="0.200" step="0.005" value="0.050" title="Adjust ratio derivative stability threshold">
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">
-            <span>Stage 3: Ratio Smoothing</span>
-            <span class="info-icon" title="Exponential filter applied directly to the speed/RPM ratio. Smoothing the ratio directly avoids differential phase lag distortion between speed and RPM.">i</span>
-          </div>
-          <div class="ctrl-group">
-            <div class="ctrl-label-row">
-              <span class="ctrl-label">EMA Alpha (α) <span class="info-icon" title="Exponential smoothing factor on the ratio: r = α·r_inst + (1-α)·r_prev. Lower values reject driveline chatter; higher values track fast shifts.">i</span></span>
-              <span class="ctrl-val" id="val-gear-alpha">0.15</span>
-            </div>
-            <input type="range" id="slider-gear-alpha" min="0.01" max="1.00" step="0.01" value="0.15" title="Adjust ratio EMA alpha smoothing factor">
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title">
-            <span>Stage 4: Output Latch / Debounce</span>
-            <label style="font-size:0.75rem; font-weight:normal; display:flex; align-items:center; gap:0.3rem; text-transform:none; cursor:pointer;" title="Enables confirmation debouncing before committing to a new gear output, preventing shift chatter.">
-              <input type="checkbox" id="chk-gear-latch"> Enable
-            </label>
-          </div>
-          <div id="gear-latch-controls" style="display:none; flex-direction:column; gap:0.6rem; margin-top:0.4rem;">
-            <div class="ctrl-group">
-              <div class="ctrl-label-row">
-                <span class="ctrl-label">Hold Confirmation Time <span class="info-icon" title="Minimum continuous dwell time required in candidate gear before confirming output transition. Higher values eliminate chatter; lower values reduce dash delay.">i</span></span>
-                <span class="ctrl-val" id="val-gear-latch">200 ms</span>
-              </div>
-              <input type="range" id="slider-gear-latch" min="50" max="600" step="25" value="200" title="Adjust gear latch hold confirmation time">
-            </div>
-            <div style="font-size:0.72rem; color:var(--text-muted); line-height:1.35;">
-              Requires candidate gear to hold continuously before confirming transition, suppressing shift chatter.
-            </div>
+            <input type="range" id="slider-gear-minrpm" min="10" max="60" step="0.5" value="31.0" title="Adjust minimum engine RPM frequency cutoff">
           </div>
         </div>
 
@@ -1286,7 +1291,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           </div>
           <div class="ctrl-group">
             <div class="ctrl-label-row">
-              <span class="ctrl-label">Tolerance Window (Absolute ±Δ) <span class="info-icon" title="Half-width acceptance corridor around nominal gear ratios (μ ± Δ). Voronoi midpoint protection strictly prevents adjacent gear corridor overlaps.">i</span></span>
+              <span class="ctrl-label">Tolerance Corridor (±Δ) <span class="info-icon" title="Acceptance corridor width defining the Gaussian observation variance for each gear.">i</span></span>
               <span class="ctrl-val" id="val-gear-tol">±0.25</span>
             </div>
             <input type="range" id="slider-gear-tol" min="0.05" max="0.50" step="0.01" value="0.25" title="Adjust absolute tolerance corridor half-width">
@@ -1294,27 +1299,27 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.4rem; font-size:0.78rem;">
             <div>
               <label title="Calibrated ratio (f_speed / f_RPM) for 1st gear">1st Gear</label>
-              <input type="number" id="gear-r-1" step="0.01" value="1.01" style="width:100%;" title="1st gear ratio center">
+              <input type="number" id="gear-r-1" step="0.001" value="1.018" style="width:100%;" title="1st gear ratio center">
             </div>
             <div>
               <label title="Calibrated ratio (f_speed / f_RPM) for 2nd gear">2nd Gear</label>
-              <input type="number" id="gear-r-2" step="0.01" value="1.80" style="width:100%;" title="2nd gear ratio center">
+              <input type="number" id="gear-r-2" step="0.001" value="1.793" style="width:100%;" title="2nd gear ratio center">
             </div>
             <div>
               <label title="Calibrated ratio (f_speed / f_RPM) for 3rd gear">3rd Gear</label>
-              <input type="number" id="gear-r-3" step="0.01" value="2.73" style="width:100%;" title="3rd gear ratio center">
+              <input type="number" id="gear-r-3" step="0.001" value="2.726" style="width:100%;" title="3rd gear ratio center">
             </div>
             <div>
               <label title="Calibrated ratio (f_speed / f_RPM) for 4th gear">4th Gear</label>
-              <input type="number" id="gear-r-4" step="0.01" value="3.76" style="width:100%;" title="4th gear ratio center">
+              <input type="number" id="gear-r-4" step="0.001" value="3.763" style="width:100%;" title="4th gear ratio center">
             </div>
             <div>
               <label title="Calibrated ratio (f_speed / f_RPM) for 5th gear">5th Gear</label>
-              <input type="number" id="gear-r-5" step="0.01" value="4.54" style="width:100%;" title="5th gear ratio center">
+              <input type="number" id="gear-r-5" step="0.001" value="4.542" style="width:100%;" title="5th gear ratio center">
             </div>
           </div>
           <div style="font-size:0.72rem; color:var(--text-muted); margin-top:0.4rem;">
-            5 forward gears + Neutral. (Reverse is not directly signaled in CAN logs and defaults to Neutral/Uncertain).
+            5 forward gears + Neutral / Uncertain (State 14).
           </div>
         </div>
 
@@ -1329,11 +1334,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <span>Show Simulated Gear Gauge</span>
           </label>
           <div style="display:flex; gap:0.4rem; margin-top:0.75rem;">
-            <button id="btn-save-shared-cal" style="flex:1; font-size:0.75rem;" title="Save current tolerance, latch, and nominal ratios to decoder/gear_calibration.json">💾 Save Cal</button>
+            <button id="btn-save-shared-cal" style="flex:1; font-size:0.75rem;" title="Save current parameters to decoder/gear_calibration.json">💾 Save Cal</button>
             <button id="btn-load-shared-cal" style="flex:1; font-size:0.75rem;" title="Load shared parameters from decoder/gear_calibration.json">📥 Load Cal</button>
           </div>
           <div style="margin-top:0.4rem;">
-            <button id="btn-reset-gear-defaults" style="width:100%;" title="Reset gear parameters to factory defaults">Reset Gear Defaults</button>
+            <button id="btn-reset-gear-defaults" style="width:100%;" title="Reset gear parameters to Bayesian calibrated defaults">Reset Gear Defaults</button>
           </div>
         </div>
 
@@ -1713,7 +1718,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </main>
 
   <script>
-    let currentTheme = localStorage.getItem('minigauge_theme') || 'dark';
+    const osLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+    let currentTheme = localStorage.getItem('minigauge_theme') || (osLight ? 'light' : 'dark');
     document.documentElement.setAttribute('data-theme', currentTheme);
 
     document.getElementById('btn-theme-toggle').addEventListener('click', () => {
@@ -1724,14 +1730,35 @@ HTML_PAGE = r"""<!DOCTYPE html>
       renderActiveTabPlots();
     });
 
+    if (window.matchMedia) {
+      window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
+        if (!localStorage.getItem('minigauge_theme')) {
+          currentTheme = e.matches ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', currentTheme);
+          updateMapTheme();
+          renderActiveTabPlots();
+        }
+      });
+    }
+
+    function updateSliderTrack(slider) {
+      if (!slider || slider.type !== 'range') return;
+      const min = parseFloat(slider.min) || 0;
+      const max = parseFloat(slider.max) || 100;
+      const val = parseFloat(slider.value) || 0;
+      const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
+      slider.style.setProperty('--slider-pct', pct.toFixed(1) + '%');
+    }
+    window.updateSliderTrack = updateSliderTrack;
+
     function getPlotlyLayoutTheme() {
       const isDark = (document.documentElement.getAttribute('data-theme') === 'dark');
       return {
-        paper_bgcolor: isDark ? '#181b21' : '#ffffff',
-        plot_bgcolor: isDark ? '#121417' : '#f8fafc',
-        font: { color: isDark ? '#e2e8f0' : '#0f172a', size: 11 },
-        gridcolor: isDark ? '#262c36' : '#e2e8f0',
-        zerolinecolor: isDark ? '#3b82f6' : '#94a3b8'
+        paper_bgcolor: isDark ? '#181818' : '#ffffff',
+        plot_bgcolor: isDark ? '#0a0a0a' : '#f8fafc',
+        font: { color: isDark ? '#f5f5f5' : '#0f172a', size: 11 },
+        gridcolor: isDark ? 'rgba(221, 107, 61, 0.15)' : 'rgba(43, 92, 146, 0.12)',
+        zerolinecolor: isDark ? '#dd6b3d' : '#2b5c92'
       };
     }
 
@@ -2222,6 +2249,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     async function initLogs() {
       showLoading('Fetching logs...');
       try {
+        await autoLoadSharedCal(true);
         const res = await fetch('/api/logs');
         const logs = await res.json();
         const sel = document.getElementById('log-select');
@@ -2328,36 +2356,43 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }
     }
 
-    // TAB 1: GEAR POSITION ESTIMATOR LOGIC
+    // TAB 1: KINEMATIC BAYESIAN GEAR POSITION ESTIMATOR LOGIC
     const gearParams = {
       preset: 'baseline',
-      rpmFilterEnabled: false,
-      rpmFilterType: 'EMA',
-      rpmFilterTau: 0.10,
-      minSpeed: 5.0,
-      minRpm: 33.33,
-      stabGate: 0.050,
-      alpha: 0.15,
-      latchEnabled: false,
+      decay: 0.94,
+      inertia: 0.960,
+      conf: 0.38,
       latchHoldMs: 200,
+      minSpeed: 4.5,
+      minRpm: 31.0,
       tol: 0.25,
-      r: [1.01, 1.80, 2.73, 3.76, 4.54],
+      r: [1.018, 1.793, 2.726, 3.763, 4.542],
       showGroundTruth: false
     };
 
     function updateGearLabels() {
-      const speedKph = (gearParams.minSpeed * 0.2444).toFixed(1);
+      const speedKph = (gearParams.minSpeed * 2.214).toFixed(1);
       const rpmVal = Math.round(gearParams.minRpm * 30);
-      document.getElementById('val-gear-minspeed').innerText = `${gearParams.minSpeed.toFixed(1)} Hz (~${speedKph} km/h)`;
-      document.getElementById('val-gear-minrpm').innerText = `${gearParams.minRpm.toFixed(0)} Hz (${rpmVal} RPM)`;
-      document.getElementById('val-gear-stab').innerText = gearParams.stabGate.toFixed(3);
-      document.getElementById('val-gear-alpha').innerText = gearParams.alpha.toFixed(2);
-      document.getElementById('val-gear-tol').innerText = '±' + gearParams.tol.toFixed(2);
-      if (document.getElementById('val-gear-rpm-param')) {
-        document.getElementById('val-gear-rpm-param').innerText = gearParams.rpmFilterTau.toFixed(2) + ' s';
+      if (document.getElementById('val-m2-decay')) {
+        document.getElementById('val-m2-decay').innerText = gearParams.decay.toFixed(2);
       }
-      if (document.getElementById('val-gear-latch')) {
-        document.getElementById('val-gear-latch').innerText = gearParams.latchHoldMs + ' ms';
+      if (document.getElementById('val-m2-inertia')) {
+        document.getElementById('val-m2-inertia').innerText = gearParams.inertia.toFixed(3);
+      }
+      if (document.getElementById('val-m2-conf')) {
+        document.getElementById('val-m2-conf').innerText = gearParams.conf.toFixed(2);
+      }
+      if (document.getElementById('val-m2-latch')) {
+        document.getElementById('val-m2-latch').innerText = gearParams.latchHoldMs + ' ms';
+      }
+      if (document.getElementById('val-gear-minspeed')) {
+        document.getElementById('val-gear-minspeed').innerText = `${gearParams.minSpeed.toFixed(1)} Hz (~${speedKph} km/h)`;
+      }
+      if (document.getElementById('val-gear-minrpm')) {
+        document.getElementById('val-gear-minrpm').innerText = `${gearParams.minRpm.toFixed(1)} Hz (${rpmVal} RPM)`;
+      }
+      if (document.getElementById('val-gear-tol')) {
+        document.getElementById('val-gear-tol').innerText = '±' + gearParams.tol.toFixed(2);
       }
     }
 
@@ -2366,98 +2401,58 @@ HTML_PAGE = r"""<!DOCTYPE html>
       if (!card) return;
 
       const presetNames = {
-        'baseline': '1. Baseline (Gated Ratio EMA)',
-        'rpm_filter': '2. RPM Pre-Filtered + Ratio EMA',
-        'latched': '3. Full Pipeline (RPM Filter + Latch)',
-        'custom': 'Custom Modular Pipeline'
+        'baseline': '1. Calibrated Bayesian (Default)',
+        'highway': '2. High Inertia (Highway Cruise)',
+        'sport': '3. Fast Response (Sport / Track)',
+        'custom': 'Custom Bayesian Pipeline'
       };
 
-      const presetLabel = presetNames[gearParams.preset] || 'Custom Modular Pipeline';
-
-      let stepNum = 1;
-      let stepsHtml = '';
-
-      if (gearParams.rpmFilterEnabled) {
-        if (gearParams.rpmFilterType === 'EMA') {
-          stepsHtml += `
-            <div>
-              <strong>Step ${stepNum++}: Input RPM Frequency Smoothing (EMA):</strong>
-              <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
-                f_RPM,filt(t) = &alpha;_rpm &middot; f_RPM(t) + (1 - &alpha;_rpm) &middot; f_RPM,filt(t - &Delta;t)
-              </div>
-              <span style="color:var(--text-muted); font-size:0.7rem;">Exponential filter on 0x301 DBG_RPM_freq with &tau; = ${gearParams.rpmFilterTau.toFixed(2)}s (&alpha;_rpm &approx; ${(0.1 / (gearParams.rpmFilterTau + 0.1)).toFixed(2)}).</span>
-            </div>
-          `;
-        } else {
-          const winPts = Math.max(1, Math.round(gearParams.rpmFilterTau / 0.1));
-          stepsHtml += `
-            <div>
-              <strong>Step ${stepNum++}: Input RPM Frequency Smoothing (SMA):</strong>
-              <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
-                f_RPM,filt(t) = (1 / W) &sum; f_RPM(t - k&Delta;t)
-              </div>
-              <span style="color:var(--text-muted); font-size:0.7rem;">Moving window of ${winPts} samples (&Delta;t = ${gearParams.rpmFilterTau.toFixed(2)}s) on 0x301 DBG_RPM_freq.</span>
-            </div>
-          `;
-        }
-      }
-
-      const rpmSource = gearParams.rpmFilterEnabled ? 'f_RPM,filt(t)' : 'f_RPM(t)';
-
-      stepsHtml += `
-        <div>
-          <strong>Step ${stepNum++}: Instantaneous Gear Ratio:</strong>
-          <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
-            r_inst(t) = f_speed(t) / ${rpmSource}
-          </div>
-          <span style="color:var(--text-muted); font-size:0.7rem;">Computed from 0x300 <code>DBG_speed_freq</code> & 0x301 ${gearParams.rpmFilterEnabled ? 'filtered' : 'raw'} <code>DBG_RPM_freq</code>.</span>
-        </div>
-        <div>
-          <strong>Step ${stepNum++}: Triple Gating (Clutch / Slip Rejection):</strong>
-          <ul style="padding-left:1rem; margin-top:2px; color:var(--text-muted); font-size:0.7rem;">
-            <li><code>f_speed &ge; minSpeed</code> (${gearParams.minSpeed.toFixed(1)} Hz &approx; ${(gearParams.minSpeed * 0.2444).toFixed(1)} km/h, rejects standstill)</li>
-            <li><code>f_RPM &ge; minRPM</code> (${gearParams.minRpm.toFixed(0)} Hz = ${Math.round(gearParams.minRpm * 30)} RPM, rejects stall/idle)</li>
-            <li><code>|&Delta;r / &Delta;t| &le; Gate</code> (${gearParams.stabGate.toFixed(3)}, rejects clutch slip and active shift transients)</li>
-          </ul>
-        </div>
-        <div>
-          <strong>Step ${stepNum++}: Ratio-Domain EMA (Filter on Ratio):</strong>
-          <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
-            r_EMA(t) = &alpha; &middot; r_inst(t) + (1 - &alpha;) &middot; r_EMA(t - 1)
-          </div>
-          <div style="font-size:0.7rem; color:var(--warning); margin-top:3px; line-height:1.35;">
-            ⚡ <em>Note:</em> Primary smoothing applies directly to the <strong>ratio</strong> (&alpha; = ${gearParams.alpha.toFixed(2)}) to prevent differential phase lag between engine and wheel inertia.
-          </div>
-        </div>
-        <div>
-          <strong>Step ${stepNum++}: Tolerance Classification:</strong>
-            Candidate gear <em>i</em> &isin; [1..5] if <code>|r_EMA - R_i| &le; tol</code> (&plusmn;${gearParams.tol.toFixed(2)} ratio units, with Voronoi collision protection).<br>
-            Fails tolerance or gating &rarr; Neutral (N / 0).
-          </div>
-        </div>
-      `;
-
-      if (gearParams.latchEnabled) {
-        stepsHtml += `
-          <div>
-            <strong>Step ${stepNum++}: Output Gear Latching / Debouncing:</strong>
-            <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
-              G_out(t) = G_cand(t) &nbsp; iff sustained &ge; ${gearParams.latchHoldMs} ms
-            </div>
-            <span style="color:var(--text-muted); font-size:0.7rem;">Holds current gear and suppresses 1-sample transitions or jitter during clutching. Immediate drop to Neutral on vehicle stop.</span>
-          </div>
-        `;
-      }
+      const presetLabel = presetNames[gearParams.preset] || 'Custom Bayesian Pipeline';
 
       card.innerHTML = `
         <div class="card-title" style="color:var(--primary); display:flex; justify-content:space-between; align-items:center;">
-          <span>📐 Algorithm Math & Workflow</span>
+          <span>📐 Kinematic Bayesian Formulation</span>
           <span style="font-size:0.68rem; font-weight:normal; background:var(--badge-bg); color:var(--badge-text); padding:2px 6px; border-radius:4px;">${presetLabel}</span>
         </div>
         <div style="font-size:0.75rem; color:var(--text); line-height:1.45; display:flex; flex-direction:column; gap:0.5rem; margin-top:0.4rem;">
-          ${stepsHtml}
+          <div>
+            <strong>1. Kinematic Transition Matrix T:</strong>
+            <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
+              T[k][k] = ${gearParams.inertia.toFixed(3)} (Self-Inertia)
+            </div>
+            <span style="color:var(--text-muted); font-size:0.7rem;">Dynamic torque bias: conditioned on wheel acceleration &Delta;f_speed/&Delta;t and engine RPM (upshift bias when accelerating &ge;55 Hz, downshift bias when braking).</span>
+          </div>
+          <div>
+            <strong>2. Gaussian Observation Likelihood:</strong>
+            <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
+              P(r_t | G=k) = (1 / &radic;(2&pi;&sigma;&sup2;)) &middot; exp(-0.5 &middot; (r_t - &mu;_k)&sup2; / &sigma;&sup2;)
+            </div>
+            <span style="color:var(--text-muted); font-size:0.7rem;">Where &mu; = [${gearParams.r.map(v => v.toFixed(2)).join(', ')}] and &sigma; = ${(gearParams.tol / 2.0).toFixed(3)}. Clutch-drop suppression penalizes phantom upshifts when &Delta;f_RPM/&Delta;t &lt; -35 Hz/s.</span>
+          </div>
+          <div>
+            <strong>3. Recursive Bayesian Update:</strong>
+            <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
+              P(G_t = k | y_{1:t}) &prop; P(r_t | G=k) &middot; [&lambda; &sum;_i P(G_{t-1}=i) T_{ik} + (1-&lambda;) / 6]
+            </div>
+            <span style="color:var(--text-muted); font-size:0.7rem;">Prior decay &lambda; = ${gearParams.decay.toFixed(2)}. Normalized across 6 states (Neutral/Uncertain + Gears 1..5).</span>
+          </div>
+          <div>
+            <strong>4. Confidence Gating & Guarded Latch:</strong>
+            <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
+              max P &ge; ${gearParams.conf.toFixed(2)} &rarr; Commit iff sustained &ge; ${gearParams.latchHoldMs} ms
+            </div>
+            <span style="color:var(--text-muted); font-size:0.7rem;">Low posterior confidence while moving maps safely to State 14 (Uncertain). Immediate return to Neutral (0) when stationary.</span>
+          </div>
         </div>
       `;
+    }
+
+    function syncGearSlider(id, val) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.value = val;
+        updateSliderTrack(el);
+      }
     }
 
     function loadGearSettings() {
@@ -2470,36 +2465,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
       if (document.getElementById('select-gear-preset')) {
         document.getElementById('select-gear-preset').value = gearParams.preset || 'baseline';
       }
-      if (document.getElementById('chk-gear-rpm-filter')) {
-        document.getElementById('chk-gear-rpm-filter').checked = !!gearParams.rpmFilterEnabled;
-        document.getElementById('gear-rpm-filter-controls').style.display = gearParams.rpmFilterEnabled ? 'flex' : 'none';
-      }
-      if (document.getElementById('radio-gear-rpm-ema')) {
-        document.getElementById('radio-gear-rpm-ema').checked = (gearParams.rpmFilterType === 'EMA');
-        document.getElementById('radio-gear-rpm-sma').checked = (gearParams.rpmFilterType === 'SMA');
-        document.getElementById('lbl-gear-rpm-param').innerText = (gearParams.rpmFilterType === 'EMA') ? 'Time Constant (τ)' : 'Window Size (s)';
-      }
-      if (document.getElementById('slider-gear-rpm-param')) {
-        document.getElementById('slider-gear-rpm-param').value = gearParams.rpmFilterTau;
-      }
-      if (document.getElementById('chk-gear-latch')) {
-        document.getElementById('chk-gear-latch').checked = !!gearParams.latchEnabled;
-        document.getElementById('gear-latch-controls').style.display = gearParams.latchEnabled ? 'flex' : 'none';
-      }
-      if (document.getElementById('slider-gear-latch')) {
-        document.getElementById('slider-gear-latch').value = gearParams.latchHoldMs;
-      }
+      syncGearSlider('slider-m2-decay', gearParams.decay);
+      syncGearSlider('slider-m2-inertia', gearParams.inertia);
+      syncGearSlider('slider-m2-conf', gearParams.conf);
+      syncGearSlider('slider-m2-latch', gearParams.latchHoldMs);
+      syncGearSlider('slider-gear-minspeed', gearParams.minSpeed);
+      syncGearSlider('slider-gear-minrpm', gearParams.minRpm);
+      syncGearSlider('slider-gear-tol', gearParams.tol);
 
-      document.getElementById('slider-gear-minspeed').value = gearParams.minSpeed;
-      document.getElementById('slider-gear-minrpm').value = gearParams.minRpm;
-      document.getElementById('slider-gear-stab').value = gearParams.stabGate;
-      document.getElementById('slider-gear-alpha').value = gearParams.alpha;
-      document.getElementById('slider-gear-tol').value = gearParams.tol;
-      document.getElementById('chk-gear-groundtruth').checked = gearParams.showGroundTruth;
+      if (document.getElementById('chk-gear-groundtruth')) {
+        document.getElementById('chk-gear-groundtruth').checked = !!gearParams.showGroundTruth;
+      }
 
       for (let i = 1; i <= 5; i++) {
         const inp = document.getElementById(`gear-r-${i}`);
-        if (inp && gearParams.r[i - 1] !== undefined) inp.value = gearParams.r[i - 1].toFixed(2);
+        if (inp && gearParams.r[i - 1] !== undefined) inp.value = gearParams.r[i - 1].toFixed(3);
       }
       updateGearLabels();
       renderGearMathExplanation();
@@ -2514,64 +2494,65 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const p = e.target.value;
       gearParams.preset = p;
       if (p === 'baseline') {
-        gearParams.rpmFilterEnabled = false;
-        gearParams.latchEnabled = false;
-      } else if (p === 'rpm_filter') {
-        gearParams.rpmFilterEnabled = true;
-        gearParams.latchEnabled = false;
-      } else if (p === 'latched') {
-        gearParams.rpmFilterEnabled = true;
-        gearParams.latchEnabled = true;
+        gearParams.decay = 0.94;
+        gearParams.inertia = 0.960;
+        gearParams.conf = 0.38;
+        gearParams.latchHoldMs = 200;
+      } else if (p === 'highway') {
+        gearParams.decay = 0.96;
+        gearParams.inertia = 0.980;
+        gearParams.conf = 0.42;
+        gearParams.latchHoldMs = 300;
+      } else if (p === 'sport') {
+        gearParams.decay = 0.90;
+        gearParams.inertia = 0.920;
+        gearParams.conf = 0.32;
+        gearParams.latchHoldMs = 125;
       }
-      document.getElementById('chk-gear-rpm-filter').checked = gearParams.rpmFilterEnabled;
-      document.getElementById('gear-rpm-filter-controls').style.display = gearParams.rpmFilterEnabled ? 'flex' : 'none';
-      document.getElementById('chk-gear-latch').checked = gearParams.latchEnabled;
-      document.getElementById('gear-latch-controls').style.display = gearParams.latchEnabled ? 'flex' : 'none';
+      syncGearSlider('slider-m2-decay', gearParams.decay);
+      syncGearSlider('slider-m2-inertia', gearParams.inertia);
+      syncGearSlider('slider-m2-conf', gearParams.conf);
+      syncGearSlider('slider-m2-latch', gearParams.latchHoldMs);
       saveGearSettings();
+      updateGearLabels();
       renderGearMathExplanation();
       computeAndRenderGear();
     });
 
-    document.getElementById('chk-gear-rpm-filter').addEventListener('change', (e) => {
-      gearParams.rpmFilterEnabled = e.target.checked;
+    document.getElementById('slider-m2-decay').addEventListener('input', (e) => {
+      gearParams.decay = parseFloat(e.target.value);
       gearParams.preset = 'custom';
       document.getElementById('select-gear-preset').value = 'custom';
-      document.getElementById('gear-rpm-filter-controls').style.display = gearParams.rpmFilterEnabled ? 'flex' : 'none';
-      saveGearSettings();
-      renderGearMathExplanation();
-      computeAndRenderGear();
-    });
-
-    document.querySelectorAll('input[name="gear-rpm-algo"]').forEach(r => {
-      r.addEventListener('change', (e) => {
-        gearParams.rpmFilterType = e.target.value;
-        document.getElementById('lbl-gear-rpm-param').innerText = (gearParams.rpmFilterType === 'EMA') ? 'Time Constant (τ)' : 'Window Size (s)';
-        saveGearSettings();
-        renderGearMathExplanation();
-        computeAndRenderGear();
-      });
-    });
-
-    document.getElementById('slider-gear-rpm-param').addEventListener('input', (e) => {
-      gearParams.rpmFilterTau = parseFloat(e.target.value);
       updateGearLabels();
       saveGearSettings();
       renderGearMathExplanation();
       computeAndRenderGear();
     });
 
-    document.getElementById('chk-gear-latch').addEventListener('change', (e) => {
-      gearParams.latchEnabled = e.target.checked;
+    document.getElementById('slider-m2-inertia').addEventListener('input', (e) => {
+      gearParams.inertia = parseFloat(e.target.value);
       gearParams.preset = 'custom';
       document.getElementById('select-gear-preset').value = 'custom';
-      document.getElementById('gear-latch-controls').style.display = gearParams.latchEnabled ? 'flex' : 'none';
+      updateGearLabels();
       saveGearSettings();
       renderGearMathExplanation();
       computeAndRenderGear();
     });
 
-    document.getElementById('slider-gear-latch').addEventListener('input', (e) => {
+    document.getElementById('slider-m2-conf').addEventListener('input', (e) => {
+      gearParams.conf = parseFloat(e.target.value);
+      gearParams.preset = 'custom';
+      document.getElementById('select-gear-preset').value = 'custom';
+      updateGearLabels();
+      saveGearSettings();
+      renderGearMathExplanation();
+      computeAndRenderGear();
+    });
+
+    document.getElementById('slider-m2-latch').addEventListener('input', (e) => {
       gearParams.latchHoldMs = parseInt(e.target.value, 10);
+      gearParams.preset = 'custom';
+      document.getElementById('select-gear-preset').value = 'custom';
       updateGearLabels();
       saveGearSettings();
       renderGearMathExplanation();
@@ -2585,6 +2566,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       renderGearMathExplanation();
       computeAndRenderGear();
     });
+
     document.getElementById('slider-gear-minrpm').addEventListener('input', (e) => {
       gearParams.minRpm = parseFloat(e.target.value);
       updateGearLabels();
@@ -2592,20 +2574,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       renderGearMathExplanation();
       computeAndRenderGear();
     });
-    document.getElementById('slider-gear-stab').addEventListener('input', (e) => {
-      gearParams.stabGate = parseFloat(e.target.value);
-      updateGearLabels();
-      saveGearSettings();
-      renderGearMathExplanation();
-      computeAndRenderGear();
-    });
-    document.getElementById('slider-gear-alpha').addEventListener('input', (e) => {
-      gearParams.alpha = parseFloat(e.target.value);
-      updateGearLabels();
-      saveGearSettings();
-      renderGearMathExplanation();
-      computeAndRenderGear();
-    });
+
     document.getElementById('slider-gear-tol').addEventListener('input', (e) => {
       gearParams.tol = parseFloat(e.target.value);
       updateGearLabels();
@@ -2613,17 +2582,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
       renderGearMathExplanation();
       computeAndRenderGear();
     });
+
     document.getElementById('chk-gear-groundtruth').addEventListener('change', (e) => {
       gearParams.showGroundTruth = e.target.checked;
       saveGearSettings();
       computeAndRenderGear();
     });
+
     for (let i = 1; i <= 5; i++) {
       const inp = document.getElementById(`gear-r-${i}`);
       if (inp) {
         inp.addEventListener('change', (e) => {
           gearParams.r[i - 1] = parseFloat(e.target.value) || 1.0;
           saveGearSettings();
+          renderGearMathExplanation();
           computeAndRenderGear();
         });
       }
@@ -2631,17 +2603,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     document.getElementById('btn-reset-gear-defaults').addEventListener('click', () => {
       gearParams.preset = 'baseline';
-      gearParams.rpmFilterEnabled = false;
-      gearParams.rpmFilterType = 'EMA';
-      gearParams.rpmFilterTau = 0.10;
-      gearParams.minSpeed = 5.0;
-      gearParams.minRpm = 25.0;
-      gearParams.stabGate = 0.050;
-      gearParams.alpha = 0.15;
-      gearParams.latchEnabled = false;
+      gearParams.decay = 0.94;
+      gearParams.inertia = 0.960;
+      gearParams.conf = 0.38;
       gearParams.latchHoldMs = 200;
+      gearParams.minSpeed = 4.5;
+      gearParams.minRpm = 31.0;
       gearParams.tol = 0.25;
-      gearParams.r = [1.01, 1.80, 2.73, 3.76, 4.54];
+      gearParams.r = [1.018, 1.793, 2.726, 3.763, 4.542];
       gearParams.showGroundTruth = false;
       saveGearSettings();
       loadGearSettings();
@@ -2690,13 +2659,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
       finalPeaks.sort((a,b) => a - b);
       if (finalPeaks.length >= 2) {
         for (let i = 0; i < Math.min(5, finalPeaks.length); i++) {
-          gearParams.r[i] = parseFloat(finalPeaks[i].toFixed(2));
+          gearParams.r[i] = parseFloat(finalPeaks[i].toFixed(3));
           const el = document.getElementById(`gear-r-${i+1}`);
           if (el) el.value = gearParams.r[i];
         }
         saveGearSettings();
+        renderGearMathExplanation();
         computeAndRenderGear();
-        alert(`Detected ${Math.min(5, finalPeaks.length)} gear clusters: ${gearParams.r.slice(0, Math.min(5, finalPeaks.length)).map(p=>p.toFixed(2)).join(', ')}`);
+        alert(`Detected ${Math.min(5, finalPeaks.length)} gear clusters: ${gearParams.r.slice(0, Math.min(5, finalPeaks.length)).map(p=>p.toFixed(3)).join(', ')}`);
       } else {
         alert("Could not clearly isolate distinct cluster peaks. Drive cycle may have stayed in a single gear.");
       }
@@ -2711,19 +2681,89 @@ HTML_PAGE = r"""<!DOCTYPE html>
       });
     }
 
-    // Shared calibration save / load
+    // Shared calibration save / load with auto-load support
+    async function autoLoadSharedCal(silent = true) {
+      try {
+        const resp = await fetch('/api/calibration');
+        if (!resp.ok) return;
+        const cal = await resp.json();
+        if (cal.nominal_ratios && Array.isArray(cal.nominal_ratios)) {
+          for (let i = 0; i < Math.min(5, cal.nominal_ratios.length); i++) {
+            gearParams.r[i] = cal.nominal_ratios[i];
+            const inp = document.getElementById(`gear-r-${i+1}`);
+            if (inp) inp.value = cal.nominal_ratios[i].toFixed(3);
+          }
+        }
+        if (cal.tolerance !== undefined) {
+          gearParams.tol = cal.tolerance;
+          syncGearSlider('slider-gear-tol', cal.tolerance);
+        } else if (cal.tolerance_abs !== undefined) {
+          gearParams.tol = cal.tolerance_abs;
+          syncGearSlider('slider-gear-tol', cal.tolerance_abs);
+        }
+        if (cal.latch_ms !== undefined) {
+          gearParams.latchHoldMs = cal.latch_ms;
+          syncGearSlider('slider-m2-latch', cal.latch_ms);
+        } else if (cal.latch_time_ms !== undefined) {
+          gearParams.latchHoldMs = cal.latch_time_ms;
+          syncGearSlider('slider-m2-latch', cal.latch_time_ms);
+        }
+        if (cal.m2_decay !== undefined) {
+          gearParams.decay = cal.m2_decay;
+          syncGearSlider('slider-m2-decay', cal.m2_decay);
+        }
+        if (cal.m2_inertia !== undefined) {
+          gearParams.inertia = cal.m2_inertia;
+          syncGearSlider('slider-m2-inertia', cal.m2_inertia);
+        }
+        if (cal.m2_conf !== undefined) {
+          gearParams.conf = cal.m2_conf;
+          syncGearSlider('slider-m2-conf', cal.m2_conf);
+        }
+        if (cal.min_speed_hz !== undefined) {
+          gearParams.minSpeed = cal.min_speed_hz;
+          syncGearSlider('slider-gear-minspeed', cal.min_speed_hz);
+        }
+        if (cal.min_rpm_hz !== undefined) {
+          gearParams.minRpm = cal.min_rpm_hz;
+          syncGearSlider('slider-gear-minrpm', cal.min_rpm_hz);
+        } else if (cal.min_rpm !== undefined) {
+          gearParams.minRpm = cal.min_rpm / 30.0;
+          syncGearSlider('slider-gear-minrpm', cal.min_rpm / 30.0);
+        }
+        saveGearSettings();
+        updateGearLabels();
+        renderGearMathExplanation();
+        if (algoData && algoData.gear) {
+          computeAndRenderGear();
+        }
+        if (!silent) {
+          alert('Shared Calibration loaded from decoder/gear_calibration.json');
+        }
+      } catch (e) {
+        if (!silent) alert('Load calibration error: ' + e.message);
+      }
+    }
+
     const btnSaveCal = document.getElementById('btn-save-shared-cal');
     if (btnSaveCal) {
       btnSaveCal.addEventListener('click', async () => {
         btnSaveCal.disabled = true;
         try {
           const payload = {
+            nominal_ratios: gearParams.r,
             tolerance: gearParams.tol,
+            tolerance_abs: gearParams.tol,
             latch_ms: gearParams.latchHoldMs,
+            latch_time_ms: gearParams.latchHoldMs,
             min_speed_hz: gearParams.minSpeed,
-            min_speed_kph: parseFloat((gearParams.minSpeed * 0.2444).toFixed(1)),
+            min_speed_kph: parseFloat((gearParams.minSpeed * 2.214).toFixed(1)),
             min_rpm: Math.round(gearParams.minRpm * 30),
-            min_rpm_hz: gearParams.minRpm
+            min_rpm_hz: gearParams.minRpm,
+            m2_decay: gearParams.decay,
+            m2_inertia: gearParams.inertia,
+            m2_conf: gearParams.conf,
+            m2_latch_ms: gearParams.latchHoldMs
           };
           const resp = await fetch('/api/calibration', {
             method: 'POST',
@@ -2749,39 +2789,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       btnLoadCal.addEventListener('click', async () => {
         btnLoadCal.disabled = true;
         try {
-          const resp = await fetch('/api/calibration');
-          const cal = await resp.json();
-          if (cal.tolerance !== undefined) {
-            gearParams.tol = cal.tolerance;
-            const el = document.getElementById('slider-gear-tol');
-            if (el) el.value = cal.tolerance;
-          }
-          if (cal.latch_ms !== undefined) {
-            gearParams.latchHoldMs = cal.latch_ms;
-            const el = document.getElementById('slider-gear-latch');
-            if (el) el.value = cal.latch_ms;
-          }
-          if (cal.min_rpm_hz !== undefined) {
-            gearParams.minRpm = cal.min_rpm_hz;
-            const el = document.getElementById('slider-gear-minrpm');
-            if (el) el.value = cal.min_rpm_hz;
-          } else if (cal.min_rpm !== undefined) {
-            gearParams.minRpm = cal.min_rpm / 30.0;
-            const el = document.getElementById('slider-gear-minrpm');
-            if (el) el.value = gearParams.minRpm;
-          }
-          if (cal.min_speed_hz !== undefined) {
-            gearParams.minSpeed = cal.min_speed_hz;
-            const el = document.getElementById('slider-gear-minspeed');
-            if (el) el.value = cal.min_speed_hz;
-          }
-          saveGearSettings();
-          updateGearLabels();
-          renderGearMathExplanation();
-          computeAndRenderGear();
-          alert('Shared Calibration loaded from decoder/gear_calibration.json');
-        } catch (e) {
-          alert('Load calibration error: ' + e.message);
+          await autoLoadSharedCal(false);
         } finally {
           btnLoadCal.disabled = false;
         }
@@ -2805,145 +2813,169 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const filteredRpms = [];
       const histRatios = [];
 
-      let currentEma = null;
-      let prevRaw = null;
       let activeCount = 0;
       let totalEvalCount = 0;
 
       const gearTimeCounts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
 
-      // Step 0: Precompute filtered RPM frequency if enabled
-      const effRpmFreqs = new Float64Array(n);
-      if (gearParams.rpmFilterEnabled) {
-        if (gearParams.rpmFilterType === 'EMA') {
-          const tau = Math.max(0.01, gearParams.rpmFilterTau);
-          let emaRpm = g.rpm_freq[0] || 0.0;
-          effRpmFreqs[0] = emaRpm;
-          for (let i = 1; i < n; i++) {
-            const dt = Math.max(0.001, Math.min(1.0, g.times[i] - g.times[i - 1]));
-            const alphaRpm = dt / (tau + dt);
-            emaRpm = alphaRpm * g.rpm_freq[i] + (1.0 - alphaRpm) * emaRpm;
-            effRpmFreqs[i] = emaRpm;
-          }
-        } else {
-          // SMA sliding window
-          const winSec = Math.max(0.02, gearParams.rpmFilterTau);
-          let sum = 0.0;
-          let startIdx = 0;
-          for (let i = 0; i < n; i++) {
-            sum += g.rpm_freq[i];
-            while (startIdx < i && (g.times[i] - g.times[startIdx]) > winSec) {
-              sum -= g.rpm_freq[startIdx];
-              startIdx++;
-            }
-            const count = (i - startIdx + 1);
-            effRpmFreqs[i] = count > 0 ? (sum / count) : g.rpm_freq[i];
-          }
-        }
-      } else {
-        for (let i = 0; i < n; i++) {
-          effRpmFreqs[i] = g.rpm_freq[i];
-        }
-      }
+      const means = gearParams.r;
+      const vars_ = means.map(() => Math.max(0.001, Math.pow(gearParams.tol / 2.0, 2)));
+      const decay = gearParams.decay;
+      const inertia = gearParams.inertia;
+      const confThresh = gearParams.conf;
+      const latchMs = gearParams.latchHoldMs;
+      const minSpeed = gearParams.minSpeed;
+      const minRpm = gearParams.minRpm;
+      const p0 = 0.08;
 
-      // Output latch state variables
-      let latchedGear = 0;
-      let pendingGear = 0;
-      let pendingStartTime = 0;
+      let prior = [0.90, 0.02, 0.02, 0.02, 0.02, 0.02];
+      let prevRf = null;
+      let prevSf = null;
+      let latched = 0;
+      let pending = 0;
+      let pendingTime = 0.0;
 
       for (let i = 0; i < n; i++) {
         const t = g.times[i];
         const sf = g.speed_freq[i];
-        const rf = effRpmFreqs[i];
+        const rf = g.rpm_freq[i];
         const gt = g.ground_truth[i];
+        const dt = (i > 0) ? Math.max(0.005, Math.min(0.5, t - g.times[i - 1])) : 0.05;
 
-        const speedValid = (sf >= gearParams.minSpeed);
-        const rpmValid = (rf >= gearParams.minRpm);
-        const ratio = (rpmValid && sf > 0) ? (sf / rf) : null;
+        let outGear = 0;
+        let activeSample = false;
+        let currentRatio = (rf > 0 && sf > 0) ? (sf / rf) : null;
 
-        let stable = false;
-        if (ratio !== null && prevRaw !== null) {
-          stable = (Math.abs(ratio - prevRaw) <= gearParams.stabGate);
-        } else if (ratio !== null) {
-          stable = true;
+        if (sf < minSpeed || rf < minRpm) {
+          outGear = 0;
+          latched = 0;
+          pending = 0;
+          pendingTime = 0.0;
+          prior = [0.95, 0.01, 0.01, 0.01, 0.01, 0.01];
+          prevRf = rf;
+          prevSf = sf;
+        } else {
+          activeSample = true;
+          const r = currentRatio;
+          const dsf = prevSf !== null ? (sf - prevSf) / dt : 0.0;
+          const drf = prevRf !== null ? (rf - prevRf) / dt : 0.0;
+          prevSf = sf;
+          prevRf = rf;
+
+          // Kinematic transition matrix T[6][6]
+          const T = [];
+          for (let rIdx = 0; rIdx < 6; rIdx++) {
+            T[rIdx] = [0.02, 0.02, 0.02, 0.02, 0.02, 0.02];
+          }
+          T[0][0] = 0.85;
+          for (let k = 1; k <= 5; k++) {
+            T[0][k] = 0.03;
+            T[k][k] = inertia;
+            T[k][0] = 0.03;
+            if (dsf >= 0.0 && rf >= 55.0) {
+              if (k < 5) T[k][k + 1] = 0.06;
+              if (k > 1) T[k][k - 1] = 0.0001;
+            } else if (dsf < -3.0) {
+              if (k > 1) T[k][k - 1] = 0.06;
+              if (k < 5) T[k][k + 1] = 0.0001;
+            } else {
+              if (k < 5) T[k][k + 1] = 0.02;
+              if (k > 1) T[k][k - 1] = 0.02;
+            }
+          }
+
+          // Row normalize
+          for (let rIdx = 0; rIdx < 6; rIdx++) {
+            let rowSum = 0.0;
+            for (let cIdx = 0; cIdx < 6; cIdx++) rowSum += T[rIdx][cIdx];
+            for (let cIdx = 0; cIdx < 6; cIdx++) T[rIdx][cIdx] /= rowSum;
+          }
+
+          // Predict: pred[j] = sum_i(prior[i] * T[i][j])
+          const pred = [0, 0, 0, 0, 0, 0];
+          for (let j = 0; j < 6; j++) {
+            for (let iIdx = 0; iIdx < 6; iIdx++) {
+              pred[j] += prior[iIdx] * T[iIdx][j];
+            }
+          }
+
+          // Likelihood
+          const lik = [0, 0, 0, 0, 0, 0];
+          const isClutchDrop = (drf < -35.0 && sf >= minSpeed && dsf > -5.0);
+          lik[0] = p0 * (isClutchDrop ? 1.8 : 1.0);
+
+          let maxPriorIdx = 1;
+          let maxPriorVal = prior[1];
+          for (let pi = 2; pi <= 5; pi++) {
+            if (prior[pi] > maxPriorVal) {
+              maxPriorVal = prior[pi];
+              maxPriorIdx = pi;
+            }
+          }
+          const currAssumed = maxPriorVal > 0.3 ? maxPriorIdx : 0;
+
+          for (let gi = 0; gi < 5; gi++) {
+            const diff = r - means[gi];
+            const v = vars_[gi];
+            let density = Math.exp(-0.5 * (diff * diff) / v) / Math.sqrt(2 * Math.PI * v);
+            if (isClutchDrop && (gi + 1) > currAssumed && currAssumed > 0) {
+              density *= 0.0001;
+            }
+            lik[gi + 1] = density;
+          }
+
+          // Posterior update
+          const post = [0, 0, 0, 0, 0, 0];
+          let totPost = 0.0;
+          for (let k = 0; k < 6; k++) {
+            post[k] = lik[k] * (decay * pred[k] + (1.0 - decay) * 0.1666667);
+            totPost += post[k];
+          }
+          if (totPost > 0) {
+            for (let k = 0; k < 6; k++) post[k] /= totPost;
+          }
+          prior = post;
+
+          let bestK = 0;
+          let maxP = post[0];
+          for (let k = 1; k < 6; k++) {
+            if (post[k] > maxP) {
+              maxP = post[k];
+              bestK = k;
+            }
+          }
+
+          let rawChoice = (maxP >= confThresh) ? (bestK === 0 ? 14 : bestK) : 14;
+          if (isClutchDrop && rawChoice > latched && latched >= 1 && latched <= 5) {
+            rawChoice = latched;
+          }
+
+          if (rawChoice !== pending) {
+            pending = rawChoice;
+            pendingTime = 0.0;
+          } else {
+            pendingTime += (dt * 1000.0);
+            if (pendingTime >= latchMs) {
+              latched = pending;
+            }
+          }
+          outGear = latched;
         }
-        prevRaw = ratio;
 
-        const isGatedActive = (speedValid && rpmValid && stable && ratio !== null);
         if (t >= tMin && t <= tMax) {
           totalEvalCount++;
-          if (isGatedActive) activeCount++;
-        }
-
-        if (isGatedActive) {
-          if (currentEma === null) {
-            currentEma = ratio;
-          } else {
-            currentEma = gearParams.alpha * ratio + (1.0 - gearParams.alpha) * currentEma;
-          }
-          if (t >= tMin && t <= tMax) {
-            histRatios.push(currentEma);
-          }
-        } else {
-          currentEma = null;
-        }
-
-        let candGear = 0;
-        if (!speedValid || !rpmValid) {
-          candGear = 0; // Neutral (stopped or engine idling < 1000 RPM)
-        } else if (currentEma !== null) {
-          for (let gi = 0; gi < 5; gi++) {
-            const nominal = gearParams.r[gi];
-            let maxTol = gearParams.tol;
-            if (gi > 0) {
-              maxTol = Math.min(maxTol, (nominal - gearParams.r[gi - 1]) * 0.48);
-            }
-            if (gi < 4) {
-              maxTol = Math.min(maxTol, (gearParams.r[gi + 1] - nominal) * 0.48);
-            }
-            if (Math.abs(currentEma - nominal) <= maxTol) {
-              candGear = gi + 1;
-              break;
-            }
-          }
-          if (candGear === 0) {
-            candGear = 14; // Uncertain (speed and RPM valid, but ratio out of calibrated bands)
-          }
-        } else {
-          candGear = 14; // Uncertain (speed and RPM valid, but ratio unstable or clutch disengaged)
-        }
-
-        let finalGear = candGear;
-        if (gearParams.latchEnabled) {
-          // If vehicle is stopped or engine stalled, drop immediately to Neutral
-          if (!speedValid || !rpmValid) {
-            latchedGear = 0;
-            pendingGear = 0;
-            pendingStartTime = t;
-            finalGear = 0;
-          } else {
-            if (candGear !== pendingGear) {
-              pendingGear = candGear;
-              pendingStartTime = t;
-            }
-            const elapsedMs = (t - pendingStartTime) * 1000.0;
-            if (elapsedMs >= gearParams.latchHoldMs) {
-              latchedGear = pendingGear;
-            }
-            finalGear = latchedGear;
-          }
-        }
-
-        if (t >= tMin && t <= tMax) {
+          if (activeSample) activeCount++;
           filteredTimes.push(t);
-          rawRatios.push(isGatedActive ? ratio : null);
-          smoothedRatios.push(currentEma);
-          estimatedGears.push(finalGear);
+          rawRatios.push(activeSample ? currentRatio : null);
+          smoothedRatios.push((outGear >= 1 && outGear <= 5) ? means[outGear - 1] : (activeSample ? currentRatio : null));
+          estimatedGears.push(outGear);
           groundTruthGears.push(gt);
           filteredSpeeds.push(g.speed_kph[i] || 0);
           filteredRpms.push(g.rpm[i] || 0);
-          const dt = (i > 0) ? Math.min(0.2, Math.max(0.01, t - g.times[i-1])) : 0.1;
-          gearTimeCounts[finalGear] = (gearTimeCounts[finalGear] || 0) + dt;
+          if (activeSample && currentRatio !== null && currentRatio >= 0.5 && currentRatio <= 6.0) {
+            histRatios.push(currentRatio);
+          }
+          gearTimeCounts[outGear] = (gearTimeCounts[outGear] || 0) + dt;
         }
       }
 
@@ -3094,7 +3126,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           x: histRatios,
           type: 'histogram',
           nbinsx: 120,
-          marker: { color: '#3b82f6' },
+          marker: { color: '#dd6b3d' },
           name: 'Ratio Samples'
         }
       ], {
@@ -3113,7 +3145,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           y: filteredSpeeds,
           mode: 'lines',
           name: 'ITF_speed_kph',
-          line: { color: '#3b82f6', width: 2 },
+          line: { color: '#dd6b3d', width: 2 },
           yaxis: 'y'
         },
         {
@@ -3121,7 +3153,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           y: filteredRpms,
           mode: 'lines',
           name: 'ITF_rpm',
-          line: { color: '#f59e0b', width: 1.8 },
+          line: { color: '#2b5c92', width: 1.8 },
           yaxis: 'y2'
         }
       ];
@@ -3133,14 +3165,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
         xaxis: { title: '', gridcolor: theme.gridcolor, range: [tMin, tMax] },
         yaxis: {
           title: 'Speed (km/h)',
-          titlefont: { color: '#3b82f6', size: 11 },
-          tickfont: { color: '#3b82f6', size: 10 },
+          titlefont: { color: '#dd6b3d', size: 11 },
+          tickfont: { color: '#dd6b3d', size: 10 },
           gridcolor: theme.gridcolor
         },
         yaxis2: {
           title: 'RPM',
-          titlefont: { color: '#f59e0b', size: 11 },
-          tickfont: { color: '#f59e0b', size: 10 },
+          titlefont: { color: '#2b5c92', size: 11 },
+          tickfont: { color: '#2b5c92', size: 10 },
           overlaying: 'y',
           side: 'right',
           gridcolor: 'transparent'
@@ -3168,16 +3200,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
           x: filteredTimes,
           y: smoothedRatios,
           mode: 'lines',
-          name: 'Smoothed Ratio (EMA)',
-          line: { color: '#3b82f6', width: 2 },
+          name: 'Nominal / Smoothed Ratio',
+          line: { color: '#2b5c92', width: 2 },
           yaxis: 'y'
         },
         {
           x: filteredTimes,
           y: estimatedGears.map(g => g === 14 ? 6 : g),
           mode: 'lines',
-          name: 'Estimated Gear',
-          line: { color: '#10b981', width: 2, shape: 'hv' },
+          name: 'Bayesian Gear',
+          line: { color: '#dd6b3d', width: 2, shape: 'hv' },
           text: estimatedGears.map(g => g === 14 ? 'Gear: Uncertain (14)' : (g === 0 ? 'Gear: Neutral (0)' : `Gear: ${g}`)),
           hoverinfo: 'text+x',
           yaxis: 'y2'
@@ -4297,6 +4329,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
     };
 
     window.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('input[type="range"]').forEach(slider => {
+        updateSliderTrack(slider);
+        slider.addEventListener('input', () => updateSliderTrack(slider));
+      });
       setupMapResizer();
       if (isMapOpen) {
         toggleMap(true);

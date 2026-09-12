@@ -54,8 +54,10 @@ class TestTunerServer(unittest.TestCase):
         # Check core UI controls
         required_controls = [
             "select-gear-preset",
-            "chk-gear-rpm-filter",
-            "chk-gear-latch",
+            "slider-m2-decay",
+            "slider-m2-inertia",
+            "slider-m2-conf",
+            "slider-m2-latch",
             "card-gear-math",
             "btn-replay-play",
             "slider-replay-scrub",

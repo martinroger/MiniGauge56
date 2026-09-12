@@ -962,8 +962,8 @@ def optimize_parameters(agg: Dict[str, Any], target_log: str = "all", min_speed_
 # ESP32 C HEADER GENERATION (zero-allocation, fixed-size C99 implementation)
 # ==============================================================================
 
-def generate_esp32_c_header(means: List[float], vars_: List[float], A: List[List[float]], min_speed_hz: float = 11.28, min_rpm_hz: float = 33.33) -> str:
-    """Produces turnkey C99 header gear_estimator_params.h with parameters and inference routines."""
+def generate_esp32_c_header(means: List[float], vars_: List[float], A: List[List[float]], min_speed_hz: float = 11.28, min_rpm_hz: float = 33.33, cal_data: Optional[Dict[str, Any]] = None) -> str:
+    """Produces turnkey C99 header gear_estimator_params.h with parameters, inference routines, and embedded calibration snapshot."""
     c_means = ", ".join(f"{m:.4f}f" for m in means)
     c_vars = ", ".join(f"{v:.5f}f" for v in vars_)
 
@@ -971,6 +971,30 @@ def generate_esp32_c_header(means: List[float], vars_: List[float], A: List[List
     for row in A:
         a_rows.append("    { " + ", ".join(f"{x:.4f}f" for x in row) + " }")
     c_matrix = ",\n".join(a_rows)
+
+    cal_file = SCRIPT_DIR / "gear_calibration.json"
+    cal_lines = []
+    if cal_data is not None:
+        raw_json = json.dumps(cal_data, indent=2)
+        cal_lines = [f" * {line}" for line in raw_json.splitlines()]
+    elif cal_file.is_file():
+        try:
+            raw_json = cal_file.read_text(encoding="utf-8")
+            cal_lines = [f" * {line}" for line in raw_json.splitlines()]
+        except Exception:
+            pass
+
+    cal_comment_block = ""
+    if cal_lines:
+        cal_comment_block = (
+            "/*\n"
+            " * ============================================================================\n"
+            " * Calibration Snapshot (decoder/gear_calibration.json):\n"
+            " * ----------------------------------------------------------------------------\n"
+            + "\n".join(cal_lines)
+            + "\n * ============================================================================\n"
+            " */\n\n"
+        )
 
     return f"""/**
  * @file gear_estimator_params.h
@@ -988,7 +1012,7 @@ def generate_esp32_c_header(means: List[float], vars_: List[float], A: List[List
  * 14 = Uncertain (clutch depression, transition, or ratio out of band)
  */
 
-#pragma once
+{cal_comment_block}#pragma once
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -1330,34 +1354,46 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <style>
     :root {
-      --bg: #0f172a;
-      --card-bg: #1e293b;
-      --panel-border: #334155;
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
-      --primary: #38bdf8;
-      --primary-hover: #0284c7;
-      --accent: #10b981;
-      --warning: #f59e0b;
+      --bg: #0a0a0a;
+      --card-bg: #181818;
+      --panel-border: rgba(221, 107, 61, 0.40); /* thin 1px faded warm orange accent border */
+      --card-border-active: #dd6b3d;
+      --text: #f5f5f5;
+      --text-muted: #9ca3af;
+      --primary: #dd6b3d;        /* Faded warm orange, desaturated */
+      --primary-hover: #e87a4d;
+      --accent: #2b5c92;        /* Faded royal blue / steel blue */
+      --accent-hover: #376ea8;
+      --warning: #d97706;
       --danger: #ef4444;
-      --hover-bg: rgba(255, 255, 255, 0.05);
-      --input-bg: #0f172a;
-      --input-border: #475569;
+      --hover-bg: rgba(221, 107, 61, 0.12);
+      --input-bg: #141414;
+      --input-border: rgba(221, 107, 61, 0.40);
+      --slider-track-bg: #222222;
+      --slider-track-border: rgba(221, 107, 61, 0.45);
+      --thumb-ring: #1a1a1a;
+      --divider: rgba(221, 107, 61, 0.25);
     }
     body.theme-light {
       --bg: #f8fafc;
       --card-bg: #ffffff;
-      --panel-border: #cbd5e1;
+      --panel-border: rgba(43, 92, 146, 0.38); /* thin 1px faded royal blue accent border */
+      --card-border-active: #2b5c92;
       --text: #0f172a;
       --text-muted: #64748b;
-      --primary: #0284c7;
-      --primary-hover: #0369a1;
-      --accent: #059669;
+      --primary: #2b5c92;        /* Faded royal blue */
+      --primary-hover: #376ea8;
+      --accent: #dd6b3d;        /* Faded warm orange */
+      --accent-hover: #e87a4d;
       --warning: #d97706;
       --danger: #dc2626;
-      --hover-bg: rgba(0, 0, 0, 0.04);
+      --hover-bg: rgba(43, 92, 146, 0.08);
       --input-bg: #ffffff;
-      --input-border: #cbd5e1;
+      --input-border: rgba(43, 92, 146, 0.35);
+      --slider-track-bg: #ffffff; /* pure white slider background in light mode */
+      --slider-track-border: rgba(43, 92, 146, 0.45);
+      --thumb-ring: #ffffff;
+      --divider: rgba(43, 92, 146, 0.25);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -1368,6 +1404,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       flex-direction: column;
       height: 100vh;
       overflow: hidden;
+      transition: background-color 0.2s ease, color 0.2s ease;
     }
     header {
       background: var(--card-bg);
@@ -1390,6 +1427,48 @@ HTML_PAGE = r"""<!DOCTYPE html>
       padding: 0.35rem 0.65rem;
       font-size: 0.82rem;
     }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 8px;
+      border-radius: 9999px;
+      outline: none;
+      cursor: pointer;
+      background: linear-gradient(
+        to right,
+        var(--primary) 0%,
+        var(--primary) var(--slider-pct, 50%),
+        var(--slider-track-bg) var(--slider-pct, 50%),
+        var(--slider-track-bg) 100%
+      );
+      border: 1px solid var(--slider-track-border);
+      transition: border-color 0.2s ease;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background-color: var(--primary);
+      cursor: pointer;
+      border: 2px solid var(--thumb-ring);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.30);
+      transition: transform 0.1s ease, background-color 0.2s ease, border-color 0.2s ease;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background-color: var(--primary);
+      cursor: pointer;
+      border: 2px solid var(--thumb-ring);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.30);
+    }
     button {
       cursor: pointer;
       font-weight: 500;
@@ -1398,14 +1477,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
     button:hover { background: var(--hover-bg); }
     button.btn-primary {
       background: var(--primary);
-      color: #0f172a;
+      color: #ffffff;
       border-color: var(--primary);
       font-weight: 600;
     }
     button.btn-primary:hover { background: var(--primary-hover); }
     button.btn-accent {
       background: var(--accent);
-      color: #0f172a;
+      color: #ffffff;
       border-color: var(--accent);
       font-weight: 600;
     }
@@ -2232,12 +2311,24 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 
   <script>
-    let currentTheme = localStorage.getItem('minigauge_theme') || 'dark';
+    // OS Theme auto-detection
+    const osPrefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+    let currentTheme = localStorage.getItem('minigauge_theme') || (osPrefersLight ? 'light' : 'dark');
     let datasetData = null;
     let currentLog = 'all';
     let activeTabId = 'tab-overview';
     let timelineViewMode = 'shared'; // 'shared' or 'stacked'
     let lastOptResults = null;
+
+    function updateAllSliders() {
+      document.querySelectorAll('input[type="range"]').forEach(slider => {
+        const min = parseFloat(slider.min) || 0;
+        const max = parseFloat(slider.max) || 100;
+        const val = parseFloat(slider.value) || 0;
+        const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
+        slider.style.setProperty('--slider-pct', `${pct}%`);
+      });
+    }
 
     function initTheme() {
       if (currentTheme === 'light') {
@@ -2245,8 +2336,19 @@ HTML_PAGE = r"""<!DOCTYPE html>
       } else {
         document.body.classList.remove('theme-light');
       }
+      updateAllSliders();
     }
     initTheme();
+
+    if (window.matchMedia) {
+      window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
+        if (!localStorage.getItem('minigauge_theme')) {
+          currentTheme = e.matches ? 'light' : 'dark';
+          initTheme();
+          renderActiveTabPlots();
+        }
+      });
+    }
 
     document.getElementById('btn-theme').addEventListener('click', () => {
       currentTheme = (currentTheme === 'dark') ? 'light' : 'dark';
@@ -2255,13 +2357,17 @@ HTML_PAGE = r"""<!DOCTYPE html>
       renderActiveTabPlots();
     });
 
+    document.querySelectorAll('input[type="range"]').forEach(slider => {
+      slider.addEventListener('input', updateAllSliders);
+    });
+
     function getPlotlyTheme() {
       const isLight = document.body.classList.contains('theme-light');
       return {
-        paper_bgcolor: isLight ? '#ffffff' : '#1e293b',
-        plot_bgcolor: isLight ? '#ffffff' : '#1e293b',
-        font: { color: isLight ? '#0f172a' : '#f8fafc', size: 10 },
-        gridcolor: isLight ? '#e2e8f0' : '#334155'
+        paper_bgcolor: isLight ? '#ffffff' : '#141414',
+        plot_bgcolor: isLight ? '#ffffff' : '#141414',
+        font: { color: isLight ? '#0f172a' : '#f5f5f5', size: 10 },
+        gridcolor: isLight ? '#e2e8f0' : '#262626'
       };
     }
 
@@ -3779,7 +3885,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
             min_speed_hz: spdHz,
             min_speed_kph: spdHz * 2.214,
             min_rpm: rpmHz * 30.0,
-            min_rpm_hz: rpmHz
+            min_rpm_hz: rpmHz,
+            m2_decay: document.getElementById('slider-m2-decay') ? parseFloat(document.getElementById('slider-m2-decay').value) : 0.94,
+            m2_inertia: document.getElementById('slider-m2-inertia') ? parseFloat(document.getElementById('slider-m2-inertia').value) : 0.96,
+            m2_latch_ms: document.getElementById('slider-m2-latch') ? parseInt(document.getElementById('slider-m2-latch').value) : 200,
+            m2_conf: document.getElementById('slider-m2-conf') ? parseFloat(document.getElementById('slider-m2-conf').value) : 0.38
           };
           const resp = await fetch('/api/calibration', {
             method: 'POST',
@@ -3800,39 +3910,69 @@ HTML_PAGE = r"""<!DOCTYPE html>
       });
     }
 
+    async function loadSharedCal(silent = false) {
+      try {
+        const resp = await fetch('/api/calibration');
+        if (!resp.ok) return;
+        const cal = await resp.json();
+        const updateSlider = (id, val, textId, textFormatter) => {
+          const el = document.getElementById(id);
+          if (el && val !== undefined) {
+            el.value = val;
+            if (window.updateSliderTrack) window.updateSliderTrack(el);
+            const txt = document.getElementById(textId);
+            if (txt && textFormatter) txt.textContent = textFormatter(val);
+          }
+        };
+
+        if (cal.tolerance_abs !== undefined) {
+          updateSlider('slider-m1-tol', cal.tolerance_abs, 'val-m1-tol', v => '±' + v);
+        } else if (cal.tolerance !== undefined) {
+          updateSlider('slider-m1-tol', cal.tolerance, 'val-m1-tol', v => '±' + v);
+        }
+
+        if (cal.latch_time_ms !== undefined) {
+          updateSlider('slider-m1-latch', cal.latch_time_ms, 'val-m1-latch', v => v + ' ms');
+        } else if (cal.latch_ms !== undefined) {
+          updateSlider('slider-m1-latch', cal.latch_ms, 'val-m1-latch', v => v + ' ms');
+        }
+
+        if (cal.min_speed_hz !== undefined) {
+          updateSlider('slider-cutoff-speed', cal.min_speed_hz, 'val-cutoff-speed', v => `${v.toFixed(2)} Hz (${(v * 2.214).toFixed(0)} km/h)`);
+        }
+
+        if (cal.min_rpm_hz !== undefined) {
+          updateSlider('slider-cutoff-rpm', cal.min_rpm_hz, 'val-cutoff-rpm', v => `${v.toFixed(2)} Hz (${(v * 30.0).toFixed(0)} RPM)`);
+        }
+
+        if (cal.m2_decay !== undefined) {
+          updateSlider('slider-m2-decay', cal.m2_decay, 'val-m2-decay', v => Number(v).toFixed(2));
+        }
+        if (cal.m2_inertia !== undefined) {
+          updateSlider('slider-m2-inertia', cal.m2_inertia, 'val-m2-inertia', v => Number(v).toFixed(3));
+        }
+        if (cal.m2_latch_ms !== undefined) {
+          updateSlider('slider-m2-latch', cal.m2_latch_ms, 'val-m2-latch', v => Math.round(v) + ' ms');
+        }
+        if (cal.m2_conf !== undefined) {
+          updateSlider('slider-m2-conf', cal.m2_conf, 'val-m2-conf', v => Number(v).toFixed(2));
+        }
+
+        if (!silent) {
+          alert('Shared Calibration loaded from decoder/gear_calibration.json');
+        }
+      } catch (e) {
+        if (!silent) alert('Load calibration error: ' + e.message);
+      }
+    }
+
     const btnLoadCal = document.getElementById('btn-load-shared-cal');
     if (btnLoadCal) {
       btnLoadCal.addEventListener('click', async () => {
         btnLoadCal.disabled = true;
         try {
-          const resp = await fetch('/api/calibration');
-          const cal = await resp.json();
-          if (cal.tolerance_abs !== undefined && document.getElementById('slider-m1-tol')) {
-            document.getElementById('slider-m1-tol').value = cal.tolerance_abs;
-            document.getElementById('val-m1-tol').textContent = '±' + cal.tolerance_abs;
-          } else if (cal.tolerance !== undefined && document.getElementById('slider-m1-tol')) {
-            document.getElementById('slider-m1-tol').value = cal.tolerance;
-            document.getElementById('val-m1-tol').textContent = '±' + cal.tolerance;
-          }
-          if (cal.latch_time_ms !== undefined && document.getElementById('slider-m1-latch')) {
-            document.getElementById('slider-m1-latch').value = cal.latch_time_ms;
-            document.getElementById('val-m1-latch').textContent = cal.latch_time_ms + ' ms';
-          } else if (cal.latch_ms !== undefined && document.getElementById('slider-m1-latch')) {
-            document.getElementById('slider-m1-latch').value = cal.latch_ms;
-            document.getElementById('val-m1-latch').textContent = cal.latch_ms + ' ms';
-          }
-          if (cal.min_speed_hz !== undefined && document.getElementById('slider-cutoff-speed')) {
-            document.getElementById('slider-cutoff-speed').value = cal.min_speed_hz;
-            document.getElementById('val-cutoff-speed').textContent = `${cal.min_speed_hz.toFixed(2)} Hz (${(cal.min_speed_hz * 2.214).toFixed(0)} km/h)`;
-          }
-          if (cal.min_rpm_hz !== undefined && document.getElementById('slider-cutoff-rpm')) {
-            document.getElementById('slider-cutoff-rpm').value = cal.min_rpm_hz;
-            document.getElementById('val-cutoff-rpm').textContent = `${cal.min_rpm_hz.toFixed(2)} Hz (${(cal.min_rpm_hz * 30.0).toFixed(0)} RPM)`;
-          }
-          alert('Shared Calibration loaded from decoder/gear_calibration.json');
+          await loadSharedCal(false);
           loadDataset();
-        } catch (e) {
-          alert('Load calibration error: ' + e.message);
         } finally {
           btnLoadCal.disabled = false;
         }
@@ -3845,8 +3985,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
     });
 
     // Startup
-    loadLogsList();
-    loadDataset();
+    (async () => {
+      loadLogsList();
+      await loadSharedCal(true);
+      loadDataset();
+    })();
   </script>
 </body>
 </html>
