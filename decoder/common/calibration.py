@@ -21,6 +21,7 @@ def get_default_calibration() -> Dict[str, Any]:
         "source": "factory_default",
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "nominal_ratios": [1.018, 1.793, 2.726, 3.763, 4.542],
+        "vars": [0.0036, 0.0049, 0.0030, 0.0025, 0.0784],
         "tolerance": 0.18,
         "tolerance_abs": 0.18,
         "latch_ms": 320,
@@ -64,14 +65,31 @@ def save_calibration(
     target = filepath or DEFAULT_CALIBRATION_FILE
     current = load_calibration(target)
     current.update(data)
-    if "tolerance" in current:
-        current["tolerance_abs"] = current["tolerance"]
-    if "tolerance_abs" in current and "tolerance" not in data:
-        current["tolerance"] = current["tolerance_abs"]
-    if "latch_ms" in current:
-        current["latch_time_ms"] = current["latch_ms"]
-    if "latch_time_ms" in current and "latch_ms" not in data:
-        current["latch_ms"] = current["latch_time_ms"]
+
+    if "tolerance" in data:
+        current["tolerance"] = data["tolerance"]
+        current["tolerance_abs"] = data["tolerance"]
+    elif "tolerance_abs" in data:
+        current["tolerance"] = data["tolerance_abs"]
+        current["tolerance_abs"] = data["tolerance_abs"]
+
+    if "latch_ms" in data:
+        current["latch_ms"] = data["latch_ms"]
+        current["latch_time_ms"] = data["latch_ms"]
+    elif "latch_time_ms" in data:
+        current["latch_ms"] = data["latch_time_ms"]
+        current["latch_time_ms"] = data["latch_time_ms"]
+
+    if "min_speed_hz" in data and "min_speed_kph" not in data:
+        current["min_speed_kph"] = round(data["min_speed_hz"] * 2.214, 3)
+    elif "min_speed_kph" in data and "min_speed_hz" not in data:
+        current["min_speed_hz"] = round(data["min_speed_kph"] / 2.214, 2)
+
+    if "min_rpm_hz" in data and "min_rpm" not in data:
+        current["min_rpm"] = round(data["min_rpm_hz"] * 30)
+    elif "min_rpm" in data and "min_rpm_hz" not in data:
+        current["min_rpm_hz"] = round(data["min_rpm"] / 30.0, 2)
+
     current["source"] = source
     current["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 

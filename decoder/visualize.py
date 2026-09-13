@@ -31,6 +31,7 @@ from common import (
     natural_sort_key,
     DbcDatabase,
     get_dbc,
+    load_calibration,
     BaseAppHandler,
     start_server,
 )
@@ -266,19 +267,8 @@ class VisualizerHandler(BaseAppHandler):
                 self.send_json(result)
 
             elif path == "/api/calibration":
-                cal_file = SCRIPT_DIR / "gear_calibration.json"
-                if cal_file.is_file():
-                    try:
-                        with open(cal_file, "r", encoding="utf-8") as f:
-                            self.send_json(json.load(f))
-                            return
-                    except Exception:
-                        pass
-                self.send_json({
-                    "version": 1,
-                    "nominal_ratios": [1.018, 1.793, 2.726, 3.763, 4.542],
-                    "tolerance": 0.25
-                })
+                cal = load_calibration()
+                self.send_json(cal)
 
             else:
                 self.send_error(404, "Not Found")

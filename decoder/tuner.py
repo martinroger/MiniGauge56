@@ -4,7 +4,7 @@ MiniGauge Algorithm Calibration & Tuning Dashboard
 ===================================================
 A bespoke standalone calibration and tuning dashboard for MiniGauge CAN bus binary logs (*.bin).
 Provides interactive tab-based navigation for testing and calibrating:
-  1. Gear Position Estimator (gated EMA on speed/RPM frequency ratio, histogram, auto-peaks)
+   1. Gear Position Estimator (Kinematic Bayesian Filter with Markov state persistence & dynamic priors)
   2. Fuel Level Filtering (SMA vs EMA with dynamic window/tau, quantization, error residuals)
   3. Speed Correction & ECE R39 Compliance Check (gain/offset sliders, automated optimizer, regulatory corridor)
   4. Signal & Message Analytics (cycle times, jitter, packet loss rate, slew rate dispersion, CSV export)

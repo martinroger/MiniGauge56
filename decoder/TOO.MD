@@ -145,7 +145,7 @@ sequenceDiagram
     participant GearLab as gear_lab.py Web UI
 
     Note over Tuner: Engineer adjusts Bayesian prior decay slider
-    Tuner->>Handler: POST /api/calibration {"m2_decay": 0.96, "tolerance": 0.22}
+    Tuner->>Handler: POST /api/calibration {"m2_decay": 0.96, "m2_inertia": 0.98, "m2_latch_ms": 225}
     Handler->>CalStore: save_calibration(data, source="tuner")
     CalStore->>Disk: Write formatted JSON with updated_at timestamp
     Disk-->>CalStore: Success

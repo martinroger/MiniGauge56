@@ -714,7 +714,7 @@
               <span class="ctrl-label">Guarded Latch Time <span class="info-icon" title="Minimum continuous dwell time in candidate gear before confirming output transition.">i</span></span>
               <span class="ctrl-val" id="val-m2-latch">200 ms</span>
             </div>
-            <input type="range" id="slider-m2-latch" min="50" max="500" step="25" value="200" title="Adjust Bayesian output latch confirmation time">
+            <input type="range" id="slider-m2-latch" min="50" max="500" step="5" value="200" title="Adjust Bayesian output latch confirmation time">
           </div>
         </div>
 
@@ -726,7 +726,7 @@
           <div class="ctrl-group">
             <div class="ctrl-label-row">
               <span class="ctrl-label">Min Speed Cutoff <span class="info-icon" title="Road speed threshold below which vehicle is stationary / neutral.">i</span></span>
-              <span class="ctrl-val" id="val-gear-minspeed">4.5 Hz (~1.0 km/h)</span>
+              <span class="ctrl-val" id="val-gear-minspeed">4.5 Hz (~10.0 km/h)</span>
             </div>
             <input type="range" id="slider-gear-minspeed" min="0" max="40" step="0.5" value="4.5" title="Adjust minimum speed frequency cutoff">
           </div>
@@ -743,13 +743,6 @@
           <div class="card-title">
             <span>Gear Ratio Centers</span>
             <button class="btn-accent" id="btn-auto-gear-peaks" style="padding:0.15rem 0.45rem; font-size:0.7rem;" title="Auto-detect gear ratio cluster peaks from drive cycle histogram">⚡ Auto-Detect</button>
-          </div>
-          <div class="ctrl-group">
-            <div class="ctrl-label-row">
-              <span class="ctrl-label">Tolerance Corridor (±Δ) <span class="info-icon" title="Acceptance corridor width defining the Gaussian observation variance for each gear.">i</span></span>
-              <span class="ctrl-val" id="val-gear-tol">±0.25</span>
-            </div>
-            <input type="range" id="slider-gear-tol" min="0.05" max="0.50" step="0.01" value="0.25" title="Adjust absolute tolerance corridor half-width">
           </div>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.4rem; font-size:0.78rem;">
             <div>
@@ -1794,10 +1787,24 @@
       latchHoldMs: 200,
       minSpeed: 4.5,
       minRpm: 31.0,
-      tol: 0.25,
+      vars: [0.0036, 0.0049, 0.0030, 0.0025, 0.0784],
       r: [1.018, 1.793, 2.726, 3.763, 4.542],
       showGroundTruth: false
     };
+
+    function syncPresetFromParams() {
+      let matched = 'custom';
+      if (Math.abs(gearParams.decay - 0.94) < 0.005 && Math.abs(gearParams.inertia - 0.960) < 0.002 && Math.abs(gearParams.conf - 0.38) < 0.01 && gearParams.latchHoldMs === 200) {
+        matched = 'baseline';
+      } else if (Math.abs(gearParams.decay - 0.96) < 0.005 && Math.abs(gearParams.inertia - 0.980) < 0.002 && Math.abs(gearParams.conf - 0.42) < 0.01 && gearParams.latchHoldMs === 300) {
+        matched = 'highway';
+      } else if (Math.abs(gearParams.decay - 0.90) < 0.005 && Math.abs(gearParams.inertia - 0.920) < 0.002 && Math.abs(gearParams.conf - 0.32) < 0.01 && gearParams.latchHoldMs === 125) {
+        matched = 'sport';
+      }
+      gearParams.preset = matched;
+      const sel = document.getElementById('select-gear-preset');
+      if (sel) sel.value = matched;
+    }
 
     function updateGearLabels() {
       const speedKph = (gearParams.minSpeed * 2.214).toFixed(1);
@@ -1820,9 +1827,6 @@
       if (document.getElementById('val-gear-minrpm')) {
         document.getElementById('val-gear-minrpm').innerText = `${gearParams.minRpm.toFixed(1)} Hz (${rpmVal} RPM)`;
       }
-      if (document.getElementById('val-gear-tol')) {
-        document.getElementById('val-gear-tol').innerText = '±' + gearParams.tol.toFixed(2);
-      }
     }
 
     function renderGearMathExplanation() {
@@ -1837,6 +1841,8 @@
       };
 
       const presetLabel = presetNames[gearParams.preset] || 'Custom Bayesian Pipeline';
+      const activeVars = gearParams.vars || [0.0036, 0.0049, 0.0030, 0.0025, 0.0784];
+      const activeStds = activeVars.map(v => Math.sqrt(v).toFixed(3));
 
       card.innerHTML = `
         <div class="card-title" style="color:var(--primary); display:flex; justify-content:space-between; align-items:center;">
@@ -1854,9 +1860,9 @@
           <div>
             <strong>2. Gaussian Observation Likelihood:</strong>
             <div style="font-family:monospace; background:var(--input-bg); padding:3px 6px; border-radius:4px; margin-top:2px;">
-              P(r_t | G=k) = (1 / &radic;(2&pi;&sigma;&sup2;)) &middot; exp(-0.5 &middot; (r_t - &mu;_k)&sup2; / &sigma;&sup2;)
+              P(r_t | G=k) = (1 / &radic;(2&pi;&sigma;_k&sup2;)) &middot; exp(-0.5 &middot; (r_t - &mu;_k)&sup2; / &sigma;_k&sup2;)
             </div>
-            <span style="color:var(--text-muted); font-size:0.7rem;">Where &mu; = [${gearParams.r.map(v => v.toFixed(2)).join(', ')}] and &sigma; = ${(gearParams.tol / 2.0).toFixed(3)}. Clutch-drop suppression penalizes phantom upshifts when &Delta;f_RPM/&Delta;t &lt; -35 Hz/s.</span>
+            <span style="color:var(--text-muted); font-size:0.7rem;">Where &mu; = [${gearParams.r.map(v => v.toFixed(2)).join(', ')}] and &sigma; &approx; [${activeStds.join(', ')}]. Clutch-drop suppression penalizes phantom upshifts when &Delta;f_RPM/&Delta;t &lt; -35 Hz/s.</span>
           </div>
           <div>
             <strong>3. Recursive Bayesian Update:</strong>
@@ -1891,16 +1897,13 @@
           Object.assign(gearParams, JSON.parse(saved));
         } catch(e){}
       }
-      if (document.getElementById('select-gear-preset')) {
-        document.getElementById('select-gear-preset').value = gearParams.preset || 'baseline';
-      }
+      syncPresetFromParams();
       syncGearSlider('slider-m2-decay', gearParams.decay);
       syncGearSlider('slider-m2-inertia', gearParams.inertia);
       syncGearSlider('slider-m2-conf', gearParams.conf);
       syncGearSlider('slider-m2-latch', gearParams.latchHoldMs);
       syncGearSlider('slider-gear-minspeed', gearParams.minSpeed);
       syncGearSlider('slider-gear-minrpm', gearParams.minRpm);
-      syncGearSlider('slider-gear-tol', gearParams.tol);
 
       if (document.getElementById('chk-gear-groundtruth')) {
         document.getElementById('chk-gear-groundtruth').checked = !!gearParams.showGroundTruth;
@@ -2004,14 +2007,6 @@
       computeAndRenderGear();
     });
 
-    document.getElementById('slider-gear-tol').addEventListener('input', (e) => {
-      gearParams.tol = parseFloat(e.target.value);
-      updateGearLabels();
-      saveGearSettings();
-      renderGearMathExplanation();
-      computeAndRenderGear();
-    });
-
     document.getElementById('chk-gear-groundtruth').addEventListener('change', (e) => {
       gearParams.showGroundTruth = e.target.checked;
       saveGearSettings();
@@ -2038,7 +2033,7 @@
       gearParams.latchHoldMs = 200;
       gearParams.minSpeed = 4.5;
       gearParams.minRpm = 31.0;
-      gearParams.tol = 0.25;
+      gearParams.vars = [0.0036, 0.0049, 0.0030, 0.0025, 0.0784];
       gearParams.r = [1.018, 1.793, 2.726, 3.763, 4.542];
       gearParams.showGroundTruth = false;
       saveGearSettings();
@@ -2123,14 +2118,13 @@
             if (inp) inp.value = cal.nominal_ratios[i].toFixed(3);
           }
         }
-        if (cal.tolerance !== undefined) {
-          gearParams.tol = cal.tolerance;
-          syncGearSlider('slider-gear-tol', cal.tolerance);
-        } else if (cal.tolerance_abs !== undefined) {
-          gearParams.tol = cal.tolerance_abs;
-          syncGearSlider('slider-gear-tol', cal.tolerance_abs);
+        if (cal.vars && Array.isArray(cal.vars)) {
+          gearParams.vars = cal.vars.slice(0, 5);
         }
-        if (cal.latch_ms !== undefined) {
+        if (cal.m2_latch_ms !== undefined) {
+          gearParams.latchHoldMs = cal.m2_latch_ms;
+          syncGearSlider('slider-m2-latch', cal.m2_latch_ms);
+        } else if (cal.latch_ms !== undefined) {
           gearParams.latchHoldMs = cal.latch_ms;
           syncGearSlider('slider-m2-latch', cal.latch_ms);
         } else if (cal.latch_time_ms !== undefined) {
@@ -2152,14 +2146,18 @@
         if (cal.min_speed_hz !== undefined) {
           gearParams.minSpeed = cal.min_speed_hz;
           syncGearSlider('slider-gear-minspeed', cal.min_speed_hz);
+        } else if (cal.min_speed_kph !== undefined) {
+          gearParams.minSpeed = parseFloat((cal.min_speed_kph / 2.214).toFixed(1));
+          syncGearSlider('slider-gear-minspeed', gearParams.minSpeed);
         }
         if (cal.min_rpm_hz !== undefined) {
           gearParams.minRpm = cal.min_rpm_hz;
           syncGearSlider('slider-gear-minrpm', cal.min_rpm_hz);
         } else if (cal.min_rpm !== undefined) {
-          gearParams.minRpm = cal.min_rpm / 30.0;
-          syncGearSlider('slider-gear-minrpm', cal.min_rpm / 30.0);
+          gearParams.minRpm = parseFloat((cal.min_rpm / 30.0).toFixed(1));
+          syncGearSlider('slider-gear-minrpm', gearParams.minRpm);
         }
+        syncPresetFromParams();
         saveGearSettings();
         updateGearLabels();
         renderGearMathExplanation();
@@ -2181,10 +2179,7 @@
         try {
           const payload = {
             nominal_ratios: gearParams.r,
-            tolerance: gearParams.tol,
-            tolerance_abs: gearParams.tol,
-            latch_ms: gearParams.latchHoldMs,
-            latch_time_ms: gearParams.latchHoldMs,
+            vars: gearParams.vars || [0.0036, 0.0049, 0.0030, 0.0025, 0.0784],
             min_speed_hz: gearParams.minSpeed,
             min_speed_kph: parseFloat((gearParams.minSpeed * 2.214).toFixed(1)),
             min_rpm: Math.round(gearParams.minRpm * 30),
@@ -2248,7 +2243,7 @@
       const gearTimeCounts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
 
       const means = gearParams.r;
-      const vars_ = means.map(() => Math.max(0.001, Math.pow(gearParams.tol / 2.0, 2)));
+      const vars_ = gearParams.vars || [0.0036, 0.0049, 0.0030, 0.0025, 0.0784];
       const decay = gearParams.decay;
       const inertia = gearParams.inertia;
       const confThresh = gearParams.conf;
@@ -2533,7 +2528,8 @@
       const gearColors = ['#94a3b8', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
       for (let gi = 0; gi < 5; gi++) {
         const nom = gearParams.r[gi];
-        let span = gearParams.tol;
+        const std = Math.sqrt(vars_[gi] || 0.0036);
+        let span = 2.0 * std;
         if (gi > 0) span = Math.min(span, (nom - gearParams.r[gi - 1]) * 0.48);
         if (gi < 4) span = Math.min(span, (gearParams.r[gi + 1] - nom) * 0.48);
         histShapes.push({

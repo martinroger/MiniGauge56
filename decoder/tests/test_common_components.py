@@ -93,13 +93,23 @@ class TestCalibration(unittest.TestCase):
         cal = get_default_calibration()
         self.assertIn("nominal_ratios", cal)
         self.assertEqual(len(cal["nominal_ratios"]), 5)
+        self.assertIn("vars", cal)
+        self.assertEqual(len(cal["vars"]), 5)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmppath = Path(tmpdir) / "test_cal.json"
-            save_calibration({"m2_decay": 0.99}, tmppath, source="unit_test")
+            save_calibration({"m2_decay": 0.99, "min_speed_hz": 5.0, "min_rpm_hz": 40.0}, tmppath, source="unit_test")
             loaded = load_calibration(tmppath)
             self.assertEqual(loaded["m2_decay"], 0.99)
             self.assertEqual(loaded["source"], "unit_test")
+            self.assertAlmostEqual(loaded["min_speed_kph"], 5.0 * 2.214, places=2)
+            self.assertEqual(loaded["min_rpm"], 40 * 30)
+
+            # Test reverse sync
+            save_calibration({"min_speed_kph": 22.14, "min_rpm": 1200}, tmppath, source="unit_test_rev")
+            loaded_rev = load_calibration(tmppath)
+            self.assertAlmostEqual(loaded_rev["min_speed_hz"], 10.0, places=1)
+            self.assertAlmostEqual(loaded_rev["min_rpm_hz"], 40.0, places=1)
 
 
 class TestHttpServerBasics(unittest.TestCase):

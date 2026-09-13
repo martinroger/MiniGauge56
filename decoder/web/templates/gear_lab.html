@@ -414,7 +414,7 @@
               <span>Latch Debounce: <span class="info-icon" title="Minimum continuous hold time required before confirming a gear transition. Suppresses momentary shift chatter and transient spikes.">i</span></span>
               <span class="ctrl-val" id="val-m1-latch">200 ms</span>
             </div>
-            <input type="range" id="slider-m1-latch" min="50" max="500" step="25" value="200" style="width:100%;" title="Adjust M1 output latch confirmation time">
+            <input type="range" id="slider-m1-latch" min="50" max="500" step="5" value="200" style="width:100%;" title="Adjust M1 output latch confirmation time">
           </div>
 
           <!-- Model 2 Params -->
@@ -434,7 +434,7 @@
               <span>Latch Debounce: <span class="info-icon" title="Enforces continuous stability of the MAP gear decision before switching the physical output.">i</span></span>
               <span class="ctrl-val" id="val-m2-latch">200 ms</span>
             </div>
-            <input type="range" id="slider-m2-latch" min="50" max="500" step="25" value="200" style="width:100%;" title="Adjust M2 Bayesian output latch confirmation time">
+            <input type="range" id="slider-m2-latch" min="50" max="500" step="5" value="200" style="width:100%;" title="Adjust M2 Bayesian output latch confirmation time">
             <div style="display:flex; justify-content:space-between; margin-top:0.2rem;">
               <span>Min Confidence: <span class="info-icon" title="Minimum posterior probability required to declare a gear. Below this threshold, estimator outputs Uncertain (14) instead of guessing.">i</span></span>
               <span class="ctrl-val" id="val-m2-conf">0.38</span>
@@ -2389,11 +2389,22 @@
           tolerance_abs: s.m1_tol,
           latch_ms: s.m1_latch_ms,
           latch_time_ms: s.m1_latch_ms,
+          ratio_alpha: s.m1_alpha,
+          m2_decay: s.m2_decay,
+          m2_inertia: s.m2_inertia,
+          m2_latch_ms: s.m2_latch_ms,
+          m2_conf: s.m2_conf,
+          m3_inertia: s.m3_inertia,
+          m3_clutch_decel: s.m3_clutch_decel,
           min_speed_hz: parseFloat(document.getElementById('slider-cutoff-speed').value) || 11.28,
           min_speed_kph: (parseFloat(document.getElementById('slider-cutoff-speed').value) || 11.28) * 2.214,
           min_rpm: (parseFloat(document.getElementById('slider-cutoff-rpm').value) || 33.33) * 30.0,
           min_rpm_hz: parseFloat(document.getElementById('slider-cutoff-rpm').value) || 33.33
         };
+        if (datasetData && datasetData.fitted && datasetData.fitted.means) {
+          payload.nominal_ratios = datasetData.fitted.means;
+          payload.vars = datasetData.fitted.vars;
+        }
         await fetch('/api/calibration', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2424,6 +2435,7 @@
             tolerance_abs: tol,
             latch_ms: latch,
             latch_time_ms: latch,
+            ratio_alpha: document.getElementById('slider-m1-alpha') ? parseFloat(document.getElementById('slider-m1-alpha').value) : 0.15,
             min_speed_hz: spdHz,
             min_speed_kph: spdHz * 2.214,
             min_rpm: rpmHz * 30.0,
@@ -2431,8 +2443,14 @@
             m2_decay: document.getElementById('slider-m2-decay') ? parseFloat(document.getElementById('slider-m2-decay').value) : 0.94,
             m2_inertia: document.getElementById('slider-m2-inertia') ? parseFloat(document.getElementById('slider-m2-inertia').value) : 0.96,
             m2_latch_ms: document.getElementById('slider-m2-latch') ? parseInt(document.getElementById('slider-m2-latch').value) : 200,
-            m2_conf: document.getElementById('slider-m2-conf') ? parseFloat(document.getElementById('slider-m2-conf').value) : 0.38
+            m2_conf: document.getElementById('slider-m2-conf') ? parseFloat(document.getElementById('slider-m2-conf').value) : 0.38,
+            m3_inertia: document.getElementById('slider-m3-inertia') ? parseFloat(document.getElementById('slider-m3-inertia').value) : 0.97,
+            m3_clutch_decel: document.getElementById('slider-m3-decel') ? parseFloat(document.getElementById('slider-m3-decel').value) : -40.0
           };
+          if (datasetData && datasetData.fitted && datasetData.fitted.means) {
+            payload.nominal_ratios = datasetData.fitted.means;
+            payload.vars = datasetData.fitted.vars;
+          }
           const resp = await fetch('/api/calibration', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2467,6 +2485,12 @@
           }
         };
 
+        if (cal.ratio_alpha !== undefined) {
+          updateSlider('slider-m1-alpha', cal.ratio_alpha, 'val-m1-alpha', v => Number(v).toFixed(2));
+        } else if (cal.m1_alpha !== undefined) {
+          updateSlider('slider-m1-alpha', cal.m1_alpha, 'val-m1-alpha', v => Number(v).toFixed(2));
+        }
+
         if (cal.tolerance_abs !== undefined) {
           updateSlider('slider-m1-tol', cal.tolerance_abs, 'val-m1-tol', v => '±' + v);
         } else if (cal.tolerance !== undefined) {
@@ -2481,10 +2505,16 @@
 
         if (cal.min_speed_hz !== undefined) {
           updateSlider('slider-cutoff-speed', cal.min_speed_hz, 'val-cutoff-speed', v => `${v.toFixed(2)} Hz (${(v * 2.214).toFixed(0)} km/h)`);
+        } else if (cal.min_speed_kph !== undefined) {
+          const spdHz = cal.min_speed_kph / 2.214;
+          updateSlider('slider-cutoff-speed', spdHz, 'val-cutoff-speed', v => `${v.toFixed(2)} Hz (${(v * 2.214).toFixed(0)} km/h)`);
         }
 
         if (cal.min_rpm_hz !== undefined) {
           updateSlider('slider-cutoff-rpm', cal.min_rpm_hz, 'val-cutoff-rpm', v => `${v.toFixed(2)} Hz (${(v * 30.0).toFixed(0)} RPM)`);
+        } else if (cal.min_rpm !== undefined) {
+          const rpmHz = cal.min_rpm / 30.0;
+          updateSlider('slider-cutoff-rpm', rpmHz, 'val-cutoff-rpm', v => `${v.toFixed(2)} Hz (${(v * 30.0).toFixed(0)} RPM)`);
         }
 
         if (cal.m2_decay !== undefined) {
@@ -2498,6 +2528,12 @@
         }
         if (cal.m2_conf !== undefined) {
           updateSlider('slider-m2-conf', cal.m2_conf, 'val-m2-conf', v => Number(v).toFixed(2));
+        }
+        if (cal.m3_inertia !== undefined) {
+          updateSlider('slider-m3-inertia', cal.m3_inertia, 'val-m3-inertia', v => Number(v).toFixed(3));
+        }
+        if (cal.m3_clutch_decel !== undefined) {
+          updateSlider('slider-m3-decel', cal.m3_clutch_decel, 'val-m3-decel', v => Math.round(v) + ' Hz/s');
         }
 
         if (!silent) {

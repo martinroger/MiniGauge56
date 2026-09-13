@@ -238,7 +238,8 @@ def build_aggregated_dataset() -> Dict[str, Any]:
             if sf >= 5.0 and rf >= 25.0:
                 all_driving_ratios.append(sf / rf)
 
-    initial_seeds = [1.01, 1.80, 2.73, 3.76, 4.54]
+    cal = load_calibration()
+    initial_seeds = cal.get("nominal_ratios", [1.018, 1.793, 2.726, 3.763, 4.542])
     fitted = fit_gear_clusters(all_driving_ratios, initial_seeds)
     A = compute_empirical_transition_matrix(logs_data, fitted["means"])
 

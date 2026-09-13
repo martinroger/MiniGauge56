@@ -76,7 +76,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TUN-GEAR-002** | Prior Decay & Inertia Weighting | The tool MUST provide sliders for Prior Decay factor (`m2_decay`, range 0.70 to 0.99) and Transition Inertia (`m2_inertia`, range 0.50 to 0.98) to control recursive state memory persistence and shift resistance. |
 | **REQ-TUN-GEAR-003** | Physical Dual Cutoff Gating | The tool MUST enforce minimum vehicle speed (`slider-gear-minspeed`) and engine RPM (`slider-gear-minrpm`) cutoffs with dual-unit tooltips/labels (Hz and km/h / RPM). Samples below either cutoff MUST immediately transition to Neutral (0) without delay. |
 | **REQ-TUN-GEAR-004** | Confidence Thresholding & State 14 | The tool MUST provide a confidence cutoff slider (`slider-m2-conf`, range 0.10 to 0.90). When posterior confidence fails the threshold, the output MUST report DBC State 14 (*Uncertain*) rather than spuriously holding stale gears. |
-| **REQ-TUN-GEAR-005** | Ratio Tolerance & Cluster Peaks | The tool MUST support adjusting ratio tolerance (`slider-gear-tol`, range 0.05 to 0.60) and 5 individual gear center ratios (`gear-r-1` through `gear-r-5`), supported by 1-click **Auto-Detect Peaks** clustering. |
+| **REQ-TUN-GEAR-005** | Gear Ratio Centers & Cluster Peaks | The tool MUST support 5 individual gear center ratios (`gear-r-1` through `gear-r-5`), supported by 1-click **Auto-Detect Peaks** clustering and Gaussian variance distribution tracking. |
 | **REQ-TUN-GEAR-006** | Temporal Output Latching | The tool MUST provide a temporal latch duration slider (`slider-m2-latch`, range 0 to 600 ms) to suppress transient shift chatter by requiring sustained probability commitment. |
 | **REQ-TUN-GEAR-007** | Shared Calibration Auto-Loading & Persistence | The tool MUST automatically fetch and load `decoder/gear_calibration.json` via `GET /api/calibration` on startup if present, and support saving updated Bayesian parameters via `POST /api/calibration`. |
 | **REQ-TUN-GEAR-008** | Dynamic Math Explainer | The sidebar MUST display a dynamic mathematical explainer card that rebuilds its formulas, active parameter values, and explanatory text in real time as presets or modular stage checkboxes change. |
@@ -194,7 +194,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TUN-GEAR-002** | `tuner.py` | `slider-m2-decay`, `slider-m2-inertia` listeners | Prior decay and transition inertia updates |
 | **REQ-TUN-GEAR-003** | `tuner.py` | `slider-gear-minspeed`, `slider-gear-minrpm` | Dual-unit gating and standstill Neutral tests |
 | **REQ-TUN-GEAR-004** | `tuner.py` | `slider-m2-conf`, state 14 emission | Confidence cutoff and Uncertain state test |
-| **REQ-TUN-GEAR-005** | `tuner.py` | `slider-gear-tol`, `gear-r-1..5` inputs | Tolerance band and peak detection tests |
+| **REQ-TUN-GEAR-005** | `tuner.py` | `gear-r-1..5` inputs, `btn-auto-gear-peaks` | Ratio centers and peak detection tests |
 | **REQ-TUN-GEAR-006** | `tuner.py` | `slider-m2-latch`, latch state tracking | Temporal latching and debouncing verification |
 | **REQ-TUN-GEAR-007** | `tuner.py` | `autoLoadSharedCal()`, `/api/calibration` | Startup auto-load and JSON save/load tests |
 | **REQ-TUN-GEAR-008** | `tuner.py` | `renderGearMathExplanation()` | Dynamic math card DOM generation test |
