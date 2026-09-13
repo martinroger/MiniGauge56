@@ -20,6 +20,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-SYS-005** | Portable Relative Linking | All internal documentation references MUST use relative file paths without machine-specific absolute filesystem paths. |
 | **REQ-SYS-006** | Interactive Parameter Tooltips | All algorithmic sliders, parameter inputs, and stage toggles in `tuner.py` and `gear_lab.py` MUST provide informative hover tooltips (using styled info badges `ⓘ` and native HTML attributes) detailing physical roles and operational effects. |
 | **REQ-SYS-007** | Automated Regression & DOM Verification Suite | The decoder toolset MUST maintain automated, repeatable integration test suites in `decoder/tests/` verifying server lifecycles, API endpoints, C99 export compilation with GCC (`-Wall -Wextra -Werror`), DOM ID integrity between client-side JavaScript and HTML templates, and algorithm offline simulations without leaving working tree artifacts. |
+| **REQ-SYS-008** | Modular Package Architecture & Static Asset Separation | Core CAN parsing (`can_core.py`), DBC interpretation (`dbc.py`), calibration persistence (`calibration.py`), and HTTP request handling (`http_server.py`) MUST be decoupled into the `decoder/common/` package. All shared web styling (`*.css`) and client-side scripts (`*.js`) MUST reside in `decoder/web/static/`, and semantic HTML structures MUST reside in `decoder/web/templates/`, eliminating embedded CSS/HTML strings from Python application files. |
 
 ---
 
@@ -235,4 +236,5 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TRIM-006** | `trim_log.py` | `default_output_name()`, overwrite checks | Non-destructive naming & safety tests |
 | **REQ-TRIM-007** | `trim_log.py` | `HTML_PAGE`, `TrimRequestHandler` | Web GUI endpoint and download validation |
 | **REQ-TRIM-008** | `trim_log.py` | `renderGpsMap()`, `updateMapSlice()`, Leaflet | Side-by-side map drawer, route snapping & placeholder |
+| **REQ-SYS-008** | `decoder/common/`, `decoder/web/` | `can_core.py`, `dbc.py`, `calibration.py`, `http_server.py`, static assets, templates | `test_common_components.py` suite (7 tests) & zero-pip imports |
 

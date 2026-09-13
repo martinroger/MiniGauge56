@@ -11,6 +11,51 @@ The toolset consists of 5 modular utilities:
 
 All tools are written in pure Python 3 and have **zero external pip dependencies**.
 
+For detailed architectural specifications, signal processing data flows, and sequence diagrams, refer to **[TOO.MD](TOO.MD)**.
+
+---
+
+## Modular Architecture & Directory Layout
+
+The decoder toolset is structured as a modular package separating reusable backend Python logic, centralized frontend web assets, and standalone command-line / web entrypoints:
+
+```
+decoder/
+├── common/                  # Shared, zero-pip Python modules
+│   ├── can_core.py          # 16-byte binary record unpacker & CanFrame dataclass
+│   ├── dbc.py               # Vector CAN database parser & Motorola/Intel decoders
+│   ├── calibration.py       # Cross-tool JSON calibration persistence & alias sync
+│   └── http_server.py       # Reusable BaseAppHandler, MIME resolver & port finder
+├── web/
+│   ├── static/
+│   │   ├── css/
+│   │   │   ├── theme.css    # Ubuntu Yaru Dark & Cold White Light CSS color tokens
+│   │   │   ├── base.css     # CSS reset, typography, header, and body layout
+│   │   │   ├── components.css# Buttons, cards, gradient sliders, tables, tooltips
+│   │   │   └── map.css      # Leaflet GPS map drawer, HUD, and rotating compass
+│   │   └── js/
+│   │       ├── theme.js     # Live OS scheme listener & localStorage persistence
+│   │       ├── toast.js     # Non-blocking notification banner manager
+│   │       ├── leaflet_map.js# Leaflet GPS track drawer & O(log N) telemetry sync
+│   │       └── plotly_theme.js# Dark/Light Plotly layout generators & resize observer
+│   └── templates/           # Clean, semantic HTML5 templates
+│       ├── visualize.html   # Signal visualizer layout
+│       ├── tuner.html       # Algorithm tuner layout
+│       ├── gear_lab.html    # Model trainer & triple gauge pod layout
+│       └── trim_log.html    # Slicer & trimmer layout
+├── tests/                   # Automated unit & integration regression tests
+│   ├── test_common_components.py
+│   ├── test_gear_algorithms.py
+│   ├── test_gear_lab.py
+│   ├── test_trim_log.py
+│   └── test_tuner.py
+├── decode.py                # Batch CLI decoder
+├── visualize.py             # Interactive signal visualizer entrypoint
+├── tuner.py                 # Algorithm tuner entrypoint
+├── gear_lab.py              # Gear estimator lab entrypoint
+└── trim_log.py              # Log trimmer & slicer entrypoint
+```
+
 ---
 
 ## 1. Batch Decoder (`decode.py`)
@@ -425,10 +470,11 @@ For the full architectural specification, functional requirement statements, and
 
 The decoder toolset includes an automated integration and regression test suite under `decoder/tests/` providing zero-dependency test verification using Python's standard `unittest` library:
 
+- **`test_common_components.py`**: Validates the shared common library (`can_core.py`, `dbc.py`, `calibration.py`, `http_server.py`), verifying `CanFrame` operations, Little/Big-endian bit unpacking, scaling conversions, calibration persistence, and port discovery.
 - **`test_trim_log.py`**: Validates `trim_log.py` binary parsing, time slicing, frame slicing, timestamp rebasing, CAN ID filtering, safe output naming, and overwrite protection.
 - **`test_tuner.py`**: Validates `tuner.py` server lifecycles, log discovery, `/api/algo_data`, `/api/calibration` GET/POST mutations, Bayesian hyperparameter controls, and audits client-side JavaScript DOM IDs against served HTML.
 - **`test_gear_lab.py`**: Validates `gear_lab.py` server initialization, multi-model evaluation benchmarks, `/api/auto_tune` parameter search, `/api/calibration`, and verifies that `/api/export_c` generates a clean C99 header that compiles with GCC under strict `-Wall -Wextra -Werror` flags with embedded JSON calibration comments.
-- **`test_gear_algorithms.py`**: Evaluates offline algorithm simulations (Baseline vs. RPM Pre-Filter vs. Latched Debouncing) directly against real `.bin` log frames, asserting chatter suppression ($74 \to 17$ transitions).
+- **`test_gear_algorithms.py`**: Evaluates offline algorithm simulations (Baseline vs. RPM Pre-Filter vs. Latched Debouncing) directly against real `.bin` log frames, asserting chatter suppression (74 -> 17 transitions).
 
 ### Running the Tests
 
@@ -437,6 +483,7 @@ The decoder toolset includes an automated integration and regression test suite 
 python3 -m unittest discover -s decoder/tests -v
 
 # Or run individual test modules directly
+python3 decoder/tests/test_common_components.py
 python3 decoder/tests/test_trim_log.py
 python3 decoder/tests/test_tuner.py
 python3 decoder/tests/test_gear_lab.py

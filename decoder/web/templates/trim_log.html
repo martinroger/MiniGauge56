@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MiniGauge CAN Log Trimmer & Slicer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/static/css/theme.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/map.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="/static/js/theme.js"></script>
+  <script src="/static/js/toast.js"></script>
+  <style>
+    body {
+      padding: 1.5rem;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow-y: auto;
+    }
+
+    .app-layout {
+      width: 100%;
+      max-width: 1380px;
+      display: flex;
+      gap: 1.25rem;
+      align-items: stretch;
+      justify-content: center;
+    }
+
+    .main-pane {
+      flex: 1;
+      min-width: 320px;
+      max-width: 860px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .map-pane {
+      width: 480px;
+      min-width: 320px;
+    }
+
+    #map-view {
+      flex: 1;
+      min-height: 480px;
+      width: 100%;
+      background: var(--input-bg);
+    }
+
+    .no-gps-card {
+      flex: 1;
+      min-height: 480px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      color: var(--text-muted);
+      text-align: center;
+      background: var(--card-bg);
+    }
+
+    .btn-toggle-map {
+      height: 32px;
+      padding: 0 0.65rem;
+      border-radius: 6px;
+      border: 1px solid var(--panel-border);
+      background: var(--card-bg);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: border-color 0.15s ease, color 0.15s ease;
+    }
+    .btn-toggle-map.active {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+    .btn-toggle-map:hover {
+      opacity: 0.9;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--divider);
+      background: transparent;
+      border-top: none;
+      padding-left: 0;
+      padding-right: 0;
+    }
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .badge-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      background: var(--primary);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 0.85rem;
+    }
+    .header-title { font-size: 1.1rem; font-weight: 700; color: var(--text); }
+    .header-sub { font-size: 0.75rem; color: var(--text-muted); font-family: monospace; }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .card.active-accent::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--primary);
+      border-top-left-radius: 9px;
+      border-top-right-radius: 9px;
+    }
+
+    .ctrl-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+    .ctrl-label { font-size: 0.82rem; font-weight: 600; color: var(--text); }
+    .ctrl-val { font-size: 0.85rem; font-family: monospace; font-weight: 700; color: var(--primary); }
+
+    input[type="range"] {
+      background: linear-gradient(
+        to right,
+        var(--slider-track-bg) 0%,
+        var(--slider-track-bg) var(--start-fill, var(--start-pct, 0%)),
+        var(--primary) var(--start-fill, var(--start-pct, 0%)),
+        var(--primary) var(--end-fill, var(--end-pct, 100%)),
+        var(--slider-track-bg) var(--end-fill, var(--end-pct, 100%)),
+        var(--slider-track-bg) 100%
+      );
+    }
+
+    .waveform-preview {
+      width: 100%;
+      height: 100px;
+      border-radius: 6px;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      overflow: hidden;
+    }
+
+    .toast {
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      display: none;
+      margin-top: 0.5rem;
+    }
+    .toast.success { background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #10b981; }
+    .toast.error { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #ef4444; }
+  </style>
+</head>
+<body>
+
+<div class="app-layout">
+  <!-- Left Column: Controls & Waveform -->
+  <div class="main-pane">
+    <header class="header">
+      <div class="header-brand">
+        <div class="badge-icon">✂️</div>
+        <div>
+          <div class="header-title">MiniGauge CAN Log Trimmer</div>
+          <div class="header-sub">Binary Dataset Slicer & Recutter</div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-toggle-map" class="btn-toggle-map active" title="Toggle GPS Map Drawer">🗺️ Map</button>
+        <select id="sel-log" title="Select binary log to trim"></select>
+        <button id="btnThemeToggle" class="btn-theme-toggle" title="Theme: Auto (follows OS). Click to toggle Light / Dark / Auto">
+          <span id="themeIcon">🌓</span>
+          <span id="themeLabel">Auto</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Waveform & Dual Slicing Card -->
+    <div class="card active-accent">
+      <div class="ctrl-row">
+        <span class="ctrl-label">Drive Waveform Preview & Selected Cut Window</span>
+        <span class="ctrl-val" id="val-window-span">0.0s - 0.0s (Span: 0.0s)</span>
+      </div>
+
+      <svg id="preview-svg" class="waveform-preview" viewBox="0 0 800 100" preserveAspectRatio="none">
+        <line x1="0" y1="50" x2="800" y2="50" stroke="currentColor" stroke-opacity="0.1" />
+        <path id="svg-speed-path" d="" fill="none" stroke="var(--primary)" stroke-width="2" />
+      </svg>
+
+      <!-- Start Slider -->
+      <div>
+        <div class="ctrl-row" style="margin-bottom: 0.3rem;">
+          <span class="ctrl-label" style="font-size:0.75rem; color:var(--text-muted);">Start Cut Time (t_start):</span>
+          <span class="ctrl-val" id="val-start">0.0 s</span>
+        </div>
+        <input type="range" id="slider-start" min="0" max="100" step="0.1" value="0">
+      </div>
+
+      <!-- End Slider -->
+      <div>
+        <div class="ctrl-row" style="margin-bottom: 0.3rem;">
+          <span class="ctrl-label" style="font-size:0.75rem; color:var(--text-muted);">End Cut Time (t_end):</span>
+          <span class="ctrl-val" id="val-end">100.0 s</span>
+        </div>
+        <input type="range" id="slider-end" min="0" max="100" step="0.1" value="100">
+      </div>
+    </div>
+
+    <!-- Slicing Options Card -->
+    <div class="card">
+      <div class="ctrl-row">
+        <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.8rem; cursor:pointer;">
+          <input type="checkbox" id="chk-rebase" checked>
+          <span>Zero-rebase timestamps (first frame starts at <code>t = 0.0s</code>)</span>
+        </label>
+      </div>
+
+      <div class="ctrl-row">
+        <div style="display:flex; flex-direction:column; gap:0.3rem; flex:1;">
+          <span class="ctrl-label">Filter CAN Message IDs (optional):</span>
+          <input type="text" id="txt-ids" placeholder="e.g. 0x100, 0x301 (leave empty for all messages)">
+        </div>
+      </div>
+
+      <button id="btn-cut" class="btn-primary" style="margin-top:0.5rem;">
+        <span>✂️</span>
+        <span>Export Trimmed Log</span>
+      </button>
+
+      <div id="toast-msg" class="toast"></div>
+    </div>
+  </div>
+
+  <!-- Right Column: GPS Map Drawer -->
+  <div id="map-pane" class="map-pane">
+    <div class="map-header">
+      <div class="map-header-title">
+        <span>🗺️</span>
+        <span>GPS Route Preview</span>
+      </div>
+      <span id="gps-points-count" style="font-size:0.75rem; color:var(--text-muted); font-family:monospace;">0 pts</span>
+    </div>
+    <div id="map-view"></div>
+    <div id="no-gps-card" class="no-gps-card" style="display:none;">
+      <div style="font-size:2.5rem; margin-bottom:0.5rem;">📡</div>
+      <div style="font-weight:600; font-size:0.95rem; margin-bottom:0.25rem;">No GPS Telemetry</div>
+      <div style="font-size:0.75rem; color:var(--text-muted); max-width:260px;">This log capture does not contain RaceBox GPS coordinates (ID 0x601).</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/js/leaflet_map.js"></script>
+<script>
+  let currentLog = "";
+  let logData = null;
+  let gpsData = [];
+  let leafletMap = null;
+  let fullTrackLayer = null;
+  let sliceTrackLayer = null;
+  let startMarker = null;
+  let endMarker = null;
+
+  window.addEventListener('minigauge-theme-changed', () => {
+    updateMapSlice();
+  });
+
+  // Toggle Map View
+  document.getElementById('btn-toggle-map').addEventListener('click', () => {
+    const mapPane = document.getElementById('map-pane');
+    const btn = document.getElementById('btn-toggle-map');
+    mapPane.classList.toggle('collapsed');
+    const isCollapsed = mapPane.classList.contains('collapsed');
+    btn.classList.toggle('active', !isCollapsed);
+    if (!isCollapsed && leafletMap) {
+      setTimeout(() => leafletMap.invalidateSize(), 200);
+    }
+  });
+
+  async function loadLogs() {
+    const res = await fetch('/api/logs');
+    const logs = await res.json();
+    const sel = document.getElementById('sel-log');
+    sel.innerHTML = '';
+    logs.forEach(l => {
+      const opt = document.createElement('option');
+      opt.value = l.filename;
+      opt.textContent = `${l.filename} (${(l.size / 1024 / 1024).toFixed(1)} MB)`;
+      sel.appendChild(opt);
+    });
+    if (logs.length > 0) {
+      currentLog = logs[0].filename;
+      loadPreview(currentLog);
+    }
+  }
+
+  async function loadPreview(fn) {
+    const res = await fetch(`/api/preview?file=${encodeURIComponent(fn)}`);
+    logData = await res.json();
+    gpsData = logData.gps || [];
+
+    const sSlider = document.getElementById('slider-start');
+    const eSlider = document.getElementById('slider-end');
+    sSlider.max = logData.duration_s;
+    eSlider.max = logData.duration_s;
+    sSlider.value = 0;
+    eSlider.value = logData.duration_s;
+
+    updateSliderVisuals();
+    renderWaveform();
+    renderGpsMap();
+  }
+
+  function renderGpsMap() {
+    const mapEl = document.getElementById('map-view');
+    const noGpsEl = document.getElementById('no-gps-card');
+    const ptsCountEl = document.getElementById('gps-points-count');
+
+    if (!gpsData || gpsData.length === 0) {
+      mapEl.style.display = 'none';
+      noGpsEl.style.display = 'flex';
+      ptsCountEl.textContent = '0 pts';
+      return;
+    }
+
+    mapEl.style.display = 'block';
+    noGpsEl.style.display = 'none';
+    ptsCountEl.textContent = `${gpsData.length} pts`;
+
+    if (!leafletMap) {
+      leafletMap = L.map('map-view', { zoomControl: true });
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap, © CARTO'
+      }).addTo(leafletMap);
+    }
+
+    if (fullTrackLayer) leafletMap.removeLayer(fullTrackLayer);
+    if (sliceTrackLayer) leafletMap.removeLayer(sliceTrackLayer);
+    if (startMarker) leafletMap.removeLayer(startMarker);
+    if (endMarker) leafletMap.removeLayer(endMarker);
+    startMarker = null;
+    endMarker = null;
+
+    const fullLatLngs = gpsData.map(p => [p.lat, p.lon]);
+    fullTrackLayer = L.polyline(fullLatLngs, {
+      color: '#64748b',
+      weight: 4,
+      opacity: 0.45,
+      lineCap: 'round',
+      lineJoin: 'round'
+    }).addTo(leafletMap);
+
+    const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#dd6b3d';
+    sliceTrackLayer = L.polyline(fullLatLngs, {
+      color: primaryColor,
+      weight: 5,
+      opacity: 0.95,
+      lineCap: 'round',
+      lineJoin: 'round'
+    }).addTo(leafletMap);
+
+    function onRouteClick(e) {
+      if (!gpsData || gpsData.length === 0) return;
+      let closest = gpsData[0];
+      let minDist = Infinity;
+      for (const pt of gpsData) {
+        const d = Math.hypot(pt.lat - e.latlng.lat, pt.lon - e.latlng.lng);
+        if (d < minDist) {
+          minDist = d;
+          closest = pt;
+        }
+      }
+      const sVal = parseFloat(document.getElementById('slider-start').value);
+      const eVal = parseFloat(document.getElementById('slider-end').value);
+      if (Math.abs(closest.t - sVal) <= Math.abs(closest.t - eVal)) {
+        document.getElementById('slider-start').value = closest.t;
+      } else {
+        document.getElementById('slider-end').value = closest.t;
+      }
+      updateSliderVisuals();
+    }
+
+    fullTrackLayer.on('click', onRouteClick);
+    sliceTrackLayer.on('click', onRouteClick);
+
+    leafletMap.fitBounds(fullTrackLayer.getBounds(), { padding: [25, 25] });
+    updateMapSlice();
+  }
+
+  function updateMapSlice() {
+    if (!gpsData || gpsData.length === 0 || !sliceTrackLayer) return;
+    const s = parseFloat(document.getElementById('slider-start').value);
+    const e = parseFloat(document.getElementById('slider-end').value);
+
+    const sliced = gpsData.filter(p => p.t >= s && p.t <= e);
+    const sliceCoords = sliced.map(p => [p.lat, p.lon]);
+    sliceTrackLayer.setLatLngs(sliceCoords);
+
+    const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#dd6b3d';
+    sliceTrackLayer.setStyle({ color: primaryColor });
+
+    if (sliceCoords.length > 0) {
+      const startCoord = sliceCoords[0];
+      const endCoord = sliceCoords[sliceCoords.length - 1];
+
+      if (!startMarker) {
+        startMarker = L.circleMarker(startCoord, {
+          radius: 7,
+          fillColor: '#10b981',
+          color: '#ffffff',
+          weight: 2,
+          fillOpacity: 1
+        }).addTo(leafletMap);
+        startMarker.bindTooltip("Start Cut (t_start)");
+      } else {
+        startMarker.setLatLng(startCoord);
+      }
+
+      if (!endMarker) {
+        endMarker = L.circleMarker(endCoord, {
+          radius: 7,
+          fillColor: '#ef4444',
+          color: '#ffffff',
+          weight: 2,
+          fillOpacity: 1
+        }).addTo(leafletMap);
+        endMarker.bindTooltip("End Cut (t_end)");
+      } else {
+        endMarker.setLatLng(endCoord);
+      }
+    }
+  }
+
+  function updateSliderVisuals() {
+    if (!logData) return;
+    let s = parseFloat(document.getElementById('slider-start').value);
+    let e = parseFloat(document.getElementById('slider-end').value);
+    if (s > e) {
+      e = s;
+      document.getElementById('slider-end').value = e;
+    }
+
+    const max = logData.duration_s || 1;
+    const sRatio = Math.max(0, Math.min(1, s / max));
+    const eRatio = Math.max(0, Math.min(1, e / max));
+    const sPct = sRatio * 100;
+    const ePct = eRatio * 100;
+    const sFill = `calc(${sPct.toFixed(2)}% + ${(10 - 20 * sRatio).toFixed(2)}px)`;
+    const eFill = `calc(${ePct.toFixed(2)}% + ${(10 - 20 * eRatio).toFixed(2)}px)`;
+
+    ['slider-start', 'slider-end'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.style.setProperty('--start-fill', sFill);
+        el.style.setProperty('--end-fill', eFill);
+        el.style.setProperty('--start-pct', `${sPct.toFixed(2)}%`);
+        el.style.setProperty('--end-pct', `${ePct.toFixed(2)}%`);
+      }
+    });
+
+    document.getElementById('val-start').textContent = `${s.toFixed(1)} s`;
+    document.getElementById('val-end').textContent = `${e.toFixed(1)} s`;
+    document.getElementById('val-window-span').textContent = `${s.toFixed(1)}s - ${e.toFixed(1)}s (Span: ${(e - s).toFixed(1)}s)`;
+
+    updateMapSlice();
+  }
+
+  function renderWaveform() {
+    if (!logData || !logData.speeds || logData.speeds.length === 0) return;
+    const speeds = logData.speeds;
+    const maxSpd = Math.max(10, Math.max(...speeds));
+    const n = speeds.length;
+    let d = `M 0,${100 - (speeds[0] / maxSpd) * 90}`;
+
+    for (let i = 1; i < n; i++) {
+      const x = (i / (n - 1)) * 800;
+      const y = 100 - (speeds[i] / maxSpd) * 90;
+      d += ` L ${x.toFixed(1)},${y.toFixed(1)}`;
+    }
+    document.getElementById('svg-speed-path').setAttribute('d', d);
+  }
+
+  document.getElementById('slider-start').addEventListener('input', updateSliderVisuals);
+  document.getElementById('slider-end').addEventListener('input', updateSliderVisuals);
+  document.getElementById('sel-log').addEventListener('change', (e) => {
+    currentLog = e.target.value;
+    loadPreview(currentLog);
+  });
+
+  document.getElementById('btn-cut').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-cut');
+    const toast = document.getElementById('toast-msg');
+    btn.disabled = true;
+    btn.textContent = "Processing cut...";
+
+    try {
+      const payload = {
+        filename: currentLog,
+        start_s: parseFloat(document.getElementById('slider-start').value),
+        end_s: parseFloat(document.getElementById('slider-end').value),
+        rebase_zero: document.getElementById('chk-rebase').checked,
+        ids: document.getElementById('txt-ids').value
+      };
+
+      const resp = await fetch('/api/trim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+
+      if (data.status === 'ok') {
+        toast.className = "toast success";
+        toast.style.display = "block";
+        toast.innerHTML = `✓ Successfully exported: <b>${data.output_file}</b> (${data.frames} frames, ${data.duration_s}s, ${(data.size_bytes / 1024).toFixed(1)} KB)`;
+      } else {
+        toast.className = "toast error";
+        toast.style.display = "block";
+        toast.textContent = `Error: ${data.message || 'Cut failed'}`;
+      }
+    } catch (err) {
+      toast.className = "toast error";
+      toast.style.display = "block";
+      toast.textContent = `Request failed: ${err.message}`;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<span>✂️</span><span>Export Trimmed Log</span>`;
+    }
+  });
+
+  loadLogs();
+</script>
+</body>
+</html>
+
