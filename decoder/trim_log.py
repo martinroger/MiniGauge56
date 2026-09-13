@@ -169,15 +169,15 @@ def trim_log(
 
 
 def get_preview_data(filepath: Path, max_samples: int = 400) -> Dict[str, Any]:
-    """Extracts decimated waveform summary for GUI slider preview."""
+    """Extracts decimated waveform summary and GPS telemetry for GUI slider preview."""
     frames = read_raw_log(filepath)
     if not frames:
-        return {"duration_s": 0.0, "total_frames": 0, "times": [], "speeds": [], "rpms": []}
+        return {"duration_s": 0.0, "total_frames": 0, "times": [], "speeds": [], "rpms": [], "gps": []}
 
     duration_s = frames[-1].rel_s
     total_frames = len(frames)
 
-    step = max(1, len(frames) // max_samples)
+    raw_gps = []
     times = []
     speeds = []
     rpms = []
@@ -185,12 +185,10 @@ def get_preview_data(filepath: Path, max_samples: int = 400) -> Dict[str, Any]:
     cur_speed = 0.0
     cur_rpm = 0.0
 
-    for i in range(0, len(frames), step):
-        f = frames[i]
-        times.append(round(f.rel_s, 2))
-        # Simple heuristic decoding of speed/RPM frequencies if present
+    step = max(1, len(frames) // max_samples)
+    for i, f in enumerate(frames):
+        # Heuristic decoding of speed/RPM frequencies if present
         if f.can_id == 0x300 and len(f.data) >= 4:
-            # DBG_speed_freq float
             try:
                 cur_speed = struct.unpack("<f", f.data[:4])[0] * 0.2444
             except Exception:
@@ -200,8 +198,33 @@ def get_preview_data(filepath: Path, max_samples: int = 400) -> Dict[str, Any]:
                 cur_rpm = struct.unpack("<f", f.data[:4])[0] * 30.0
             except Exception:
                 pass
-        speeds.append(round(max(0.0, cur_speed), 1))
-        rpms.append(round(max(0.0, cur_rpm), 0))
+        elif f.can_id == 0x601 and len(f.data) >= 8:
+            # RaceBox GPS Latitude & Longitude (32-bit signed int, 1e-7 deg scale)
+            try:
+                lat_raw, lon_raw = struct.unpack("<ii", f.data[:8])
+                lat, lon = lat_raw * 1e-7, lon_raw * 1e-7
+                if -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0 and (lat != 0.0 or lon != 0.0):
+                    raw_gps.append({
+                        "t": round(f.rel_s, 2),
+                        "lat": round(lat, 6),
+                        "lon": round(lon, 6),
+                    })
+            except Exception:
+                pass
+
+        if i % step == 0:
+            times.append(round(f.rel_s, 2))
+            speeds.append(round(max(0.0, cur_speed), 1))
+            rpms.append(round(max(0.0, cur_rpm), 0))
+
+    # Decimate GPS track to at most ~1200 points for smooth map rendering
+    if len(raw_gps) > 1200:
+        step_gps = max(1, len(raw_gps) // 1200)
+        gps_points = raw_gps[::step_gps]
+        if raw_gps[-1] != gps_points[-1]:
+            gps_points.append(raw_gps[-1])
+    else:
+        gps_points = raw_gps
 
     return {
         "filename": filepath.name,
@@ -210,6 +233,7 @@ def get_preview_data(filepath: Path, max_samples: int = 400) -> Dict[str, Any]:
         "times": times,
         "speeds": speeds,
         "rpms": rpms,
+        "gps": gps_points,
     }
 
 
@@ -312,6 +336,7 @@ def build_trimmer_html() -> str:
 <head>
   <meta charset="UTF-8">
   <title>MiniGauge CAN Log Trimmer & Slicer</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     :root {
       --app-bg: #0a0a0a;
@@ -360,12 +385,100 @@ def build_trimmer_html() -> str:
       transition: background-color 0.2s ease, color 0.2s ease;
     }
 
-    .container {
+    .app-layout {
       width: 100%;
+      max-width: 1380px;
+      display: flex;
+      gap: 1.25rem;
+      align-items: stretch;
+      justify-content: center;
+    }
+
+    .main-pane {
+      flex: 1;
+      min-width: 320px;
       max-width: 860px;
       display: flex;
       flex-direction: column;
       gap: 1.25rem;
+    }
+
+    .map-pane {
+      width: 480px;
+      min-width: 320px;
+      display: flex;
+      flex-direction: column;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      transition: width 0.2s ease, opacity 0.2s ease;
+    }
+
+    .map-pane.collapsed {
+      display: none;
+    }
+
+    .map-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--divider);
+      background: rgba(0,0,0,0.06);
+    }
+
+    .map-header-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    #map-view {
+      flex: 1;
+      min-height: 480px;
+      width: 100%;
+      background: var(--input-bg);
+    }
+
+    .no-gps-card {
+      flex: 1;
+      min-height: 480px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      color: var(--text-muted);
+      text-align: center;
+      background: var(--card-bg);
+    }
+
+    .btn-toggle-map {
+      height: 32px;
+      padding: 0 0.65rem;
+      border-radius: 6px;
+      border: 1px solid var(--card-border);
+      background: var(--card-bg);
+      color: var(--text-main);
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: border-color 0.15s ease, color 0.15s ease;
+    }
+    .btn-toggle-map.active {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .btn-toggle-map:hover {
+      opacity: 0.9;
     }
 
     .header {
@@ -524,81 +637,108 @@ def build_trimmer_html() -> str:
 </head>
 <body>
 
-<div class="container">
-  <!-- Minimal Header -->
-  <header class="header">
-    <div class="header-brand">
-      <div class="badge-icon">✂️</div>
+<div class="app-layout">
+  <!-- Left Column: Controls & Waveform -->
+  <div class="main-pane">
+    <header class="header">
+      <div class="header-brand">
+        <div class="badge-icon">✂️</div>
+        <div>
+          <div class="header-title">MiniGauge CAN Log Trimmer</div>
+          <div class="header-sub">Binary Dataset Slicer & Recutter</div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-toggle-map" class="btn-toggle-map active" title="Toggle GPS Map Drawer">🗺️ Map</button>
+        <select id="sel-log" title="Select binary log to trim"></select>
+        <button id="btn-theme" class="theme-toggle-btn" title="Toggle Theme (🌓)">🌓</button>
+      </div>
+    </header>
+
+    <!-- Waveform & Dual Slicing Card -->
+    <div class="card active-accent">
+      <div class="ctrl-row">
+        <span class="ctrl-label">Drive Waveform Preview & Selected Cut Window</span>
+        <span class="ctrl-val" id="val-window-span">0.0s - 0.0s (Span: 0.0s)</span>
+      </div>
+
+      <svg id="preview-svg" class="waveform-preview" viewBox="0 0 800 100" preserveAspectRatio="none">
+        <line x1="0" y1="50" x2="800" y2="50" stroke="currentColor" stroke-opacity="0.1" />
+        <path id="svg-speed-path" d="" fill="none" stroke="var(--accent)" stroke-width="2" />
+      </svg>
+
+      <!-- Start Slider -->
       <div>
-        <div class="header-title">MiniGauge CAN Log Trimmer</div>
-        <div class="header-sub">Binary Dataset Slicer & Recutter</div>
+        <div class="ctrl-row" style="margin-bottom: 0.3rem;">
+          <span class="ctrl-label" style="font-size:0.75rem; color:var(--text-muted);">Start Cut Time (t_start):</span>
+          <span class="ctrl-val" id="val-start">0.0 s</span>
+        </div>
+        <input type="range" id="slider-start" min="0" max="100" step="0.1" value="0">
+      </div>
+
+      <!-- End Slider -->
+      <div>
+        <div class="ctrl-row" style="margin-bottom: 0.3rem;">
+          <span class="ctrl-label" style="font-size:0.75rem; color:var(--text-muted);">End Cut Time (t_end):</span>
+          <span class="ctrl-val" id="val-end">100.0 s</span>
+        </div>
+        <input type="range" id="slider-end" min="0" max="100" step="0.1" value="100">
       </div>
     </div>
-    <div class="header-actions">
-      <select id="sel-log" title="Select binary log to trim"></select>
-      <button id="btn-theme" class="theme-toggle-btn" title="Toggle Theme (🌓)">🌓</button>
-    </div>
-  </header>
 
-  <!-- Waveform & Dual Slicing Card -->
-  <div class="card active-accent">
-    <div class="ctrl-row">
-      <span class="ctrl-label">Drive Waveform Preview & Selected Cut Window</span>
-      <span class="ctrl-val" id="val-window-span">0.0s - 0.0s (Span: 0.0s)</span>
-    </div>
-
-    <svg id="preview-svg" class="waveform-preview" viewBox="0 0 800 100" preserveAspectRatio="none">
-      <line x1="0" y1="50" x2="800" y2="50" stroke="currentColor" stroke-opacity="0.1" />
-      <path id="svg-speed-path" d="" fill="none" stroke="var(--accent)" stroke-width="2" />
-    </svg>
-
-    <!-- Start Slider -->
-    <div>
-      <div class="ctrl-row" style="margin-bottom: 0.3rem;">
-        <span class="ctrl-label" style="font-size:0.75rem; color:var(--text-muted);">Start Cut Time (t_start):</span>
-        <span class="ctrl-val" id="val-start">0.0 s</span>
+    <!-- Slicing Options Card -->
+    <div class="card">
+      <div class="ctrl-row">
+        <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.8rem; cursor:pointer;">
+          <input type="checkbox" id="chk-rebase" checked>
+          <span>Zero-rebase timestamps (first frame starts at <code>t = 0.0s</code>)</span>
+        </label>
       </div>
-      <input type="range" id="slider-start" min="0" max="100" step="0.1" value="0">
-    </div>
 
-    <!-- End Slider -->
-    <div>
-      <div class="ctrl-row" style="margin-bottom: 0.3rem;">
-        <span class="ctrl-label" style="font-size:0.75rem; color:var(--text-muted);">End Cut Time (t_end):</span>
-        <span class="ctrl-val" id="val-end">100.0 s</span>
+      <div class="ctrl-row">
+        <div style="display:flex; flex-direction:column; gap:0.3rem; flex:1;">
+          <span class="ctrl-label">Filter CAN Message IDs (optional):</span>
+          <input type="text" id="txt-ids" placeholder="e.g. 0x100, 0x301 (leave empty for all messages)">
+        </div>
       </div>
-      <input type="range" id="slider-end" min="0" max="100" step="0.1" value="100">
+
+      <button id="btn-cut" class="btn-primary" style="margin-top:0.5rem;">
+        <span>✂️</span>
+        <span>Export Trimmed Log</span>
+      </button>
+
+      <div id="toast-msg" class="toast"></div>
     </div>
   </div>
 
-  <!-- Slicing Options Card -->
-  <div class="card">
-    <div class="ctrl-row">
-      <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.8rem; cursor:pointer;">
-        <input type="checkbox" id="chk-rebase" checked>
-        <span>Zero-rebase timestamps (first frame starts at <code>t = 0.0s</code>)</span>
-      </label>
-    </div>
-
-    <div class="ctrl-row">
-      <div style="display:flex; flex-direction:column; gap:0.3rem; flex:1;">
-        <span class="ctrl-label">Filter CAN Message IDs (optional):</span>
-        <input type="text" id="txt-ids" placeholder="e.g. 0x100, 0x301 (leave empty for all messages)">
+  <!-- Right Column: GPS Map Drawer -->
+  <div id="map-pane" class="map-pane">
+    <div class="map-header">
+      <div class="map-header-title">
+        <span>🗺️</span>
+        <span>GPS Route Preview</span>
       </div>
+      <span id="gps-points-count" style="font-size:0.75rem; color:var(--text-muted); font-family:monospace;">0 pts</span>
     </div>
-
-    <button id="btn-cut" class="btn-primary" style="margin-top:0.5rem;">
-      <span>✂️</span>
-      <span>Export Trimmed Log</span>
-    </button>
-
-    <div id="toast-msg" class="toast"></div>
+    <div id="map-view"></div>
+    <div id="no-gps-card" class="no-gps-card" style="display:none;">
+      <div style="font-size:2.5rem; margin-bottom:0.5rem;">📡</div>
+      <div style="font-weight:600; font-size:0.95rem; margin-bottom:0.25rem;">No GPS Telemetry</div>
+      <div style="font-size:0.75rem; color:var(--text-muted); max-width:260px;">This log capture does not contain RaceBox GPS coordinates (ID 0x601).</div>
+    </div>
   </div>
 </div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   let currentLog = "";
   let logData = null;
+  let gpsData = [];
+  let leafletMap = null;
+  let fullTrackLayer = null;
+  let sliceTrackLayer = null;
+  let startMarker = null;
+  let endMarker = null;
 
   // OS System Theme Auto-Detection
   const osLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
@@ -609,6 +749,7 @@ def build_trimmer_html() -> str:
     savedTheme = savedTheme === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', savedTheme);
     localStorage.setItem('minigauge_theme', savedTheme);
+    updateMapSlice();
   });
 
   if (window.matchMedia) {
@@ -616,9 +757,22 @@ def build_trimmer_html() -> str:
       if (!localStorage.getItem('minigauge_theme')) {
         savedTheme = e.matches ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', savedTheme);
+        updateMapSlice();
       }
     });
   }
+
+  // Toggle Map View
+  document.getElementById('btn-toggle-map').addEventListener('click', () => {
+    const mapPane = document.getElementById('map-pane');
+    const btn = document.getElementById('btn-toggle-map');
+    mapPane.classList.toggle('collapsed');
+    const isCollapsed = mapPane.classList.contains('collapsed');
+    btn.classList.toggle('active', !isCollapsed);
+    if (!isCollapsed && leafletMap) {
+      setTimeout(() => leafletMap.invalidateSize(), 200);
+    }
+  });
 
   async function loadLogs() {
     const res = await fetch('/api/logs');
@@ -640,6 +794,7 @@ def build_trimmer_html() -> str:
   async function loadPreview(fn) {
     const res = await fetch(`/api/preview?file=${encodeURIComponent(fn)}`);
     logData = await res.json();
+    gpsData = logData.gps || [];
 
     const sSlider = document.getElementById('slider-start');
     const eSlider = document.getElementById('slider-end');
@@ -650,6 +805,129 @@ def build_trimmer_html() -> str:
 
     updateSliderVisuals();
     renderWaveform();
+    renderGpsMap();
+  }
+
+  function renderGpsMap() {
+    const mapEl = document.getElementById('map-view');
+    const noGpsEl = document.getElementById('no-gps-card');
+    const ptsCountEl = document.getElementById('gps-points-count');
+
+    if (!gpsData || gpsData.length === 0) {
+      mapEl.style.display = 'none';
+      noGpsEl.style.display = 'flex';
+      ptsCountEl.textContent = '0 pts';
+      return;
+    }
+
+    mapEl.style.display = 'block';
+    noGpsEl.style.display = 'none';
+    ptsCountEl.textContent = `${gpsData.length} pts`;
+
+    if (!leafletMap) {
+      leafletMap = L.map('map-view', { zoomControl: true });
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap, © CARTO'
+      }).addTo(leafletMap);
+    }
+
+    if (fullTrackLayer) leafletMap.removeLayer(fullTrackLayer);
+    if (sliceTrackLayer) leafletMap.removeLayer(sliceTrackLayer);
+    if (startMarker) leafletMap.removeLayer(startMarker);
+    if (endMarker) leafletMap.removeLayer(endMarker);
+    startMarker = null;
+    endMarker = null;
+
+    const fullLatLngs = gpsData.map(p => [p.lat, p.lon]);
+    fullTrackLayer = L.polyline(fullLatLngs, {
+      color: '#64748b',
+      weight: 4,
+      opacity: 0.45,
+      lineCap: 'round',
+      lineJoin: 'round'
+    }).addTo(leafletMap);
+
+    const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#dd6b3d';
+    sliceTrackLayer = L.polyline(fullLatLngs, {
+      color: accentColor,
+      weight: 5,
+      opacity: 0.95,
+      lineCap: 'round',
+      lineJoin: 'round'
+    }).addTo(leafletMap);
+
+    // Clicking anywhere on route snaps closest slider
+    function onRouteClick(e) {
+      if (!gpsData || gpsData.length === 0) return;
+      let closest = gpsData[0];
+      let minDist = Infinity;
+      for (const pt of gpsData) {
+        const d = Math.hypot(pt.lat - e.latlng.lat, pt.lon - e.latlng.lng);
+        if (d < minDist) {
+          minDist = d;
+          closest = pt;
+        }
+      }
+      const sVal = parseFloat(document.getElementById('slider-start').value);
+      const eVal = parseFloat(document.getElementById('slider-end').value);
+      if (Math.abs(closest.t - sVal) <= Math.abs(closest.t - eVal)) {
+        document.getElementById('slider-start').value = closest.t;
+      } else {
+        document.getElementById('slider-end').value = closest.t;
+      }
+      updateSliderVisuals();
+    }
+
+    fullTrackLayer.on('click', onRouteClick);
+    sliceTrackLayer.on('click', onRouteClick);
+
+    leafletMap.fitBounds(fullTrackLayer.getBounds(), { padding: [25, 25] });
+    updateMapSlice();
+  }
+
+  function updateMapSlice() {
+    if (!gpsData || gpsData.length === 0 || !sliceTrackLayer) return;
+    const s = parseFloat(document.getElementById('slider-start').value);
+    const e = parseFloat(document.getElementById('slider-end').value);
+
+    const sliced = gpsData.filter(p => p.t >= s && p.t <= e);
+    const sliceCoords = sliced.map(p => [p.lat, p.lon]);
+    sliceTrackLayer.setLatLngs(sliceCoords);
+
+    const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#dd6b3d';
+    sliceTrackLayer.setStyle({ color: accentColor });
+
+    if (sliceCoords.length > 0) {
+      const startCoord = sliceCoords[0];
+      const endCoord = sliceCoords[sliceCoords.length - 1];
+
+      if (!startMarker) {
+        startMarker = L.circleMarker(startCoord, {
+          radius: 7,
+          fillColor: '#10b981',
+          color: '#ffffff',
+          weight: 2,
+          fillOpacity: 1
+        }).addTo(leafletMap);
+        startMarker.bindTooltip("Start Cut (t_start)");
+      } else {
+        startMarker.setLatLng(startCoord);
+      }
+
+      if (!endMarker) {
+        endMarker = L.circleMarker(endCoord, {
+          radius: 7,
+          fillColor: '#ef4444',
+          color: '#ffffff',
+          weight: 2,
+          fillOpacity: 1
+        }).addTo(leafletMap);
+        endMarker.bindTooltip("End Cut (t_end)");
+      } else {
+        endMarker.setLatLng(endCoord);
+      }
+    }
   }
 
   function updateSliderVisuals() {
@@ -673,6 +951,8 @@ def build_trimmer_html() -> str:
     document.getElementById('val-start').textContent = `${s.toFixed(1)} s`;
     document.getElementById('val-end').textContent = `${e.toFixed(1)} s`;
     document.getElementById('val-window-span').textContent = `${s.toFixed(1)}s - ${e.toFixed(1)}s (Span: ${(e - s).toFixed(1)}s)`;
+
+    updateMapSlice();
   }
 
   function renderWaveform() {
@@ -759,7 +1039,8 @@ def main():
     parser.add_argument("--output", "-o", type=Path, help="Output *.bin file path")
     parser.add_argument("--preserve-timestamps", action="store_true", help="Keep raw hardware timestamps (default: zero-rebase)")
     parser.add_argument("--ids", type=str, help="Comma-separated CAN IDs to include (e.g. 0x100,0x301)")
-    parser.add_argument("--gui", "--browser", action="store_true", help="Launch interactive browser GUI")
+    parser.add_argument("--gui", "--browser", "--web", action="store_true", help="Launch interactive browser GUI")
+    parser.add_argument("--no-browser", action="store_true", help="Do not open browser automatically")
     parser.add_argument("--port", "-p", type=int, default=8199, help="GUI HTTP server port (default: 8199)")
 
     args = parser.parse_args()
@@ -768,7 +1049,7 @@ def main():
         server = ThreadingHTTPServer(("127.0.0.1", args.port), TrimmerHttpHandler)
         url = f"http://127.0.0.1:{args.port}/"
         print(f"MiniGauge Log Trimmer GUI running at {url}")
-        if args.gui:
+        if not args.no_browser:
             webbrowser.open(url)
         try:
             server.serve_forever()

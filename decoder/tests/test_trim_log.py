@@ -82,6 +82,35 @@ class TestTrimLog(unittest.TestCase):
         self.assertNotEqual(out1.resolve(), out2.resolve())
         self.assertIn("_01", out2.name)
 
+    def test_07_preview_data_without_gps(self):
+        # Synthetic log without 0x601 frames should return empty gps list
+        from trim_log import get_preview_data
+        data = get_preview_data(self.test_log)
+        self.assertEqual(data["gps"], [])
+        self.assertEqual(data["total_frames"], 100)
+
+    def test_08_preview_data_with_gps(self):
+        # Create a log with synthetic GPS frames (ID 0x601)
+        from trim_log import get_preview_data
+        RECORD_STRUCT = struct.Struct("<IHB8sx")
+        records = bytearray()
+        gps_log = self.tmppath / "gps_test.bin"
+        for i in range(50):
+            ts = 1000 + i * 100
+            cid = 0x601
+            dlc = 8
+            # Lat 45.8 deg, Lon 15.8 deg
+            lat_raw = int(45.8000000 * 1e7) + i * 100
+            lon_raw = int(15.8000000 * 1e7) + i * 100
+            payload = struct.pack("<ii", lat_raw, lon_raw)
+            records.extend(RECORD_STRUCT.pack(ts, cid, dlc, payload))
+        gps_log.write_bytes(records)
+
+        data = get_preview_data(gps_log)
+        self.assertEqual(len(data["gps"]), 50)
+        self.assertAlmostEqual(data["gps"][0]["lat"], 45.8, places=2)
+        self.assertAlmostEqual(data["gps"][0]["lon"], 15.8, places=2)
+
 
 if __name__ == "__main__":
     unittest.main()

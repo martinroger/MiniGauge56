@@ -159,6 +159,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TRIM-005** | CAN ID Whitelisting | The tool MUST support filtering frames by a comma-separated list of CAN arbitration IDs (`--ids`) specified in hex or decimal format. |
 | **REQ-TRIM-006** | Safe Naming & Overwrite Protection | The tool MUST auto-generate descriptive non-colliding destination names (`<stem>_cut_...bin`), refuse to overwrite existing files unless `--force` / `-f` is specified, and strictly prohibit overwriting the input file. |
 | **REQ-TRIM-007** | Interactive Browser GUI | When invoked with `--web`, the tool MUST serve an interactive Web interface allowing file upload/selection, live duration scrubbing, instant frame count feedback, CAN ID whitelisting, and direct binary download of sliced captures. |
+| **REQ-TRIM-008** | Side-by-Side GPS Map & Interactive Snapping | The web interface MUST provide an integrated Leaflet GPS map drawer displaying the full trajectory, dynamically highlighting the active slice `[t_start, t_end]` at 60 FPS, rendering start/end circle pins, snapping the nearest slider when the route is clicked, and displaying a clean placeholder when no GPS data is present. |
 
 ---
 
@@ -233,4 +234,5 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TRIM-005** | `trim_log.py` | `trim_bin_log()` (`filter_ids`) | CAN ID whitelisting and rejection tests |
 | **REQ-TRIM-006** | `trim_log.py` | `default_output_name()`, overwrite checks | Non-destructive naming & safety tests |
 | **REQ-TRIM-007** | `trim_log.py` | `HTML_PAGE`, `TrimRequestHandler` | Web GUI endpoint and download validation |
+| **REQ-TRIM-008** | `trim_log.py` | `renderGpsMap()`, `updateMapSlice()`, Leaflet | Side-by-side map drawer, route snapping & placeholder |
 

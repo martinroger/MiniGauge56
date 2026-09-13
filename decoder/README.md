@@ -340,36 +340,46 @@ A lightweight utility to inspect, slice, filter, and recut binary CAN logs (`*.b
   - Refuses to overwrite existing files unless `--force` / `-f` is explicitly specified. Output file cannot be the same as input file.
 - **Summary & Inspection Mode (`--info`)**:
   - Quickly inspect total frames, duration (seconds), start/end timestamps, and unique CAN IDs without generating new files.
-- **Interactive Zero-Pip Web GUI (`--web`)**:
-  - Launch with `--web` to open an interactive browser interface (`http://localhost:8083`).
-  - Features real-time log statistics, interactive start/end range sliders, frame count calculations, ID filters, and one-click trimmed `.bin` download.
+- **Interactive Zero-Pip Web GUI (`--web` / Default)**:
+  - Automatically launches the default browser interface (`http://127.0.0.1:8199`) unless `--no-browser` is specified.
+  - Features real-time log statistics, interactive start/end range sliders with visual track highlighting, drive speed waveform, CAN ID filters, and one-click trimmed `.bin` download.
+- **Side-by-Side Leaflet GPS Route Map**:
+  - Integrated right-hand map drawer displaying the full driving trajectory in muted slate (`#64748b`).
+  - **Dynamic Slice Highlighting**: The active temporal cut window `[t_start, t_end]` is rendered in vivid primary accent color (faded orange in dark mode, royal blue in light mode) in real time at 60 FPS as sliders move.
+  - **Start & End Pin Markers**: Visual green circle marker at `t_start` and red circle marker at `t_end`.
+  - **Route Click-to-Snap**: Clicking anywhere along the route on the map automatically snaps the closest slider (`t_start` or `t_end`) to that timestamp.
+  - **Graceful No-GPS Handling**: If the selected log has no GPS frames, displays a clean placeholder card (`📡 No GPS Telemetry`).
+  - **Collapsible Map Drawer**: Toggle button (`🗺️ Map`) in the header allows expanding or collapsing the map drawer.
 
 ### Usage
 
 ```bash
 cd decoder
 
-# 1. Inspect a binary log
+# 1. Launch interactive browser GUI (opens browser automatically)
+python3 trim_log.py
+
+# 2. Launch GUI on custom port without opening browser
+python3 trim_log.py --port 8199 --no-browser
+
+# 3. Inspect a binary log via CLI
 python3 trim_log.py 20260906_log_174149.bin --info
 
-# 2. Slice from 10.0s to 45.5s (timestamps rebased to 0 by default)
+# 4. Slice from 10.0s to 45.5s (timestamps rebased to 0 by default)
 python3 trim_log.py 20260906_log_174149.bin --start 10.0 --end 45.5
 
-# 3. Slice by exact frame indices and preserve original timestamps
+# 5. Slice by exact frame indices and preserve original timestamps
 python3 trim_log.py 20260906_log_174149.bin --start-frame 1000 --end-frame 5000 --preserve-timestamps
 
-# 4. Filter specific CAN IDs and save to custom destination
+# 6. Filter specific CAN IDs and save to custom destination
 python3 trim_log.py 20260906_log_174149.bin --ids 0x100,0x200 -o /tmp/filtered.bin
-
-# 5. Launch interactive browser GUI
-python3 trim_log.py --web
 ```
 
 ### CLI Arguments
 
 | Argument | Description |
 |---|---|
-| `input` | Input `.bin` file to inspect or trim |
+| `input` | Optional input `.bin` file to inspect or trim (omitting launches Web GUI) |
 | `-o, --output <file>` | Custom destination path (default: auto-named `<stem>_cut_...bin`) |
 | `-s, --start <sec>` | Start time in seconds from log beginning |
 | `-e, --end <sec>` | End time in seconds from log beginning |
@@ -379,9 +389,9 @@ python3 trim_log.py --web
 | `--preserve-timestamps` | Keep original ESP32 hardware millisecond timestamps (default: rebase to 0) |
 | `-f, --force` | Overwrite destination file if it already exists |
 | `--info` | Print frame count, duration, and ID stats, then exit |
-| `--web` | Launch interactive browser UI |
-| `-p, --port <port>` | Port for web GUI (default: 8083) |
-| `--no-browser` | Do not launch browser automatically with `--web` |
+| `--gui`, `--browser`, `--web` | Explicitly launch interactive browser UI |
+| `-p, --port <port>` | Port for web GUI (default: 8199) |
+| `--no-browser` | Do not launch browser automatically with web GUI |
 
 ---
 
