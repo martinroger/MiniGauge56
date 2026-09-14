@@ -354,6 +354,27 @@
       pts[i].smoothY = sumY / sumW;
       pts[i].smoothZ = sumZ / sumW;
     }
+
+    // Compute local smoothed road grade (%) if not already populated from backend
+    if (n > 1 && pts[0].grade === undefined) {
+      const cumDist = new Float32Array(n);
+      for (let i = 1; i < n; i++) {
+        const dx = pts[i].smoothX - pts[i - 1].smoothX;
+        const dy = pts[i].smoothY - pts[i - 1].smoothY;
+        cumDist[i] = cumDist[i - 1] + Math.hypot(dx, dy);
+      }
+      const winDist = 25.0;
+      let jb = 0;
+      let jf = 0;
+      for (let i = 0; i < n; i++) {
+        const sCur = cumDist[i];
+        while (jb < i && (sCur - cumDist[jb]) > winDist) jb++;
+        while (jf < n - 1 && (cumDist[jf + 1] - sCur) <= winDist) jf++;
+        const ds = cumDist[jf] - cumDist[jb];
+        const dz = pts[jf].smoothZ - pts[jb].smoothZ;
+        pts[i].grade = (ds >= 6.0) ? parseFloat(((dz / ds) * 100.0).toFixed(1)) : 0.0;
+      }
+    }
   }
 
   // --- Build Trajectory Geometry & Vertical Stanchions ---
@@ -588,6 +609,7 @@
       battery: (1 - alpha) * p0.battery + alpha * p1.battery,
       g_lat: (1 - alpha) * p0.g_lat + alpha * p1.g_lat,
       g_lon: (1 - alpha) * p0.g_lon + alpha * p1.g_lon,
+      grade: (1 - alpha) * (p0.grade !== undefined ? p0.grade : 0) + alpha * (p1.grade !== undefined ? p1.grade : 0),
       idx0: idx0,
       alpha: alpha,
     };
@@ -707,11 +729,20 @@
       camera.lookAt(curX, curY, curZ);
 
     } else if (cameraMode === 'free') {
-      // Orbit Mode: centered on vehicle dot
+      // Orbit Mode: centered on vehicle, keeping up with the car at constant orbit radius
       controls.enabled = true;
       controls.autoRotate = true;
       controls.autoRotateSpeed = 0.8;
-      controls.target.set(curX, curY, curZ);
+
+      const newTarget = new THREE.Vector3(curX, curY, curZ);
+      if (controls.target.lengthSq() === 0) {
+        controls.target.copy(newTarget);
+        camera.position.set(curX - 160, curY - 160, curZ + 110);
+      } else {
+        const delta = newTarget.clone().sub(controls.target);
+        camera.position.add(delta);
+        controls.target.copy(newTarget);
+      }
       controls.update();
     }
   }
@@ -768,10 +799,19 @@
         `TRIP ${(trajectoryData.stats.distance_km * currentProgress).toFixed(1)} km`;
     }
 
-    // Elevation & Grade in Upper HUD
+    // Elevation & Local Smoothed Road Grade in Upper HUD
     document.getElementById('center-alt').textContent = Math.round(pt.alt);
-    const grade = (pt.z * 0.08).toFixed(1);
-    document.getElementById('center-grade').textContent = (grade >= 0 ? '+' : '') + grade + '% GRADE';
+    const gradeVal = (pt.grade !== undefined) ? pt.grade : 0.0;
+    const gradeTxt = (gradeVal >= 0 ? '+' : '') + gradeVal.toFixed(1) + '% GRADE';
+    const gradeEl = document.getElementById('center-grade');
+    gradeEl.textContent = gradeTxt;
+    if (gradeVal > 1.0) {
+      gradeEl.style.color = '#00ff66'; // Green climbing uphill
+    } else if (gradeVal < -1.0) {
+      gradeEl.style.color = '#ffaa00'; // Amber descending downhill
+    } else {
+      gradeEl.style.color = '#94a3b8'; // Neutral flat
+    }
 
     // Enlarger G-Meter with Dynamic Red Alert State
     const latG = pt.g_lat || 0;
@@ -1152,9 +1192,10 @@
         camBtns[mode].classList.add('active');
 
         if (mode === 'free') {
-          // In orbit view: zoom in around vehicle dot
-          camera.position.set(smoothVehPos.x - 220, smoothVehPos.y - 220, smoothVehPos.z + 160);
-          controls.target.copy(vehicleMesh.position);
+          // In orbit view: zoom in around vehicle position
+          const vPos = (vehicleMesh && vehicleMesh.position) ? vehicleMesh.position : new THREE.Vector3(smoothVehPos.x, smoothVehPos.y, smoothVehPos.z);
+          camera.position.set(vPos.x - 160, vPos.y - 160, vPos.z + 110);
+          controls.target.copy(vPos);
           controls.update();
         }
       });

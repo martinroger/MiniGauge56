@@ -84,7 +84,7 @@ class TestCockpit3D(unittest.TestCase):
                 "t", "x", "y", "z", "lat", "lon", "alt",
                 "speed", "gps_speed", "heading", "rpm", "gear",
                 "gear_txt", "coolant", "fuel", "battery",
-                "g_lat", "g_lon", "g_vert", "status_l", "status_r", "tell_tales"
+                "g_lat", "g_lon", "g_vert", "grade", "status_l", "status_r", "tell_tales"
             ]
             for k in required_keys:
                 self.assertIn(k, pt0, f"Missing key {k} in trajectory point")
@@ -154,6 +154,24 @@ class TestCockpit3D(unittest.TestCase):
         # g_lat must correlate much more strongly with turn rate than g_lon
         self.assertGreater(corr_rot_lat, 50.0)
         self.assertGreater(corr_rot_lat, corr_rot_lon * 5.0)
+
+    def test_local_road_grade_calculation(self):
+        """Verifies local road grade (%) calculation across trajectory points."""
+        bin_files = find_bin_files(SCRIPT_DIR)
+        log_path = bin_files[0]
+        data = extract_cockpit_trajectory(log_path, self.db, downsample=1)
+        pts = data["points"]
+        self.assertGreater(len(pts), 50)
+        grades = [p["grade"] for p in pts]
+
+        # Road grades should be reasonable realistic percentages (between -35% and +35%)
+        self.assertGreater(max(grades), -35.0)
+        self.assertLess(max(grades), 35.0)
+        self.assertGreater(min(grades), -35.0)
+        self.assertLess(min(grades), 35.0)
+
+        # Confirm non-trivial grade variation exists
+        self.assertNotEqual(min(grades), max(grades))
 
 
 class MockSocket:

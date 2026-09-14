@@ -273,6 +273,7 @@ def extract_cockpit_trajectory(log_path: Path, db: DbcDatabase, downsample: int 
                     "g_lat": round(-cur_accel_y + 0.0, 3), # Lateral G (+ right, - left)
                     "g_lon": round(cur_accel_x, 3),        # Longitudinal G (+ accel, - brake)
                     "g_vert": round(cur_accel_z, 3),       # Vertical G
+                    "grade": 0.0,                          # Local road slope grade (%)
                     "status_l": cur_status_l,
                     "status_r": cur_status_r,
                     "tell_tales": dict(tell_tales),
@@ -318,6 +319,32 @@ def extract_cockpit_trajectory(log_path: Path, db: DbcDatabase, downsample: int 
             raw_points[i]["x"] = sx[i]
             raw_points[i]["y"] = sy[i]
             raw_points[i]["z"] = sz[i]
+
+    # Compute smoothed local road slope grade (%) using a rolling spatial distance window (+-25m)
+    n_raw = len(raw_points)
+    if n_raw > 1:
+        cum_dist = [0.0] * n_raw
+        for i in range(1, n_raw):
+            dx = raw_points[i]["x"] - raw_points[i - 1]["x"]
+            dy = raw_points[i]["y"] - raw_points[i - 1]["y"]
+            cum_dist[i] = cum_dist[i - 1] + math.hypot(dx, dy)
+
+        win_dist = 25.0
+        j_b = 0
+        j_f = 0
+        for i in range(n_raw):
+            s_cur = cum_dist[i]
+            while j_b < i and (s_cur - cum_dist[j_b]) > win_dist:
+                j_b += 1
+            while j_f < n_raw - 1 and (cum_dist[j_f + 1] - s_cur) <= win_dist:
+                j_f += 1
+
+            ds = cum_dist[j_f] - cum_dist[j_b]
+            dz = raw_points[j_f]["z"] - raw_points[j_b]["z"]
+            if ds >= 6.0:
+                raw_points[i]["grade"] = round((dz / ds) * 100.0, 1)
+            else:
+                raw_points[i]["grade"] = 0.0
 
     # Apply downsampling step if requested (> 1)
     if downsample > 1 and len(raw_points) > downsample:
