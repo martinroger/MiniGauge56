@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MiniGauge CAN Log Replayer & UDP Streamer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/theme.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/streamer.css">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="/static/js/theme.js"></script>
+  <script src="/static/js/plotly_theme.js"></script>
+  <script src="/static/js/toast.js"></script>
+</head>
+<body>
+  <div class="streamer-layout">
+    <!-- Top Header Bar -->
+    <header class="streamer-header">
+      <div class="brand-group">
+        <div class="brand-title">MINIGAUGE <span class="accent">// STREAMER</span></div>
+        <div class="brand-sub">CAN REPLAYER TO VEHICLE EMULATOR</div>
+      </div>
+
+      <!-- Log Selection Dropdown -->
+      <div class="header-control log-select-group">
+        <label for="log-select" class="mono-label">SOURCE LOG:</label>
+        <select id="log-select" class="custom-select">
+          <option value="">Scanning for logs...</option>
+        </select>
+        <button id="btn-reload-logs" class="icon-btn" title="Refresh log file list">↻</button>
+      </div>
+
+      <!-- Target Endpoint Config -->
+      <div class="header-control target-config-group">
+        <label for="target-host" class="mono-label">TARGET UDP:</label>
+        <input type="text" id="target-host" class="target-input" value="binocle-emulator.local" placeholder="Host / IP">
+        <span class="colon">:</span>
+        <input type="number" id="target-port" class="target-port-input" value="8888" placeholder="Port">
+        <button id="btn-apply-target" class="btn btn-sm btn-outline">Apply</button>
+      </div>
+
+      <!-- Live UDP Status Pill -->
+      <div class="udp-status-pill">
+        <div id="status-indicator" class="status-dot dot-stopped"></div>
+        <div class="status-meta">
+          <span id="txt-status-state" class="state-label">STOPPED</span>
+          <span class="rate-label"><span id="txt-send-rate">0.0</span> pkt/s</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Transport Control Bar -->
+    <section class="transport-bar">
+      <!-- Main Buttons -->
+      <div class="transport-buttons">
+        <button id="btn-play" class="btn btn-transport btn-play" title="Play / Pause (Space)">
+          <span id="play-icon">▶</span>
+        </button>
+        <button id="btn-stop" class="btn btn-transport btn-stop" title="Stop (Esc)">■</button>
+        <button id="btn-step-back" class="btn btn-transport btn-step" title="Step -1s (←)">-1s</button>
+        <button id="btn-step-fwd" class="btn btn-transport btn-step" title="Step +1s (→)">+1s</button>
+      </div>
+
+      <!-- Scrub Timeline Slider -->
+      <div class="scrub-container">
+        <span id="txt-current-time" class="time-readout mono">00:00.0</span>
+        <div class="scrub-track-wrapper">
+          <input type="range" id="scrub-slider" min="0" max="100" step="0.1" value="0">
+          <div id="scrub-tooltip" class="scrub-tooltip mono">00:00.0</div>
+        </div>
+        <span id="txt-total-duration" class="time-readout mono duration">00:00.0</span>
+      </div>
+
+      <!-- Speed & Options -->
+      <div class="transport-options">
+        <div class="speed-selector">
+          <button class="speed-btn" data-speed="0.25">0.25x</button>
+          <button class="speed-btn" data-speed="0.5">0.5x</button>
+          <button class="speed-btn active" data-speed="1.0">1.0x</button>
+          <button class="speed-btn" data-speed="2.0">2.0x</button>
+          <button class="speed-btn" data-speed="5.0">5.0x</button>
+        </div>
+
+        <label class="toggle-control" title="Loop log seamlessly when finished">
+          <input type="checkbox" id="chk-loop">
+          <span class="toggle-label">Loop</span>
+        </label>
+
+        <label class="toggle-control" title="Hold needle values when paused instead of resetting to standby">
+          <input type="checkbox" id="chk-freeze" checked>
+          <span class="toggle-label">Freeze on Pause</span>
+        </label>
+      </div>
+    </section>
+
+    <!-- Main Live Instrument Cluster View -->
+    <main class="dashboard-content">
+      <div class="cluster-card">
+        <!-- Dual Circular Gauges -->
+        <div class="dual-gauge-stage">
+          <!-- Left: Speedometer -->
+          <div class="gauge-container" id="gauge-speed">
+            <svg class="gauge-svg" viewBox="0 0 240 240">
+              <circle class="gauge-track" cx="120" cy="120" r="90"></circle>
+              <circle id="speed-gauge-bar" class="gauge-bar speed-bar" cx="120" cy="120" r="90"></circle>
+              <g class="gauge-ticks"></g>
+            </svg>
+            <div class="gauge-center">
+              <div class="gauge-metric-label">SPEED</div>
+              <div class="gauge-value speed-value" id="val-speed-kph">0</div>
+              <div class="gauge-unit">km/h <span class="unit-alt">(<span id="val-speed-mph">0</span> mph)</span></div>
+              <div class="gauge-detail-badge" id="badge-speed-freq">0.0 Hz</div>
+            </div>
+          </div>
+
+          <!-- Right: Tachometer -->
+          <div class="gauge-container" id="gauge-rpm">
+            <svg class="gauge-svg" viewBox="0 0 240 240">
+              <circle class="gauge-track" cx="120" cy="120" r="90"></circle>
+              <circle id="rpm-gauge-bar" class="gauge-bar rpm-bar" cx="120" cy="120" r="90"></circle>
+              <g class="gauge-ticks"></g>
+            </svg>
+            <div class="gauge-center">
+              <div class="gauge-metric-label">ENGINE RPM</div>
+              <div class="gauge-value rpm-value" id="val-rpm">0</div>
+              <div class="gauge-unit">RPM &bull; GEAR <span id="val-gear" class="accent-text">N</span></div>
+              <div class="gauge-detail-badge" id="badge-rpm-freq">0.0 Hz</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Linear Secondary Gauges (Coolant & Fuel) -->
+        <div class="secondary-gauges">
+          <!-- Coolant -->
+          <div class="linear-gauge-item">
+            <div class="linear-gauge-header">
+              <span class="mono-label">COOLANT TEMP</span>
+              <span class="gauge-text-val"><span id="val-coolant-temp">70</span> °C <span class="sub-val">(<span id="val-coolant-duty">0.0</span>% duty)</span></span>
+            </div>
+            <div class="progress-bar-bg">
+              <div id="coolant-fill-bar" class="progress-fill coolant-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Fuel -->
+          <div class="linear-gauge-item">
+            <div class="linear-gauge-header">
+              <span class="mono-label">FUEL SENDER</span>
+              <span class="gauge-text-val"><span id="val-fuel-pct">100</span> % <span class="sub-val">(<span id="val-fuel-ohm">270.0</span> Ω &bull; Step <span id="val-fuel-step">19</span>)</span></span>
+            </div>
+            <div class="progress-bar-bg">
+              <div id="fuel-fill-bar" class="progress-fill fuel-fill" style="width: 100%;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Telltale Indicator Panel (16 Discrete Expander 0 Lines) -->
+      <div class="telltales-card">
+        <div class="card-header">
+          <span class="card-title">TELLTALE INDICATORS // EXPANDER 0 (0x20)</span>
+          <span class="card-extra mono" id="val-mask-hex">MASK: 0xD940</span>
+        </div>
+        <div class="telltale-grid">
+          <!-- Bit 12: Left Turn -->
+          <div class="telltale-pill" id="tt-left-turn" data-bit="12" data-inv="true">
+            <div class="tt-icon">⇦</div>
+            <div class="tt-label">LEFT TURN</div>
+          </div>
+          <!-- Bit 11: Right Turn -->
+          <div class="telltale-pill" id="tt-right-turn" data-bit="11" data-inv="true">
+            <div class="tt-icon">⇨</div>
+            <div class="tt-label">RIGHT TURN</div>
+          </div>
+          <!-- Bit 14: High Beams -->
+          <div class="telltale-pill" id="tt-hi-beams" data-bit="14" data-inv="true">
+            <div class="tt-icon">☼</div>
+            <div class="tt-label">HI BEAMS</div>
+          </div>
+          <!-- Bit 5: Backlight -->
+          <div class="telltale-pill" id="tt-backlight" data-bit="5">
+            <div class="tt-icon">◐</div>
+            <div class="tt-label">BACKLIGHT</div>
+          </div>
+          <!-- Bit 15: Ignition -->
+          <div class="telltale-pill active" id="tt-ignition" data-bit="15">
+            <div class="tt-icon">⚡</div>
+            <div class="tt-label">IGNITION</div>
+          </div>
+          <!-- Bit 2: Oil Low -->
+          <div class="telltale-pill" id="tt-oil-low" data-bit="2">
+            <div class="tt-icon">🛢</div>
+            <div class="tt-label">OIL LOW</div>
+          </div>
+          <!-- Bit 0: Brake Low -->
+          <div class="telltale-pill" id="tt-brake-low" data-bit="0">
+            <div class="tt-icon">⚠</div>
+            <div class="tt-label">BRAKE FLUID</div>
+          </div>
+          <!-- Bit 1: Parking Brake -->
+          <div class="telltale-pill" id="tt-park-brake" data-bit="1">
+            <div class="tt-icon">Ⓟ</div>
+            <div class="tt-label">PARK BRAKE</div>
+          </div>
+          <!-- Bit 10: ABS -->
+          <div class="telltale-pill" id="tt-abs" data-bit="10">
+            <div class="tt-icon">ABS</div>
+            <div class="tt-label">ABS WARN</div>
+          </div>
+          <!-- Bit 4: CEL -->
+          <div class="telltale-pill" id="tt-cel" data-bit="4">
+            <div class="tt-icon">⚙</div>
+            <div class="tt-label">CHECK ENG</div>
+          </div>
+          <!-- Bit 3: Airbag -->
+          <div class="telltale-pill" id="tt-airbag" data-bit="3">
+            <div class="tt-icon">◎</div>
+            <div class="tt-label">AIRBAG</div>
+          </div>
+          <!-- Bit 13: Alternator -->
+          <div class="telltale-pill" id="tt-alternator" data-bit="13">
+            <div class="tt-icon">🔋</div>
+            <div class="tt-label">BATTERY</div>
+          </div>
+          <!-- Bit 8: Coolant Low -->
+          <div class="telltale-pill" id="tt-coolant-low" data-bit="8" data-inv="true">
+            <div class="tt-icon">🌡</div>
+            <div class="tt-label">COOLANT LOW</div>
+          </div>
+          <!-- Bit 9: Door Ajar -->
+          <div class="telltale-pill" id="tt-door" data-bit="9">
+            <div class="tt-icon">🚪</div>
+            <div class="tt-label">DOOR AJAR</div>
+          </div>
+          <!-- Bit 6: Alarm -->
+          <div class="telltale-pill" id="tt-alarm" data-bit="6">
+            <div class="tt-icon">🛡</div>
+            <div class="tt-label">ALARM</div>
+          </div>
+          <!-- Bit 7: Button -->
+          <div class="telltale-pill" id="tt-button" data-bit="7">
+            <div class="tt-icon">🔘</div>
+            <div class="tt-label">TRIP BTN</div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Telemetry Traces (Speed & RPM) with Cursor Tracking -->
+    <section class="traces-card">
+      <div class="traces-card-header">
+        <div class="traces-card-title">
+          <span class="card-title">TELEMETRY TRACES // SPEED & ENGINE RPM</span>
+          <span class="legend-hint mono">(Click graph or drag slider to seek timeline)</span>
+        </div>
+        <div class="traces-legend mono">
+          <span class="legend-item"><span class="legend-dot speed-dot"></span> SPEED (km/h)</span>
+          <span class="legend-item"><span class="legend-dot rpm-dot"></span> RPM</span>
+        </div>
+      </div>
+      <div class="plot-container-wrapper" id="plot-wrapper">
+        <div id="plot-traces" class="plotly-chart"></div>
+        <div id="graph-cursor" class="graph-cursor-needle">
+          <div class="cursor-head"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Collapsible UDP Packet Inspector -->
+    <footer class="packet-inspector-card">
+      <div class="inspector-header" id="toggle-inspector">
+        <div class="inspector-title">
+          <span class="chevron" id="inspector-chevron">▼</span>
+          <span>UDP PACKET INSPECTOR (14-BYTE BINARY DATAGRAM)</span>
+        </div>
+        <div class="inspector-meta mono">
+          TOTAL SENT: <span id="txt-packets-sent" class="accent-text">0</span>
+        </div>
+      </div>
+      <div class="inspector-body" id="inspector-content">
+        <div class="hex-dump-box">
+          <div class="hex-label mono">RAW BUFFER:</div>
+          <div class="hex-payload mono" id="val-packet-hex">-- -- -- -- -- -- -- -- -- -- -- -- -- --</div>
+        </div>
+        <div class="fields-grid">
+          <div class="field-cell">
+            <span class="field-name">MAGIC</span>
+            <span class="field-val mono" id="f-magic">0xAA 0x55</span>
+          </div>
+          <div class="field-cell">
+            <span class="field-name">TELLTALES</span>
+            <span class="field-val mono" id="f-mask">0xD940</span>
+          </div>
+          <div class="field-cell">
+            <span class="field-name">SPEED (0.1 Hz)</span>
+            <span class="field-val mono" id="f-speed">0</span>
+          </div>
+          <div class="field-cell">
+            <span class="field-name">RPM (0.1 Hz)</span>
+            <span class="field-val mono" id="f-rpm">0</span>
+          </div>
+          <div class="field-cell">
+            <span class="field-name">COOLANT (0.01 %)</span>
+            <span class="field-val mono" id="f-cool">0</span>
+          </div>
+          <div class="field-cell">
+            <span class="field-name">FUEL (0.1 Ω)</span>
+            <span class="field-val mono" id="f-fuel">2700</span>
+          </div>
+          <div class="field-cell">
+            <span class="field-name">CHECKSUM</span>
+            <span class="field-val mono accent-text" id="f-chk">0x0000</span>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script src="/static/js/streamer.js"></script>
+</body>
+</html>
