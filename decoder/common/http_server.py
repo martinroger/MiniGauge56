@@ -104,6 +104,8 @@ class BaseAppHandler(BaseHTTPRequestHandler):
     def serve_static(self, rel_path: str) -> bool:
         """Safely serves a static file from STATIC_DIR. Returns False if file not found."""
         clean_rel = rel_path.lstrip("/")
+        if "?" in clean_rel:
+            clean_rel = clean_rel.split("?", 1)[0]
         if clean_rel.startswith("static/"):
             clean_rel = clean_rel[len("static/") :]
 

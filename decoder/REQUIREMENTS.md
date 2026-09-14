@@ -1,11 +1,12 @@
 # MiniGauge Decoder Toolset Requirements Specification
 
-This document defines the functional, technical, and architectural requirements for the Python 3 offline diagnostic, calibration, and slicing toolset located in `decoder/`. The toolset consists of 5 modular utilities:
+This document defines the functional, technical, and architectural requirements for the Python 3 offline diagnostic, calibration, and slicing toolset located in `decoder/`. The toolset consists of 6 modular utilities:
 1. **Batch Decoder & Exporter (`decode.py`)**
 2. **Interactive Signal Visualizer (`visualize.py`)**
 3. **Algorithm Calibration & Tuning Lab (`tuner.py`)**
 4. **Dedicated Gear Estimator Lab & Model Trainer (`gear_lab.py`)**
 5. **CAN Log Trimmer & Slicer (`trim_log.py`)**
+6. **3D Cyber-Cockpit & Drive Trajectory Replayer (`cockpit_3d.py`)**
 
 ---
 
@@ -164,17 +165,43 @@ This document defines the functional, technical, and architectural requirements 
 
 ---
 
-## 7. Implementation Traceability Matrix
+## 7. 3D Cyber-Cockpit & Drive Trajectory Replayer (`cockpit_3d.py`) Requirements
+
+### 7.1 Scope & Purpose
+`cockpit_3d.py` provides an interactive, theatrical 3D visualization of the vehicle drive trajectory with elevation integrated in the spatial geometry, combined with an uncontainerized cyberpunk instrument cluster replayer inspired by `vx-binocle-espidf`.
+
+### 7.2 Functional Requirements
+
+| ID | Title | Requirement Statement |
+|---|---|---|
+| **REQ-CPT-001** | Metric 3D ENU Trajectory, Stanchions & Smooth Gliding | The tool MUST project WGS84 GPS fixes into metric ENU coordinates re-scaled so that the initial point starts cleanly at relative $z = 0.0\text{m}$, apply Gaussian GPS pre-smoothing to eliminate lateral jitter, render vertical reference stanchions down to the $0\text{m}$ plane, and interpolate sub-frame positions continuously. |
+| **REQ-CPT-002** | Speed Heatmap & Greyed Future Horizon | The 3D trajectory ribbon MUST dynamically color past and present driven points ($t \le t_{cur}$) based on instantaneous vehicle speed (Cyan $\rightarrow$ Emerald $\rightarrow$ Amber $\rightarrow$ Neon Red), while rendering upcoming future points ($t > t_{cur}$) as a faint translucent grey wireframe trace. |
+| **REQ-CPT-003** | `vx-binocle-espidf` Instrument Cluster | The UI MUST implement pure SVG needle-less circular displays with glowing perimeter progress arcs mathematically aligned with tick graduations (Left: 0–8000 RPM with centered numeric RPM, COOL/FUEL; Right: 0–240 KPH with centered speed digits, voltage/trip). The gear indicator MUST float at bottom center right above the replay scrubber bar. |
+| **REQ-CPT-004** | Open Central Horizon & G-Meter Friction Circle | The central horizontal corridor between the dual displays MUST remain completely unobstructed for the vehicle chase camera. The IMU G-meter friction circle ($192\text{px}$) MUST be centered directly above the vehicle trajectory line, normalized dynamically to $1.1 \times G_{\max}$ with an intermediate dashed guide ring at $50\%$ of $G_{\max}$, render a cumulative phantom trace heatmap background of dwell time with a white-to-red gradient using additive blending/summing and 50% opacity (`#g-heatmap-canvas`), feature a small red indicator dot (`#ff2a55`), and automatically trigger a high-intensity Neon Red flashing alert when the instantaneous G-vector norm exceeds 75% of the drivecycle maximum acceleration ($G_{\max}$). |
+| **REQ-CPT-005** | Forward Cone Avatar, Refined Trail & Enlarged G-Vectors | The Three.js WebGL scene MUST feature a forward-facing 3D cone vehicle avatar oriented along the motion vector tangent, a refined speed particle trail streaming from the cone's rear base (with size and lifespan reduced by half), dynamic vehicle speed coloring, interactive mouse wheel zoom in Chase and Top views, and toggleable vehicle-frame 3D G-vector arrows (`G-VEC`) scaled prominently (at least $2.4\times$ longer with enlarged arrowheads and priority z-rendering) indicating longitudinal acceleration (X-axis `g_lon`, green forward accel / red braking) and lateral acceleration (Y-axis `g_lat`, amber cornering). |
+| **REQ-CPT-006** | Collapsible Storytelling Mode & Z-Scale | Top and bottom HUD panels MUST smoothly collapse away upon pressing `H` (or clicking the toggle handle). The tool MUST feature an interactive vertical exaggeration slider ($1.0\times$ to $5.0\times$) to dynamically amplify elevation gradients. |
+| **REQ-CPT-007** | Zero-Pip Standalone Entrypoint & REST API | The backend MUST operate with zero pip dependencies, providing `/`, `/api/logs`, and `/api/trajectory` endpoints with automatic local port discovery. |
+
+---
+
+## 8. Implementation Traceability Matrix
 
 | Requirement ID | Implementing File | Function / Component / Handler | Verification Method |
 |---|---|---|---|
-| **REQ-SYS-001** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py` | Top-level imports (stdlib only) | Automated headless test (no pip dependencies) |
-| **REQ-SYS-002** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py` | `read_bin_file()`, `CAN_FRAME_STRUCT`, `CANFrame` | Binary unpack test against `.bin` captures |
-| **REQ-SYS-003** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py` | `DbcDatabase.parse()`, `DbcMessage.decode()` | DBC parse verification with signed/scale/enum/float |
-| **REQ-SYS-004** | `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py` | CSS variables, `initTheme()`, `prefers-color-scheme` | Theme toggle & OS scheme auto-detection tests |
+| **REQ-SYS-001** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py` | Top-level imports (stdlib only) | Automated headless test (no pip dependencies) |
+| **REQ-SYS-002** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py` | `read_bin_file()`, `CAN_FRAME_STRUCT`, `CANFrame` | Binary unpack test against `.bin` captures |
+| **REQ-SYS-003** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `cockpit_3d.py` | `DbcDatabase.parse()`, `DbcMessage.decode()` | DBC parse verification with signed/scale/enum/float |
+| **REQ-SYS-004** | `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py` | CSS variables, `initTheme()`, `prefers-color-scheme` | Theme toggle & OS scheme auto-detection tests |
 | **REQ-SYS-005** | All `.md` files | Markdown relative links | Static doc link validation |
-| **REQ-SYS-006** | `tuner.py`, `gear_lab.py` | `.info-icon`, `title` attributes on controls | DOM verification of hover tooltips across all tabs |
-| **REQ-SYS-007** | `decoder/tests/` | `test_trim_log.py`, `test_tuner.py`, `test_gear_lab.py`, `test_gear_algorithms.py` | Full test suite execution via `python3 -m unittest` |
+| **REQ-SYS-006** | `tuner.py`, `gear_lab.py`, `cockpit_3d.py` | `.info-icon`, `title` attributes on controls | DOM verification of hover tooltips across all tabs |
+| **REQ-SYS-007** | `decoder/tests/` | `test_trim_log.py`, `test_tuner.py`, `test_gear_lab.py`, `test_gear_algorithms.py`, `test_cockpit_3d.py` | Full test suite execution via `python3 -m unittest` |
+| **REQ-CPT-001** | `cockpit_3d.py`, `cockpit_3d.js` | `extract_cockpit_trajectory()`, `buildTrajectoryGeometry()`, `getInterpolatedPoint()` | Initial $z=0.0$ unit test, stanchions & continuous interpolation |
+| **REQ-CPT-002** | `cockpit_3d.js` | `updateTrajectoryColors()`, `speedToColor()` | Dynamic vertex color update & greyed future test |
+| **REQ-CPT-003** | `cockpit_3d.html`, `cockpit_3d.js` | `updateHUD()`, SVG needle-less arcs, `rpm-glyph`, `gear-glyph` | Dual-screen DOM elements & arc geometry checks |
+| **REQ-CPT-004** | `cockpit_3d.html`, `cockpit_3d.css`, `cockpit_3d.js` | `g-meter-pod`, `alert-red`, `stats.g_thresh` | DOM inspection, 192px diameter, red dot, additive blend & alert-red trigger |
+| **REQ-CPT-005** | `cockpit_3d.js`, `cockpit_3d.html` | `initVehicleParticles()`, `chk-g-vectors`, `arrowLon`, `arrowLat`, wheel zoom | Particle non-culling test, arrow helpers & wheel zoom |
+| **REQ-CPT-006** | `cockpit_3d.html`, `cockpit_3d.js` | `toggleHUD()`, `updateGeometryZScale()` | Collapsible class toggle & dynamic Z-scale tests |
+| **REQ-CPT-007** | `cockpit_3d.py` | `CockpitHandler`, `start_server()` | Server lifecycle & REST API endpoints tests |
 | **REQ-DEC-001** | `decode.py` | `write_asc()` | Vector CANoe format validation test |
 | **REQ-DEC-002** | `decode.py` | `write_csv()` | CSV column structure validation |
 | **REQ-DEC-003** | `decode.py` | `write_signals_csv()` | Normalized time-series test with `-s` flag |

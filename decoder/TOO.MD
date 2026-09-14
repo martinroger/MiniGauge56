@@ -16,11 +16,12 @@ The toolset follows a modular layered architecture:
 |  - tuner.html             - base.css (Layout, Reset)        - toast.js        |
 |  - gear_lab.html          - components.css (Cards, Sliders) - leaflet_map.js  |
 |  - trim_log.html          - map.css (GPS Drawer, HUD)       - plotly_theme.js |
+|  - cockpit_3d.html        - cockpit_3d.css (HUD, Glow)      - cockpit_3d.js   |
 +---------------------------------------+---------------------------------------+
                                         | HTTP / JSON / Static Assets
 +---------------------------------------v---------------------------------------+
 |                       PYTHON OFFLINE APPLICATION LAYER                        |
-|   visualize.py        tuner.py          gear_lab.py         trim_log.py       |
+|   visualize.py    tuner.py      gear_lab.py     trim_log.py    cockpit_3d.py  |
 +---------------------------------------+---------------------------------------+
                                         | Shared Services
 +---------------------------------------v---------------------------------------+
@@ -58,6 +59,12 @@ The toolset follows a modular layered architecture:
 - **`BaseAppHandler`**: Extends Python's `BaseHTTPRequestHandler` with convenience helpers for CORS preflight, JSON request extraction (`read_json_body`), response formatting (`send_json`), template streaming (`send_html`), and static file routing (`serve_static`).
 - **`start_server`**: Threading HTTP server launcher featuring collision-free dynamic TCP port allocation, terminal diagnostic banners, and browser auto-launching.
 
+### 2.5 3D Cyber-Cockpit & Trajectory Replayer (`decoder/cockpit_3d.py`)
+- **`lat_lon_to_enu`**: High-precision local East-North-Up coordinate conversion relative to initial GPS anchor point, translating WGS84 coordinates to local meters with sub-millimeter precision.
+- **`extract_cockpit_trajectory`**: Decodes CAN binary records into 3D spatial points with synchronized engine (RPM, gear, temps), dynamic (speed, G-force, roll/pitch), and electrical telemetry (battery voltage, tell-tales).
+- **Three.js WebGL Graphics Pipeline**: Renders 3D trajectory ribbons with instantaneous speed heatmapping, greyed-out future horizon, vertical reference stanchions extending to the $0\text{m}$ ground plane, vehicle frame 3D G-vector arrows, fixed-frustum non-culling 1200-particle trail, distance-smoothed lookahead chase camera ($45,000\text{m}$ render distance), and live vertical exaggeration ($1.0\times$ to $5.0\times$).
+- **`vx-binocle-espidf` Instrument Cluster**: Pure SVG needle-less perimeter gauges mathematically aligned with graduations for RPM and Speed, centered numeric RPM and speed readouts, floating bottom gear dock, enlarged $192\text{px}$ uncontainerized G-meter with additive blending/summing dwell heatmap, red indicator dot, automatic red alert thresholding, and collapsible HUD controls.
+
 ---
 
 ## 3. Web Asset Delivery Strategy
@@ -68,12 +75,15 @@ Assets are organized into dedicated directories:
   - `base.css`: CSS reset, typography, responsive flexbox layout, and headers.
   - `components.css`: Reusable UI controls including buttons, dynamic-gradient sliders, cards, data tables, and badges.
   - `map.css`: Collapsible Leaflet GPS drawer, velocity HUD, and rotating compass styling.
+  - `cockpit_3d.css`: Cyberpunk negative-space HUD layout, glassmorphic panels, neon glow filters, and collapsible bar animations.
 - **`decoder/web/static/js/`**:
   - `theme.js`: OS `prefers-color-scheme` listener with `localStorage` persistence and `minigauge-theme-changed` dispatch.
   - `toast.js`: Non-intrusive notification banner manager.
   - `plotly_theme.js`: Plotly layout generators syncing dark/light modes and container ResizeObservers.
   - `leaflet_map.js`: Leaflet GPS track drawer with binary search telemetry synchronization.
+  - `cockpit_3d.js`: Three.js WebGL scene lifecycle, speed heatmap shader, warp particle system, G-force camera roll, and dual-screen SVG gauge updating.
 - **`decoder/web/templates/`**:
+  - `visualize.html`, `tuner.html`, `gear_lab.html`, `trim_log.html`, and `cockpit_3d.html`.
   - Clean HTML5 documents containing zero inline style blocks or embedded third-party script definitions.
 
 ---
@@ -175,6 +185,31 @@ sequenceDiagram
     GCC->>GCC: gcc -Wall -Wextra -Werror -O2 verify.c -lm
     GCC-->>UI: Zero warnings, Clean exit
     Note over MCU: Turnkey include into main/gear_estimator.c
+```
+
+### 4.5 3D Cyber-Cockpit, G-Meter Normalization & Friction Circle Heatmap
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as cockpit_3d.js
+    participant Server as CockpitHandler
+    participant Core as can_core / dbc
+    participant Canvas as #g-heatmap-canvas
+    participant Three as Three.js WebGL
+
+    UI->>Server: GET /api/trajectory?file=log.bin&downsample=1
+    Server->>Core: read_bin_file() & decode()
+    Core-->>Server: GPS fixes & IMU accelerations (g_lat: -accel_Y, g_lon: accel_X)
+    Server->>Server: Calculate ENU (z0=0), Gmax, Gbound=1.1*Gmax, Gmid=0.5*Gmax, Gthresh=0.75*Gmax
+    Server-->>UI: 200 OK JSON {points, stats: {max_g, g_thresh, g_bound, g_mid}}
+    UI->>Canvas: renderGHeatmap(): 2D dwell density grid & radial splats
+    UI->>UI: updateGScaleUI(): size intermediate ring (50%) & update scale labels
+    UI->>Three: buildTrajectoryGeometry() & initVehicleParticles()
+    Note over UI: Telemetry Replay Loop (60 FPS)
+    UI->>Three: updateCamera(), lerp smoothDir, scale G-vectors (110x, renderOrder=999)
+    UI->>UI: updateHUD(): gTot >= gThresh ? trigger alert-red flashing : normal
+    UI->>UI: Clamp & position G-ball relative to g_bound
 ```
 
 ---
