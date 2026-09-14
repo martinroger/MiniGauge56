@@ -1,12 +1,13 @@
 # MiniGauge Decoder Toolset Requirements Specification
 
-This document defines the functional, technical, and architectural requirements for the Python 3 offline diagnostic, calibration, and slicing toolset located in `decoder/`. The toolset consists of 6 modular utilities:
+This document defines the functional, technical, and architectural requirements for the Python 3 offline diagnostic, calibration, and slicing toolset located in `decoder/`. The toolset consists of 7 modular utilities:
 1. **Batch Decoder & Exporter (`decode.py`)**
 2. **Interactive Signal Visualizer (`visualize.py`)**
 3. **Algorithm Calibration & Tuning Lab (`tuner.py`)**
 4. **Dedicated Gear Estimator Lab & Model Trainer (`gear_lab.py`)**
 5. **CAN Log Trimmer & Slicer (`trim_log.py`)**
 6. **3D Cyber-Cockpit & Drive Trajectory Replayer (`cockpit_3d.py`)**
+7. **CAN Log Replayer & UDP Streamer (`streamer.py`)**
 
 ---
 
@@ -184,17 +185,43 @@ This document defines the functional, technical, and architectural requirements 
 
 ---
 
-## 8. Implementation Traceability Matrix
+## 8. CAN Log Replayer & UDP Streamer (`streamer.py`) Requirements
+
+### 8.1 Scope & Purpose
+`streamer.py` provides high-fidelity real-time replaying and UDP streaming of recorded MiniGauge `.bin` CAN logs to the vehicle emulator hardware running ESPHome firmware (`emulator-console.yaml` / `udp_receiver.h`) at `binocle-emulator.local:8888`.
+
+### 8.2 Functional Requirements
+
+| ID | Title | Requirement Statement |
+|---|---|---|
+| **REQ-STR-001** | 14-Byte Binary UDP Datagram Serialization | The tool MUST pack vehicle telemetry into the little-endian 14-byte `VehicleUdpPacket` structure (`0xAA 0x55` magic, 16-bit telltales mask, 16-bit speed frequency x10 in 0.1 Hz, 16-bit RPM frequency x10 in 0.1 Hz, 16-bit coolant duty x100 in 0.01%, 16-bit fuel resistance x10 in 0.1 Ohm, and 16-bit arithmetic checksum of bytes 0..11). |
+| **REQ-STR-002** | Prioritized Hardware-Accurate Signal Extraction | The replayer timeline MUST prioritize low-level measured debug signals (`0x300` `DBG_speed_freq`, `0x301` `DBG_RPM_freq`, `0x302` `DBG_coolant_duty`, `0x305` `DBG_fuel_r`) when logged, automatically falling back to standard vehicle CAN signals (`0x100` speed/RPM, `0x110` coolant/fuel) converted via emulator calibration formulas if debug frames are not present. |
+| **REQ-STR-003** | 16-Telltale Expander 0 Logic & Inversion | The tool MUST map `0x101` `ITF_active_hi_lo` to TCA9555 Expander 0 (`0x20`), applying hardware polarity inversion to active-low lines (High Beams bit 14, Left Turn bit 12, Right Turn bit 11, Low Coolant bit 8), enforcing Ignition bit 15 continuously HIGH (`1`) to prevent board shutdown, and restoring Safe Standby (`0xD940`) upon stop or log completion. |
+| **REQ-STR-004** | 50 Hz Fixed-Rate Transmission Worker | The background streaming thread MUST pace datagram transmission at a deterministic 50 Hz (20 ms interval) using `time.perf_counter()`, sampling the active log state at current playback time to ensure jitter-free physical cluster needle actuation. |
+| **REQ-STR-005** | Transport Controls & Scrub Timeline | The tool MUST support Play, Pause, Stop, Seek/Scrubbing across the drive timeline, variable playback speed (`0.25x`, `0.5x`, `1.0x`, `2.0x`, `5.0x`), seamless loop replay, and a configurable "Freeze on Pause" toggle. |
+| **REQ-STR-006** | Zero-Pip Server, Dual HUD & Packet Inspector | The tool MUST run with zero pip dependencies, serving an interactive dual-gauge cluster HUD (Speedometer & Tachometer with SVG perimeter arcs, Coolant & Fuel bars, 16-indicator annunciator grid) and live UDP packet inspector over REST endpoints (`/`, `/api/logs`, `/api/status`, `/api/control`). |
+| **REQ-STR-007** | Dual-Trace Telemetry Chart & Interactive Cursor Tracking | The UI MUST display a synchronized time-series chart of vehicle Speed (km/h) and Engine RPM with dual Y-axes, dynamically fetching downsampled traces (`GET /api/traces`), rendering a real-time cursor needle tracking playback position, and allowing direct timeline scrubbing by clicking anywhere within the plot area. |
+
+---
+
+## 9. Implementation Traceability Matrix
 
 | Requirement ID | Implementing File | Function / Component / Handler | Verification Method |
 |---|---|---|---|
-| **REQ-SYS-001** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py` | Top-level imports (stdlib only) | Automated headless test (no pip dependencies) |
-| **REQ-SYS-002** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py` | `read_bin_file()`, `CAN_FRAME_STRUCT`, `CANFrame` | Binary unpack test against `.bin` captures |
-| **REQ-SYS-003** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `cockpit_3d.py` | `DbcDatabase.parse()`, `DbcMessage.decode()` | DBC parse verification with signed/scale/enum/float |
-| **REQ-SYS-004** | `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py` | CSS variables, `initTheme()`, `prefers-color-scheme` | Theme toggle & OS scheme auto-detection tests |
+| **REQ-SYS-001** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py`, `streamer.py` | Top-level imports (stdlib only) | Automated headless test (no pip dependencies) |
+| **REQ-SYS-002** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py`, `streamer.py` | `read_bin_file()`, `CAN_FRAME_STRUCT`, `CANFrame` | Binary unpack test against `.bin` captures |
+| **REQ-SYS-003** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `cockpit_3d.py`, `streamer.py` | `DbcDatabase.parse()`, `DbcMessage.decode()` | DBC parse verification with signed/scale/enum/float |
+| **REQ-SYS-004** | `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py`, `streamer.py` | CSS variables, `initTheme()`, `prefers-color-scheme` | Theme toggle & OS scheme auto-detection tests |
 | **REQ-SYS-005** | All `.md` files | Markdown relative links | Static doc link validation |
 | **REQ-SYS-006** | `tuner.py`, `gear_lab.py`, `cockpit_3d.py` | `.info-icon`, `title` attributes on controls | DOM verification of hover tooltips across all tabs |
-| **REQ-SYS-007** | `decoder/tests/` | `test_trim_log.py`, `test_tuner.py`, `test_gear_lab.py`, `test_gear_algorithms.py`, `test_cockpit_3d.py` | Full test suite execution via `python3 -m unittest` |
+| **REQ-SYS-007** | `decoder/tests/` | `test_trim_log.py`, `test_tuner.py`, `test_gear_lab.py`, `test_gear_algorithms.py`, `test_cockpit_3d.py`, `test_streamer.py` | Full test suite execution via `python3 -m unittest` |
+| **REQ-STR-001** | `streamer.py` | `pack_udp_packet()`, `struct.pack("<2sHHHHHH")` | Unit test in `test_streamer.py` verifying 14 bytes and checksum |
+| **REQ-STR-002** | `streamer.py` | `LogTimeline._decode_signals()`, `LogTimeline.sample_at()` | Unit test verifying primary debug vs. fallback conversion |
+| **REQ-STR-003** | `streamer.py` | `LogTimeline._compute_telltales_mask()` | Unit test verifying bit inversion, Ignition bit 15, and standby `0xD940` |
+| **REQ-STR-004** | `streamer.py` | `PlaybackStreamer._worker_loop()` | Loopback UDP capture test in `test_streamer.py` asserting ~50 Hz rate |
+| **REQ-STR-005** | `streamer.py`, `streamer.js` | `PlaybackStreamer` seek/speed/loop/pause controls | Integration test verifying state transitions and seek accuracy |
+| **REQ-STR-006** | `streamer.py`, `streamer.html`, `streamer.js` | `StreamerHandler`, `start_server()`, HUD DOM | Web asset validation test in `test_streamer.py` |
+| **REQ-STR-007** | `streamer.py`, `streamer.html`, `streamer.js` | `LogTimeline.get_traces()`, `GET /api/traces`, Plotly HUD & cursor | Unit test `test_timeline_traces` in `test_streamer.py` |
 | **REQ-CPT-001** | `cockpit_3d.py`, `cockpit_3d.js` | `extract_cockpit_trajectory()`, `buildTrajectoryGeometry()`, `getInterpolatedPoint()` | Initial $z=0.0$ unit test, stanchions & continuous interpolation |
 | **REQ-CPT-002** | `cockpit_3d.js` | `updateTrajectoryColors()`, `speedToColor()` | Dynamic vertex color update & greyed future test |
 | **REQ-CPT-003** | `cockpit_3d.html`, `cockpit_3d.js` | `updateHUD()`, SVG needle-less arcs, `rpm-glyph`, `gear-glyph` | Dual-screen DOM elements & arc geometry checks |

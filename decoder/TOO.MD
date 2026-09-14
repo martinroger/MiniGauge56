@@ -17,11 +17,12 @@ The toolset follows a modular layered architecture:
 |  - gear_lab.html          - components.css (Cards, Sliders) - leaflet_map.js  |
 |  - trim_log.html          - map.css (GPS Drawer, HUD)       - plotly_theme.js |
 |  - cockpit_3d.html        - cockpit_3d.css (HUD, Glow)      - cockpit_3d.js   |
+|  - streamer.html          - streamer.css (Dual HUD, LED)    - streamer.js     |
 +---------------------------------------+---------------------------------------+
                                         | HTTP / JSON / Static Assets
 +---------------------------------------v---------------------------------------+
 |                       PYTHON OFFLINE APPLICATION LAYER                        |
-|   visualize.py    tuner.py      gear_lab.py     trim_log.py    cockpit_3d.py  |
+| visualize.py  tuner.py  gear_lab.py  trim_log.py  cockpit_3d.py  streamer.py  |
 +---------------------------------------+---------------------------------------+
                                         | Shared Services
 +---------------------------------------v---------------------------------------+
@@ -65,6 +66,12 @@ The toolset follows a modular layered architecture:
 - **Three.js WebGL Graphics Pipeline**: Renders 3D trajectory ribbons with instantaneous speed heatmapping, greyed-out future horizon, vertical reference stanchions extending to the $0\text{m}$ ground plane, vehicle frame 3D G-vector arrows, fixed-frustum non-culling 1200-particle trail, distance-smoothed lookahead chase camera ($45,000\text{m}$ render distance), tethered orbit camera tracking (preserving constant orbit radius), local smoothed road grade estimation ($\pm 25\text{m}$ spatial window), and live vertical exaggeration ($1.0\times$ to $5.0\times$).
 - **`vx-binocle-espidf` Instrument Cluster**: Pure SVG needle-less perimeter gauges mathematically aligned with graduations for RPM (0–80 with $\times 100$ RPM sub-label) and Speed (0–240 KPH), centered numeric RPM and speed readouts, centered lower diagnostic readouts (`COOL`, `FUEL`), floating bottom gear dock, enlarged $192\text{px}$ uncontainerized G-meter with additive blending/summing dwell heatmap, red indicator dot, automatic red alert thresholding, and collapsible HUD controls.
 
+### 2.6 CAN Log Replayer & UDP Streamer (`decoder/streamer.py`)
+- **`pack_udp_packet`**: Serializes 14-byte binary datagrams (`VehicleUdpPacket`) with `0xAA 0x55` magic, 16-bit telltales mask, speed freq x10, rpm freq x10, coolant duty x100, fuel resistance x10, and 16-bit arithmetic checksum.
+- **`LogTimeline`**: Time-indexed random-access timeline builder indexing mapped signals across the log. Prioritizes measured interface board debug signals (`0x300`–`0x305`) over converted vehicle signals, and performs bit-exact telltale mask mapping with hardware polarity inversions and active Ignition protection.
+- **`PlaybackStreamer`**: High-precision 50 Hz streaming loop with microsecond-level clock drift compensation, non-blocking seeking, speed scaling (`0.25x` to `5.0x`), seamless loop replay, and safe standby transmission on stop.
+- **`get_traces` & Plotly HUD**: Downsamples Speed and RPM time-series vectors (`GET /api/traces`) for rendering in a dual Y-axis Plotly chart, paired with a sub-pixel tracking cursor needle and interactive click-to-seek scrub support.
+
 ---
 
 ## 3. Web Asset Delivery Strategy
@@ -76,14 +83,16 @@ Assets are organized into dedicated directories:
   - `components.css`: Reusable UI controls including buttons, dynamic-gradient sliders, cards, data tables, and badges.
   - `map.css`: Collapsible Leaflet GPS drawer, velocity HUD, and rotating compass styling.
   - `cockpit_3d.css`: Cyberpunk negative-space HUD layout, glassmorphic panels, neon glow filters, and collapsible bar animations.
+  - `streamer.css`: Circular cluster gauges, telltale annunciator grid, and UDP packet inspector.
 - **`decoder/web/static/js/`**:
   - `theme.js`: OS `prefers-color-scheme` listener with `localStorage` persistence and `minigauge-theme-changed` dispatch.
   - `toast.js`: Non-intrusive notification banner manager.
   - `plotly_theme.js`: Plotly layout generators syncing dark/light modes and container ResizeObservers.
   - `leaflet_map.js`: Leaflet GPS track drawer with binary search telemetry synchronization.
   - `cockpit_3d.js`: Three.js WebGL scene lifecycle, speed heatmap shader, warp particle system, G-force camera roll, and dual-screen SVG gauge updating.
+  - `streamer.js`: Replay transport controls, scrub bar dragging, dual circular HUD arcs, and live UDP packet inspector.
 - **`decoder/web/templates/`**:
-  - `visualize.html`, `tuner.html`, `gear_lab.html`, `trim_log.html`, and `cockpit_3d.html`.
+  - `visualize.html`, `tuner.html`, `gear_lab.html`, `trim_log.html`, `cockpit_3d.html`, and `streamer.html`.
   - Clean HTML5 documents containing zero inline style blocks or embedded third-party script definitions.
 
 ---
@@ -210,6 +219,38 @@ sequenceDiagram
     UI->>Three: updateCamera(), lerp smoothDir, scale G-vectors (110x, renderOrder=999)
     UI->>UI: updateHUD(): gTot >= gThresh ? trigger alert-red flashing : normal
     UI->>UI: Clamp & position G-ball relative to g_bound
+```
+
+### 4.6 Vehicle Emulator UDP Replay & Streaming Loop (`streamer.py`)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as streamer.js (Web UI)
+    participant Srv as StreamerHandler (Python HTTP)
+    participant Engine as PlaybackStreamer Worker
+    participant Emu as binocle-emulator:8888 (UDP)
+
+    UI->>Srv: POST /api/control {action: "load", filename: "log.bin"}
+    Srv->>Engine: load_log()
+    Engine->>Engine: LogTimeline: Index 0x300-0x305, 0x100, 0x110, 0x101
+    Srv-->>UI: 200 OK {state: "STOPPED", duration_s: 250.7}
+    UI->>Srv: POST /api/control {action: "play"}
+    Srv->>Engine: play() -> state: PLAYING
+    loop Every 20 ms (50 Hz Fixed Rate)
+        Engine->>Engine: sample_at(current_time_s)
+        Engine->>Engine: pack_udp_packet() [0xAA, 0x55, mask, spd, rpm, cool, fuel, chk]
+        Engine->>Emu: UDP sendto(14-byte VehicleUdpPacket)
+        Emu->>Emu: McpwmManager::set_frequency / write_resistor_mask
+    end
+    loop Every 100 ms (Web UI Polling)
+        UI->>Srv: GET /api/status
+        Srv-->>UI: 200 OK JSON {telemetry, last_packet_hex, rate_hz}
+        UI->>UI: Update Speed/RPM SVG Arcs & Telltale LEDs
+    end
+    UI->>Srv: POST /api/control {action: "stop"}
+    Srv->>Engine: stop() -> send_standby_packet()
+    Engine->>Emu: UDP sendto(0xD940 standby, 0 km/h, 0 RPM)
 ```
 
 ---
