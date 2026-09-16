@@ -1,0 +1,279 @@
+/**
+ * MiniGauge Common UI Components: Buttons, Inputs, Sliders, Cards, Tables, Toasts & Tooltips
+ */
+
+/* Form controls & inputs */
+select, input, button {
+  font-family: inherit;
+  font-size: 0.82rem;
+}
+
+select, input[type="text"], input[type="number"] {
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  padding: 0.35rem 0.65rem;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+select:focus, input[type="text"]:focus, input[type="number"]:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(221, 107, 61, 0.2);
+}
+
+[data-theme="light"] select:focus,
+[data-theme="light"] input[type="text"]:focus,
+[data-theme="light"] input[type="number"]:focus,
+body.theme-light select:focus,
+body.theme-light input[type="text"]:focus,
+body.theme-light input[type="number"]:focus {
+  box-shadow: 0 0 0 2px rgba(43, 92, 146, 0.2);
+}
+
+/* Buttons */
+.btn, button.btn-action, .btn-primary, .btn-secondary, .btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font-weight: 500;
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #ffffff;
+  border-color: var(--primary);
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.btn-secondary {
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+}
+
+.btn-secondary:hover {
+  background: var(--hover-bg);
+  border-color: var(--primary);
+}
+
+.btn-icon {
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  cursor: pointer;
+}
+
+.btn-icon:hover {
+  background: var(--hover-bg);
+  border-color: var(--primary);
+}
+
+/* Unified 3-State Theme Toggle Button */
+.btn-theme-toggle,
+#btnThemeToggle,
+#btn-theme-toggle,
+#btn-theme {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.32rem 0.65rem;
+  min-width: 72px;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 500;
+  white-space: nowrap;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.btn-theme-toggle:hover,
+#btnThemeToggle:hover,
+#btn-theme-toggle:hover,
+#btn-theme:hover {
+  background: var(--hover-bg);
+  border-color: var(--primary);
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #ffffff;
+  border-color: var(--danger);
+}
+
+.btn-sm {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+}
+
+/* Custom dynamic dual-color slider tracks */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  padding: 0 !important;
+  margin: 0;
+  border-radius: 9999px;
+  outline: none;
+  cursor: pointer;
+  box-sizing: border-box;
+  background: linear-gradient(
+    to right,
+    var(--primary) 0%,
+    var(--primary) var(--slider-fill, calc(var(--slider-pct, 50%) + 0px)),
+    var(--slider-track-bg) var(--slider-fill, calc(var(--slider-pct, 50%) + 0px)),
+    var(--slider-track-bg) 100%
+  );
+  border: 1px solid var(--slider-track-border);
+  transition: border-color 0.2s ease;
+}
+
+input[type="range"]:focus {
+  border-color: var(--primary);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 2px solid var(--thumb-ring);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: transform 0.1s ease, background-color 0.15s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  background: var(--primary-hover);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 2px solid var(--thumb-ring);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+/* Cards & containers */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 0.85rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  transition: border-color 0.2s ease;
+}
+
+.card:hover {
+  border-color: var(--card-border-active);
+}
+
+.card-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Info tooltips */
+.info-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--badge-bg);
+  color: var(--badge-text);
+  font-size: 0.68rem;
+  font-weight: bold;
+  cursor: help;
+  margin-left: 0.35rem;
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+th {
+  background: var(--input-bg);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--divider);
+}
+
+td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--divider);
+}
+
+tbody tr:hover {
+  background: var(--hover-bg);
+}
+
+/* Toast Notifications */
+#toast, .toast-container {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.toast-msg {
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  padding: 0.6rem 1rem;
+  font-size: 0.85rem;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+  animation: toast-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+}
+
+@keyframes toast-in {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+

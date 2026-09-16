@@ -1,11 +1,13 @@
 # MiniGauge Decoder Toolset Requirements Specification
 
-This document defines the functional, technical, and architectural requirements for the Python 3 offline diagnostic, calibration, and slicing toolset located in `decoder/`. The toolset consists of 5 modular utilities:
+This document defines the functional, technical, and architectural requirements for the Python 3 offline diagnostic, calibration, and slicing toolset located in `decoder/`. The toolset consists of 7 modular utilities:
 1. **Batch Decoder & Exporter (`decode.py`)**
 2. **Interactive Signal Visualizer (`visualize.py`)**
 3. **Algorithm Calibration & Tuning Lab (`tuner.py`)**
 4. **Dedicated Gear Estimator Lab & Model Trainer (`gear_lab.py`)**
 5. **CAN Log Trimmer & Slicer (`trim_log.py`)**
+6. **3D Cyber-Cockpit & Drive Trajectory Replayer (`cockpit_3d.py`)**
+7. **CAN Log Replayer & UDP Streamer (`streamer.py`)**
 
 ---
 
@@ -20,6 +22,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-SYS-005** | Portable Relative Linking | All internal documentation references MUST use relative file paths without machine-specific absolute filesystem paths. |
 | **REQ-SYS-006** | Interactive Parameter Tooltips | All algorithmic sliders, parameter inputs, and stage toggles in `tuner.py` and `gear_lab.py` MUST provide informative hover tooltips (using styled info badges `ⓘ` and native HTML attributes) detailing physical roles and operational effects. |
 | **REQ-SYS-007** | Automated Regression & DOM Verification Suite | The decoder toolset MUST maintain automated, repeatable integration test suites in `decoder/tests/` verifying server lifecycles, API endpoints, C99 export compilation with GCC (`-Wall -Wextra -Werror`), DOM ID integrity between client-side JavaScript and HTML templates, and algorithm offline simulations without leaving working tree artifacts. |
+| **REQ-SYS-008** | Modular Package Architecture & Static Asset Separation | Core CAN parsing (`can_core.py`), DBC interpretation (`dbc.py`), calibration persistence (`calibration.py`), and HTTP request handling (`http_server.py`) MUST be decoupled into the `decoder/common/` package. All shared web styling (`*.css`) and client-side scripts (`*.js`) MUST reside in `decoder/web/static/`, and semantic HTML structures MUST reside in `decoder/web/templates/`, eliminating embedded CSS/HTML strings from Python application files. |
 
 ---
 
@@ -75,7 +78,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TUN-GEAR-002** | Prior Decay & Inertia Weighting | The tool MUST provide sliders for Prior Decay factor (`m2_decay`, range 0.70 to 0.99) and Transition Inertia (`m2_inertia`, range 0.50 to 0.98) to control recursive state memory persistence and shift resistance. |
 | **REQ-TUN-GEAR-003** | Physical Dual Cutoff Gating | The tool MUST enforce minimum vehicle speed (`slider-gear-minspeed`) and engine RPM (`slider-gear-minrpm`) cutoffs with dual-unit tooltips/labels (Hz and km/h / RPM). Samples below either cutoff MUST immediately transition to Neutral (0) without delay. |
 | **REQ-TUN-GEAR-004** | Confidence Thresholding & State 14 | The tool MUST provide a confidence cutoff slider (`slider-m2-conf`, range 0.10 to 0.90). When posterior confidence fails the threshold, the output MUST report DBC State 14 (*Uncertain*) rather than spuriously holding stale gears. |
-| **REQ-TUN-GEAR-005** | Ratio Tolerance & Cluster Peaks | The tool MUST support adjusting ratio tolerance (`slider-gear-tol`, range 0.05 to 0.60) and 5 individual gear center ratios (`gear-r-1` through `gear-r-5`), supported by 1-click **Auto-Detect Peaks** clustering. |
+| **REQ-TUN-GEAR-005** | Gear Ratio Centers & Cluster Peaks | The tool MUST support 5 individual gear center ratios (`gear-r-1` through `gear-r-5`), supported by 1-click **Auto-Detect Peaks** clustering and Gaussian variance distribution tracking. |
 | **REQ-TUN-GEAR-006** | Temporal Output Latching | The tool MUST provide a temporal latch duration slider (`slider-m2-latch`, range 0 to 600 ms) to suppress transient shift chatter by requiring sustained probability commitment. |
 | **REQ-TUN-GEAR-007** | Shared Calibration Auto-Loading & Persistence | The tool MUST automatically fetch and load `decoder/gear_calibration.json` via `GET /api/calibration` on startup if present, and support saving updated Bayesian parameters via `POST /api/calibration`. |
 | **REQ-TUN-GEAR-008** | Dynamic Math Explainer | The sidebar MUST display a dynamic mathematical explainer card that rebuilds its formulas, active parameter values, and explanatory text in real time as presets or modular stage checkboxes change. |
@@ -163,17 +166,69 @@ This document defines the functional, technical, and architectural requirements 
 
 ---
 
-## 7. Implementation Traceability Matrix
+## 7. 3D Cyber-Cockpit & Drive Trajectory Replayer (`cockpit_3d.py`) Requirements
+
+### 7.1 Scope & Purpose
+`cockpit_3d.py` provides an interactive, theatrical 3D visualization of the vehicle drive trajectory with elevation integrated in the spatial geometry, combined with an uncontainerized cyberpunk instrument cluster replayer inspired by `vx-binocle-espidf`.
+
+### 7.2 Functional Requirements
+
+| ID | Title | Requirement Statement |
+|---|---|---|
+| **REQ-CPT-001** | Metric 3D ENU Trajectory, Stanchions & Smooth Gliding | The tool MUST project WGS84 GPS fixes into metric ENU coordinates re-scaled so that the initial point starts cleanly at relative $z = 0.0\text{m}$, apply Gaussian GPS pre-smoothing to eliminate lateral jitter, compute smoothed local road slope grade ($\%$) over a rolling spatial distance window ($\pm 25\text{m}$), render vertical reference stanchions down to the $0\text{m}$ plane, and interpolate sub-frame positions continuously. |
+| **REQ-CPT-002** | Speed Heatmap & Greyed Future Horizon | The 3D trajectory ribbon MUST dynamically color past and present driven points ($t \le t_{cur}$) based on instantaneous vehicle speed (Cyan $\rightarrow$ Emerald $\rightarrow$ Amber $\rightarrow$ Neon Red), while rendering upcoming future points ($t > t_{cur}$) as a faint translucent grey wireframe trace. |
+| **REQ-CPT-003** | `vx-binocle-espidf` Instrument Cluster | The UI MUST implement pure SVG needle-less circular displays with glowing perimeter progress arcs mathematically aligned with tick graduations (Left: 0–80 with $\times 100$ RPM indication, centered numeric RPM, centered COOL/FUEL; Right: 0–240 KPH with centered speed digits, voltage/trip). The gear indicator MUST float at bottom center right above the replay scrubber bar. |
+| **REQ-CPT-004** | Open Central Horizon & G-Meter Friction Circle | The central horizontal corridor between the dual displays MUST remain completely unobstructed for the vehicle chase camera. The IMU G-meter friction circle ($192\text{px}$) MUST be centered directly above the vehicle trajectory line, normalized dynamically to $1.1 \times G_{\max}$ with an intermediate dashed guide ring at $50\%$ of $G_{\max}$, render a cumulative phantom trace heatmap background of dwell time with a white-to-red gradient using additive blending/summing and 50% opacity (`#g-heatmap-canvas`), feature a small red indicator dot (`#ff2a55`), and automatically trigger a high-intensity Neon Red flashing alert when the instantaneous G-vector norm exceeds 75% of the drivecycle maximum acceleration ($G_{\max}$). |
+| **REQ-CPT-005** | Forward Cone Avatar, Refined Trail & Enlarged G-Vectors | The Three.js WebGL scene MUST feature a forward-facing 3D cone vehicle avatar oriented along the motion vector tangent, a refined speed particle trail streaming from the cone's rear base (with size and lifespan reduced by half), dynamic vehicle speed coloring, interactive mouse wheel zoom in Chase, Top, and tethered Orbit views (where camera translates with the vehicle to preserve a constant orbiting radius), and toggleable vehicle-frame 3D G-vector arrows (`G-VEC`) scaled prominently (at least $2.4\times$ longer with enlarged arrowheads and priority z-rendering) indicating longitudinal acceleration (X-axis `g_lon`, green forward accel / red braking) and lateral acceleration (Y-axis `g_lat`, amber cornering). |
+| **REQ-CPT-006** | Collapsible Storytelling Mode & Z-Scale | Top and bottom HUD panels MUST smoothly collapse away upon pressing `H` (or clicking the toggle handle). The tool MUST feature an interactive vertical exaggeration slider ($1.0\times$ to $5.0\times$) to dynamically amplify elevation gradients. |
+| **REQ-CPT-007** | Zero-Pip Standalone Entrypoint & REST API | The backend MUST operate with zero pip dependencies, providing `/`, `/api/logs`, and `/api/trajectory` endpoints with automatic local port discovery. |
+
+---
+
+## 8. CAN Log Replayer & UDP Streamer (`streamer.py`) Requirements
+
+### 8.1 Scope & Purpose
+`streamer.py` provides high-fidelity real-time replaying and UDP streaming of recorded MiniGauge `.bin` CAN logs to the vehicle emulator hardware running ESPHome firmware (`emulator-console.yaml` / `udp_receiver.h`) at `binocle-emulator.local:8888`.
+
+### 8.2 Functional Requirements
+
+| ID | Title | Requirement Statement |
+|---|---|---|
+| **REQ-STR-001** | 14-Byte Binary UDP Datagram Serialization | The tool MUST pack vehicle telemetry into the little-endian 14-byte `VehicleUdpPacket` structure (`0xAA 0x55` magic, 16-bit telltales mask, 16-bit speed frequency x10 in 0.1 Hz, 16-bit RPM frequency x10 in 0.1 Hz, 16-bit coolant duty x100 in 0.01%, 16-bit fuel resistance x10 in 0.1 Ohm, and 16-bit arithmetic checksum of bytes 0..11). |
+| **REQ-STR-002** | Prioritized Hardware-Accurate Signal Extraction | The replayer timeline MUST prioritize low-level measured debug signals (`0x300` `DBG_speed_freq`, `0x301` `DBG_RPM_freq`, `0x302` `DBG_coolant_duty`, `0x305` `DBG_fuel_r`) when logged, automatically falling back to standard vehicle CAN signals (`0x100` speed/RPM, `0x110` coolant/fuel) converted via emulator calibration formulas if debug frames are not present. |
+| **REQ-STR-003** | 16-Telltale Expander 0 Logic & Inversion | The tool MUST map `0x101` `ITF_active_hi_lo` to TCA9555 Expander 0 (`0x20`), applying hardware polarity inversion to active-low lines (High Beams bit 14, Left Turn bit 12, Right Turn bit 11, Low Coolant bit 8), enforcing Ignition bit 15 continuously HIGH (`1`) to prevent board shutdown, and restoring Safe Standby (`0xD940`) upon stop or log completion. |
+| **REQ-STR-004** | 50 Hz Fixed-Rate Transmission Worker | The background streaming thread MUST pace datagram transmission at a deterministic 50 Hz (20 ms interval) using `time.perf_counter()`, sampling the active log state at current playback time to ensure jitter-free physical cluster needle actuation. |
+| **REQ-STR-005** | Transport Controls & Scrub Timeline | The tool MUST support Play, Pause, Stop, Seek/Scrubbing across the drive timeline, variable playback speed (`0.25x`, `0.5x`, `1.0x`, `2.0x`, `5.0x`), seamless loop replay, and a configurable "Freeze on Pause" toggle. |
+| **REQ-STR-006** | Zero-Pip Server, Dual HUD & Packet Inspector | The tool MUST run with zero pip dependencies, serving an interactive dual-gauge cluster HUD (Speedometer & Tachometer with SVG perimeter arcs, Coolant & Fuel bars, 16-indicator annunciator grid) and live UDP packet inspector over REST endpoints (`/`, `/api/logs`, `/api/status`, `/api/control`). |
+| **REQ-STR-007** | Dual-Trace Telemetry Chart & Interactive Cursor Tracking | The UI MUST display a synchronized time-series chart of vehicle Speed (km/h) and Engine RPM with dual Y-axes, dynamically fetching downsampled traces (`GET /api/traces`), rendering a real-time cursor needle tracking playback position, and allowing direct timeline scrubbing by clicking anywhere within the plot area. |
+
+---
+
+## 9. Implementation Traceability Matrix
 
 | Requirement ID | Implementing File | Function / Component / Handler | Verification Method |
 |---|---|---|---|
-| **REQ-SYS-001** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py` | Top-level imports (stdlib only) | Automated headless test (no pip dependencies) |
-| **REQ-SYS-002** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py` | `read_bin_file()`, `CAN_FRAME_STRUCT`, `CANFrame` | Binary unpack test against `.bin` captures |
-| **REQ-SYS-003** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py` | `DbcDatabase.parse()`, `DbcMessage.decode()` | DBC parse verification with signed/scale/enum/float |
-| **REQ-SYS-004** | `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py` | CSS variables, `initTheme()`, `prefers-color-scheme` | Theme toggle & OS scheme auto-detection tests |
+| **REQ-SYS-001** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py`, `streamer.py` | Top-level imports (stdlib only) | Automated headless test (no pip dependencies) |
+| **REQ-SYS-002** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py`, `streamer.py` | `read_bin_file()`, `CAN_FRAME_STRUCT`, `CANFrame` | Binary unpack test against `.bin` captures |
+| **REQ-SYS-003** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `cockpit_3d.py`, `streamer.py` | `DbcDatabase.parse()`, `DbcMessage.decode()` | DBC parse verification with signed/scale/enum/float |
+| **REQ-SYS-004** | `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py`, `streamer.py` | CSS variables, `initTheme()`, `prefers-color-scheme` | Theme toggle & OS scheme auto-detection tests |
 | **REQ-SYS-005** | All `.md` files | Markdown relative links | Static doc link validation |
-| **REQ-SYS-006** | `tuner.py`, `gear_lab.py` | `.info-icon`, `title` attributes on controls | DOM verification of hover tooltips across all tabs |
-| **REQ-SYS-007** | `decoder/tests/` | `test_trim_log.py`, `test_tuner.py`, `test_gear_lab.py`, `test_gear_algorithms.py` | Full test suite execution via `python3 -m unittest` |
+| **REQ-SYS-006** | `tuner.py`, `gear_lab.py`, `cockpit_3d.py` | `.info-icon`, `title` attributes on controls | DOM verification of hover tooltips across all tabs |
+| **REQ-SYS-007** | `decoder/tests/` | `test_trim_log.py`, `test_tuner.py`, `test_gear_lab.py`, `test_gear_algorithms.py`, `test_cockpit_3d.py`, `test_streamer.py` | Full test suite execution via `python3 -m unittest` |
+| **REQ-STR-001** | `streamer.py` | `pack_udp_packet()`, `struct.pack("<2sHHHHHH")` | Unit test in `test_streamer.py` verifying 14 bytes and checksum |
+| **REQ-STR-002** | `streamer.py` | `LogTimeline._decode_signals()`, `LogTimeline.sample_at()` | Unit test verifying primary debug vs. fallback conversion |
+| **REQ-STR-003** | `streamer.py` | `LogTimeline._compute_telltales_mask()` | Unit test verifying bit inversion, Ignition bit 15, and standby `0xD940` |
+| **REQ-STR-004** | `streamer.py` | `PlaybackStreamer._worker_loop()` | Loopback UDP capture test in `test_streamer.py` asserting ~50 Hz rate |
+| **REQ-STR-005** | `streamer.py`, `streamer.js` | `PlaybackStreamer` seek/speed/loop/pause controls | Integration test verifying state transitions and seek accuracy |
+| **REQ-STR-006** | `streamer.py`, `streamer.html`, `streamer.js` | `StreamerHandler`, `start_server()`, HUD DOM | Web asset validation test in `test_streamer.py` |
+| **REQ-STR-007** | `streamer.py`, `streamer.html`, `streamer.js` | `LogTimeline.get_traces()`, `GET /api/traces`, Plotly HUD & cursor | Unit test `test_timeline_traces` in `test_streamer.py` |
+| **REQ-CPT-001** | `cockpit_3d.py`, `cockpit_3d.js` | `extract_cockpit_trajectory()`, `buildTrajectoryGeometry()`, `getInterpolatedPoint()` | Initial $z=0.0$ unit test, stanchions & continuous interpolation |
+| **REQ-CPT-002** | `cockpit_3d.js` | `updateTrajectoryColors()`, `speedToColor()` | Dynamic vertex color update & greyed future test |
+| **REQ-CPT-003** | `cockpit_3d.html`, `cockpit_3d.js` | `updateHUD()`, SVG needle-less arcs, `rpm-glyph`, `gear-glyph` | Dual-screen DOM elements & arc geometry checks |
+| **REQ-CPT-004** | `cockpit_3d.html`, `cockpit_3d.css`, `cockpit_3d.js` | `g-meter-pod`, `alert-red`, `stats.g_thresh` | DOM inspection, 192px diameter, red dot, additive blend & alert-red trigger |
+| **REQ-CPT-005** | `cockpit_3d.js`, `cockpit_3d.html` | `initVehicleParticles()`, `chk-g-vectors`, `arrowLon`, `arrowLat`, wheel zoom | Particle non-culling test, arrow helpers & wheel zoom |
+| **REQ-CPT-006** | `cockpit_3d.html`, `cockpit_3d.js` | `toggleHUD()`, `updateGeometryZScale()` | Collapsible class toggle & dynamic Z-scale tests |
+| **REQ-CPT-007** | `cockpit_3d.py` | `CockpitHandler`, `start_server()` | Server lifecycle & REST API endpoints tests |
 | **REQ-DEC-001** | `decode.py` | `write_asc()` | Vector CANoe format validation test |
 | **REQ-DEC-002** | `decode.py` | `write_csv()` | CSV column structure validation |
 | **REQ-DEC-003** | `decode.py` | `write_signals_csv()` | Normalized time-series test with `-s` flag |
@@ -193,7 +248,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TUN-GEAR-002** | `tuner.py` | `slider-m2-decay`, `slider-m2-inertia` listeners | Prior decay and transition inertia updates |
 | **REQ-TUN-GEAR-003** | `tuner.py` | `slider-gear-minspeed`, `slider-gear-minrpm` | Dual-unit gating and standstill Neutral tests |
 | **REQ-TUN-GEAR-004** | `tuner.py` | `slider-m2-conf`, state 14 emission | Confidence cutoff and Uncertain state test |
-| **REQ-TUN-GEAR-005** | `tuner.py` | `slider-gear-tol`, `gear-r-1..5` inputs | Tolerance band and peak detection tests |
+| **REQ-TUN-GEAR-005** | `tuner.py` | `gear-r-1..5` inputs, `btn-auto-gear-peaks` | Ratio centers and peak detection tests |
 | **REQ-TUN-GEAR-006** | `tuner.py` | `slider-m2-latch`, latch state tracking | Temporal latching and debouncing verification |
 | **REQ-TUN-GEAR-007** | `tuner.py` | `autoLoadSharedCal()`, `/api/calibration` | Startup auto-load and JSON save/load tests |
 | **REQ-TUN-GEAR-008** | `tuner.py` | `renderGearMathExplanation()` | Dynamic math card DOM generation test |
@@ -235,4 +290,5 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TRIM-006** | `trim_log.py` | `default_output_name()`, overwrite checks | Non-destructive naming & safety tests |
 | **REQ-TRIM-007** | `trim_log.py` | `HTML_PAGE`, `TrimRequestHandler` | Web GUI endpoint and download validation |
 | **REQ-TRIM-008** | `trim_log.py` | `renderGpsMap()`, `updateMapSlice()`, Leaflet | Side-by-side map drawer, route snapping & placeholder |
+| **REQ-SYS-008** | `decoder/common/`, `decoder/web/` | `can_core.py`, `dbc.py`, `calibration.py`, `http_server.py`, static assets, templates | `test_common_components.py` suite (7 tests) & zero-pip imports |
 

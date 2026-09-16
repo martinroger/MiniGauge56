@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MiniGauge 3D Cyber-Cockpit & Drive Trajectory</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/theme.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/cockpit_3d.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="/static/js/theme.js"></script>
+  <script src="/static/js/toast.js"></script>
+  <style>
+    .flex { display: flex; }
+    .flex-col { flex-direction: column; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+    .justify-center { justify-content: center; }
+    .gap-1 { gap: 0.25rem; }
+    .gap-15 { gap: 0.375rem; }
+    .gap-2 { gap: 0.5rem; }
+    .gap-3 { gap: 0.75rem; }
+    .gap-4 { gap: 1rem; }
+    .w-full { width: 100%; }
+    .h-full { height: 100%; }
+    .text-xs { font-size: 0.75rem; }
+    .text-sm { font-size: 0.875rem; }
+    .font-bold { font-weight: 700; }
+    .uppercase { text-transform: uppercase; }
+    .rounded { border-radius: 0.25rem; }
+    .rounded-lg { border-radius: 0.5rem; }
+    .rounded-xl { border-radius: 0.75rem; }
+    .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+    .px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+    .px-4 { padding-left: 1rem; padding-right: 1rem; }
+    .py-05 { padding-top: 0.125rem; padding-bottom: 0.125rem; }
+    .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+    .py-15 { padding-top: 0.375rem; padding-bottom: 0.375rem; }
+    .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+    .whitespace-nowrap { white-space: nowrap; }
+    .flex-shrink-0 { flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+  <!-- Fullscreen 3D Viewport (Three.js WebGL) -->
+  <div id="viewport-container">
+    <canvas id="canvas3d"></canvas>
+    <div class="vignette-overlay"></div>
+  </div>
+
+  <!-- Loading State Overlay -->
+  <div id="loading-overlay">
+    <div class="flex flex-col items-center gap-3">
+      <div style="width: 48px; height: 48px; border: 3px solid rgba(0, 240, 255, 0.2); border-top-color: #00f0ff; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+      <div class="mono text-xs text-cyan-400 font-bold tracking-widest" style="letter-spacing: 2px;">DECODING 3D TELEMETRY...</div>
+    </div>
+  </div>
+  <style>
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+
+  <!-- Negative-Space Uncontainerized Floating HUD Layer -->
+  <div class="hud-layer">
+    
+    <!-- Top Floating Header & Controls (Clean, Compact, No Overflow & No Collision) -->
+    <div class="flex flex-col items-center gap-1">
+      <div id="top-bar" class="collapsible-top hud-glass-panel w-full flex items-center justify-between px-3.5 py-1.5 rounded-xl" style="max-width: 1240px; gap: 0.75rem;">
+        
+        <!-- Left: Log Selector & Overview (No Wrap) -->
+        <div class="flex items-center gap-2 flex-shrink-0 whitespace-nowrap">
+          <select id="log-select" class="mono hud-btn text-xs" style="background:rgba(15,23,42,0.85); outline:none; max-width:240px;">
+            <option value="">Loading logs...</option>
+          </select>
+          <span id="log-filename" style="display:none;"></span>
+          <div class="mono text-xs whitespace-nowrap" style="color:#94a3b8; font-size:11px;" id="log-meta">Loading telemetry...</div>
+        </div>
+
+        <!-- Center: Speed Heatmap Legend -->
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded flex-shrink-0 whitespace-nowrap" style="background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.08); font-size:10px; color:#94a3b8;">
+          <span class="mono">SPEED:</span>
+          <span style="color:#00f0ff; font-weight:bold;">0</span>
+          <div style="width:48px; height:4px; border-radius:2px; background:linear-gradient(to right, #00f0ff, #00ff66, #ffaa00, #ff2a55);"></div>
+          <span style="color:#ff2a55; font-weight:bold;">120+</span>
+          <span style="color:#64748b; margin-left:3px;">| Future: Grey</span>
+        </div>
+
+        <!-- Right: Camera Modes, Z-Scale, Particles (Theme Switcher Removed) -->
+        <div class="flex items-center gap-2 text-xs mono flex-shrink-0 whitespace-nowrap">
+          <div class="flex items-center gap-0.5 rounded-lg p-05" style="background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.1);">
+            <button id="cam-chase" class="hud-btn active" title="Press '1'">CHASE</button>
+            <button id="cam-hood" class="hud-btn" title="Press '2'">HOOD</button>
+            <button id="cam-free" class="hud-btn" title="Press '3'">ORBIT</button>
+            <button id="cam-top" class="hud-btn" title="Press '4'">TOP</button>
+          </div>
+
+          <div class="flex items-center gap-1 px-2 py-05 rounded-lg" style="background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.1);">
+            <span style="color:#94a3b8; font-size:10px;">Z:</span>
+            <input type="range" id="z-scale-slider" min="1.0" max="5.0" step="0.2" value="2.2" style="width:50px;">
+            <span id="z-scale-val" style="color:#00f0ff; font-weight:bold; width:24px; font-size:10px;">2.2x</span>
+          </div>
+
+          <button id="btn-particles" class="hud-btn active" title="Toggle Speed Warp Particles">PARTICLES</button>
+          <label class="hud-btn flex items-center gap-1 cursor-pointer" title="Display Longitudinal & Lateral Acceleration Vectors on Vehicle" style="padding:0.25rem 0.6rem; user-select:none;">
+            <input type="checkbox" id="chk-g-vectors" style="accent-color:#00f0ff; cursor:pointer; width:12px; height:12px;">
+            <span style="font-size:10px;">G-VEC</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Upper Floating HUD Tier: Centered Uncontainerized G-Meter & Flanking Pods -->
+      <div class="w-full flex items-center justify-between px-6 mt-1" style="max-width: 1240px; pointer-events:none;">
+        
+        <!-- Left: Elevation Pod -->
+        <div class="hud-glass-panel flex items-center gap-2.5 px-3 py-1.5 rounded-xl mono" style="pointer-events:auto;">
+          <div class="flex flex-col">
+            <span style="color:#94a3b8; font-size:9px; font-weight:700; letter-spacing:0.08em;">ELEVATION</span>
+            <span style="color:#ffffff; font-weight:800; font-size:13px;"><span id="center-alt">0</span> <span style="font-size:9px; color:#00f0ff; font-weight:normal;">m</span></span>
+            <span style="color:#00ff66; font-size:8px; font-weight:700;" id="center-grade">+0.0% GRADE</span>
+          </div>
+        </div>
+
+        <!-- CENTER: Uncontainerized Centered G-Meter (Doubled size: 192px diameter, Small Green Dot) -->
+        <div id="g-meter-pod" class="g-meter-uncontainerized">
+          <div id="g-circle" style="position:relative; width:192px; height:192px; border-radius:50%; border:1.5px solid rgba(0,240,255,0.45); display:flex; align-items:center; justify-content:center; background:rgba(4,6,11,0.65); box-shadow:0 0 24px rgba(0,240,255,0.18); transition:all 0.15s ease; overflow:hidden;">
+            <!-- Phantom Trace Heatmap Canvas (192x192, 50% opacity, blending/summing) -->
+            <canvas id="g-heatmap-canvas" width="192" height="192" style="position:absolute; top:0; left:0; width:100%; height:100%; border-radius:50%; pointer-events:none; opacity:0.5; mix-blend-mode:screen;"></canvas>
+            <!-- 1.1x Gmax Outer Bound Ring -->
+            <div style="position:absolute; width:100%; height:100%; border-radius:50%; border:1px solid rgba(0,240,255,0.25); pointer-events:none;"></div>
+            <!-- 50% Gmax Intermediate Ring (doubled to ~87.3px) -->
+            <div id="g-mid-ring" style="position:absolute; border-radius:50%; border:1px dashed rgba(0,240,255,0.4); pointer-events:none; transform:translate(-50%, -50%); top:50%; left:50%; width:87.3px; height:87.3px;"></div>
+            <!-- Crosshairs -->
+            <div style="position:absolute; width:100%; height:1px; background:rgba(0,240,255,0.25); pointer-events:none;"></div>
+            <div style="position:absolute; height:100%; width:1px; background:rgba(0,240,255,0.25); pointer-events:none;"></div>
+            <!-- Dynamic Calibration Labels -->
+            <span id="g-lbl-outer" style="position:absolute; top:4px; font-size:9px; color:rgba(148,163,184,0.7); pointer-events:none;" class="mono">--G</span>
+            <span id="g-lbl-mid" style="position:absolute; top:52px; font-size:8px; color:rgba(0,240,255,0.65); pointer-events:none;" class="mono">--G</span>
+            <!-- Dynamic G-Ball: Small Red Dot (8px) -->
+            <div id="g-dot" style="position:absolute; width:8px; height:8px; border-radius:50%; background:#ff2a55; box-shadow:0 0 10px #ff2a55, 0 0 16px rgba(255,42,85,0.8); transition:transform 0.05s linear, background 0.15s, box-shadow 0.15s; pointer-events:none; z-index:2;"></div>
+          </div>
+          <div id="g-display-wrap" class="flex items-center gap-1.5 mono mt-1" style="text-shadow: 0 0 6px rgba(0,0,0,0.9); transition:color 0.15s;">
+            <span style="color:#00f0ff; font-weight:800; font-size:13px;" id="g-display-label"><span id="g-display">0.00</span> G</span>
+            <span style="color:#94a3b8; font-size:9px;" id="g-sub">Lat +0.00g</span>
+          </div>
+        </div>
+
+        <!-- Right: Hide UI Button -->
+        <div class="flex items-center gap-2" style="pointer-events:auto;">
+          <!-- Quick Hide/Show HUD Toggle Handle -->
+          <button id="toggle-hud-btn" class="hud-btn mono uppercase text-xs flex items-center gap-1" style="border-radius:20px; padding:0.35rem 0.75rem;">
+            <span style="color:#00f0ff;">&bull;</span> <span id="hud-toggle-label">Hide UI (H)</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Central Uncontainerized Gauges Display (Twin Screens with Open Central Horizon) -->
+    <div id="gauges-cluster" class="w-full flex items-center justify-between" style="padding: 0 1.5rem; pointer-events: none; margin-top: auto; margin-bottom: auto;">
+      
+      <!-- LEFT SCREEN: TACHOMETER (RPM in Center, Mathematically Aligned Perimeter Arc) -->
+      <div class="flex flex-col items-center">
+        <div class="gauge-screen">
+          <svg viewBox="0 0 260 260" class="w-full h-full">
+            <circle cx="130" cy="130" r="124" fill="#04060b" fill-opacity="0.8" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" />
+            <circle cx="130" cy="130" r="128" fill="none" stroke="rgba(0, 240, 255, 0.2)" stroke-width="1" />
+
+            <!-- Track Guide Arc (0 to 8000 RPM, exactly 135° to 405° / 45°) -->
+            <path d="M 46.56 213.44 A 118 118 0 1 1 213.44 213.44" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="6" stroke-linecap="round" />
+
+            <!-- Mathematically Aligned Major Ticks (R_out=118, R_in=106, Center=130,130) -->
+            <g stroke="#64748b" stroke-width="1.8">
+              <!-- 0 RPM (135°) -->
+              <line x1="46.56" y1="213.44" x2="55.05" y2="204.95" />
+              <!-- 1000 RPM (168.75°) -->
+              <line x1="14.27" y1="153.02" x2="26.04" y2="150.68" />
+              <!-- 2000 RPM (202.5°) -->
+              <line x1="20.98" y1="84.84" x2="32.07" y2="89.44" />
+              <!-- 3000 RPM (236.25°) -->
+              <line x1="64.44" y1="31.89" x2="71.11" y2="41.86" />
+              <!-- 4000 RPM (270.0° Dead Center Top) -->
+              <line x1="130.00" y1="12.00" x2="130.00" y2="24.00" />
+              <!-- 5000 RPM (303.75°) -->
+              <line x1="195.56" y1="31.89" x2="188.89" y2="41.86" />
+              <!-- 6000 RPM (337.5° Redline) -->
+              <line x1="239.02" y1="84.84" x2="227.93" y2="89.44" stroke="#ff2a55" stroke-width="2.2" />
+              <!-- 7000 RPM (371.25° Redline) -->
+              <line x1="245.73" y1="153.02" x2="233.96" y2="150.68" stroke="#ff2a55" stroke-width="2.2" />
+              <!-- 8000 RPM (405.0° Redline) -->
+              <line x1="213.44" y1="213.44" x2="204.95" y2="204.95" stroke="#ff2a55" stroke-width="2.2" />
+            </g>
+
+            <!-- Numbers (0 to 80, x100 RPM) -->
+            <g fill="#94a3b8" font-size="10" font-family="monospace" font-weight="700">
+              <text x="64" y="196">0</text>
+              <text x="36" y="152">10</text>
+              <text x="42" y="98">20</text>
+              <text x="76" y="56">30</text>
+              <text x="130" y="42" text-anchor="middle">40</text>
+              <text x="184" y="56" text-anchor="end">50</text>
+              <text x="218" y="98" text-anchor="end" fill="#ff2a55">60</text>
+              <text x="224" y="152" text-anchor="end" fill="#ff2a55">70</text>
+              <text x="196" y="196" text-anchor="end" fill="#ff2a55">80</text>
+              <text x="196" y="208" text-anchor="end" fill="#64748b" font-size="7">x100 RPM</text>
+            </g>
+
+            <!-- Dynamically Aligned Perimeter Arc (R=118, Starts exactly at (46.56, 213.44)) -->
+            <path id="arc-rpm" d="M 46.56 213.44 A 118 118 0 0 1 46.56 213.44" fill="none" stroke="#00ff66" stroke-width="6" stroke-linecap="round" class="glow-green" />
+
+            <!-- CENTER READOUT: NUMERICAL RPM -->
+            <g transform="translate(130, 132)">
+              <text id="rpm-glyph" x="0" y="8" text-anchor="middle" fill="#f8fafc" font-size="34" font-family="monospace" font-weight="800" class="glow-cyan">0</text>
+              <text x="0" y="26" text-anchor="middle" fill="#64748b" font-size="9" font-family="monospace" font-weight="700" letter-spacing="1">RPM</text>
+            </g>
+
+            <!-- Bottom Diagnostic Readouts: COOL, FUEL -->
+            <g font-size="11" font-weight="700">
+              <text x="126" y="218" text-anchor="end" fill="#64748b">COOL</text>
+              <text id="txt-cool" x="134" y="218" text-anchor="start" fill="#f8fafc" class="mono">--c</text>
+              
+              <text x="126" y="232" text-anchor="end" fill="#64748b">FUEL</text>
+              <text id="txt-fuel" x="134" y="232" text-anchor="start" fill="#00f0ff" class="mono">--%</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <!-- OPEN CENTRAL HORIZON (Unobstructed View of Drive Path) -->
+      <div style="flex: 1; max-width: 260px;"></div>
+
+      <!-- RIGHT SCREEN: SPEEDOMETER (KPH in Center, Mathematically Aligned Perimeter Arc) -->
+      <div class="flex flex-col items-center">
+        <div class="gauge-screen">
+          <svg viewBox="0 0 260 260" class="w-full h-full">
+            <circle cx="130" cy="130" r="124" fill="#04060b" fill-opacity="0.8" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" />
+            <circle cx="130" cy="130" r="128" fill="none" stroke="rgba(0, 240, 255, 0.2)" stroke-width="1" />
+
+            <!-- Track Guide Arc -->
+            <path d="M 46.56 213.44 A 118 118 0 1 1 213.44 213.44" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="6" stroke-linecap="round" />
+
+            <!-- Mathematically Aligned Speed Ticks (Every 40 KPH from 0 to 240 KPH) -->
+            <g stroke="#64748b" stroke-width="1.8">
+              <!-- 0 KPH (135°) -->
+              <line x1="46.56" y1="213.44" x2="55.05" y2="204.95" />
+              <!-- 40 KPH (180° / 9 o'clock) -->
+              <line x1="12.00" y1="130.00" x2="24.00" y2="130.00" />
+              <!-- 80 KPH (225°) -->
+              <line x1="46.56" y1="46.56" x2="55.05" y2="55.05" />
+              <!-- 120 KPH (270° / 12 o'clock Dead Center) -->
+              <line x1="130.00" y1="12.00" x2="130.00" y2="24.00" />
+              <!-- 160 KPH (315°) -->
+              <line x1="213.44" y1="46.56" x2="204.95" y2="55.05" />
+              <!-- 200 KPH (360° / 3 o'clock) -->
+              <line x1="248.00" y1="130.00" x2="236.00" y2="130.00" stroke="#ff2a55" stroke-width="2.2" />
+              <!-- 240 KPH (405° / 45°) -->
+              <line x1="213.44" y1="213.44" x2="204.95" y2="204.95" stroke="#ff2a55" stroke-width="2.2" />
+            </g>
+
+            <!-- Speed Numbers -->
+            <g fill="#94a3b8" font-size="10" font-family="monospace" font-weight="700">
+              <text x="64" y="196">0</text>
+              <text x="36" y="134">40</text>
+              <text x="64" y="66">80</text>
+              <text x="130" y="42" text-anchor="middle">120</text>
+              <text x="196" y="66" text-anchor="end">160</text>
+              <text x="224" y="134" text-anchor="end" fill="#ff2a55">200</text>
+              <text x="196" y="196" text-anchor="end" fill="#ff2a55">240</text>
+              <text x="196" y="208" text-anchor="end" fill="#64748b" font-size="7">KPH</text>
+            </g>
+
+            <!-- Dynamically Aligned Perimeter Arc (R=118, Starts at (46.56, 213.44)) -->
+            <path id="arc-speed" d="M 46.56 213.44 A 118 118 0 0 1 46.56 213.44" fill="none" stroke="#00f0ff" stroke-width="6" stroke-linecap="round" class="glow-cyan" />
+
+            <!-- CENTER READOUT: NUMERICAL SPEED -->
+            <g transform="translate(130, 132)">
+              <text id="speed-glyph" x="0" y="8" text-anchor="middle" fill="#f8fafc" font-size="34" font-family="monospace" font-weight="800">0</text>
+              <text x="0" y="26" text-anchor="middle" fill="#00f0ff" font-size="9" font-family="monospace" font-weight="700" letter-spacing="1">KPH</text>
+            </g>
+
+            <!-- Bottom Diagnostic Readouts: Voltage, Trip -->
+            <g font-size="11" font-weight="700" text-anchor="middle">
+              <text id="txt-volt" x="130" y="216" fill="#f8fafc" class="mono">--V</text>
+              <text id="txt-odo" x="130" y="230" font-size="9" fill="#94a3b8" class="mono">TRIP 0.0 km</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Bottom Floating Group: Gear Badge Right Above Replay Bar -->
+    <div id="bottom-group" class="collapsible-bottom flex flex-col items-center w-full" style="max-width: 960px; margin: 0 auto; pointer-events:none;">
+      
+      <!-- Gear Indicator Floating Centered Right Above Replay Bar -->
+      <div class="gear-floating-dock flex flex-col items-center" style="pointer-events:auto; margin-bottom: 6px; padding: 0.15rem 1.1rem; border-radius: 8px; background: rgba(5,7,12,0.88); border: 1px solid rgba(0,240,255,0.4); box-shadow: 0 0 15px rgba(0,240,255,0.25);">
+        <span style="font-size: 8px; color: #94a3b8; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;">GEAR</span>
+        <span id="gear-glyph" class="mono font-bold glow-cyan" style="font-size: 26px; color: #00f0ff; line-height: 1;">N</span>
+      </div>
+
+      <!-- Bottom Replayer Bar -->
+      <div id="bottom-bar" class="hud-glass-panel w-full flex flex-col gap-1 px-4 py-2 rounded-xl" style="pointer-events:auto;">
+        <!-- Timeline Scrubbing Slider -->
+        <div class="flex items-center gap-3">
+          <span class="mono text-xs font-bold w-16" style="color:#00f0ff;" id="time-current">00:00.0</span>
+          <input type="range" id="timeline-slider" min="0" max="1000" value="0" class="w-full">
+          <span class="mono text-xs w-16" style="color:#94a3b8; text-align:right;" id="time-total">00:00.0</span>
+        </div>
+
+        <!-- Playback Controls & Elevation Sparkline -->
+        <div class="flex items-center justify-between pt-1">
+          <div class="flex items-center gap-2">
+            <button id="btn-play" class="hud-btn active flex items-center gap-1.5" style="background:#00f0ff; color:#000; border:none; font-weight:800;">
+              <span id="play-icon">▶</span> <span id="play-text">PLAY</span>
+            </button>
+            
+            <div class="flex items-center rounded-lg p-05 mono text-xs" style="background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.1);">
+              <button class="hud-btn" data-speed="0.5">0.5x</button>
+              <button class="hud-btn active" data-speed="1.0">1.0x</button>
+              <button class="hud-btn" data-speed="2.0">2.0x</button>
+              <button class="hud-btn" data-speed="5.0">5.0x</button>
+            </div>
+          </div>
+
+          <!-- Mini Synchronized Elevation Sparkline -->
+          <div style="position:relative; width:220px; height:26px; background:rgba(0,0,0,0.6); border-radius:6px; border:1px solid rgba(255,255,255,0.1); overflow:hidden; display:flex; align-items:center;">
+            <svg viewBox="0 0 200 30" preserveAspectRatio="none" class="w-full h-full">
+              <path d="M 0 26 Q 40 22, 70 14 T 120 8 T 160 18 T 200 6 L 200 30 L 0 30 Z" fill="rgba(0, 240, 255, 0.18)" />
+              <path d="M 0 26 Q 40 22, 70 14 T 120 8 T 160 18 T 200 6" fill="none" stroke="#00f0ff" stroke-width="1.5" />
+              <line id="spark-cursor" x1="0" y1="0" x2="0" y2="30" stroke="#ffaa00" stroke-width="1.5" />
+            </svg>
+            <span id="spark-max-alt" class="mono text-[9px]" style="position:absolute; right:6px; color:#00f0ff;">↑ 0m</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script src="/static/js/cockpit_3d.js"></script>
+</body>
+</html>
