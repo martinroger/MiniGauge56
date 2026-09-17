@@ -5,7 +5,7 @@
 | Parameter | Specification / Constraint | Rationale / Mitigation |
 | :--- | :--- | :--- |
 | **Target SoC** | ESP32-S3 (Xtensa Dual-Core, 240 MHz) | Required for Octal SPI PSRAM, DMA, and AMOLED driver. |
-| **Framework Version** | ESP-IDF v5.5.5 | Selected build toolchain installed in `~/.espressif/v5.5.5`. |
+| **Framework Version** | ESP-IDF v5.5.5 & v6.1 | Compatible with both v5.5.5 and v6.1 toolchains via `eim`. |
 | **CAN Transceiver TX** | GPIO 43 | Hardwired on board transceiver path. |
 | **CAN Transceiver RX** | GPIO 44 | Hardwired on board transceiver path. |
 | **Display Controller** | RM69090 / AMOLED 1.75" (466x466) | Managed via `waveshare/esp32_s3_touch_amoled_1_75`. |
