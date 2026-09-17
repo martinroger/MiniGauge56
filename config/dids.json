@@ -1,0 +1,95 @@
+{
+  "_schema_guide": {
+    "description": "Master DID Dictionary Schema Guide & Example Value Options",
+    "keys": {
+      "id": "Hexadecimal ECU Data Identifier string (e.g., '0x580C', '0x58F0', '0x4402').",
+      "memory_size": "Length in bytes in ECU RAM: 1 (uint8/int8), 2 (uint16/int16), 4 (uint32/int32).",
+      "position": "1-indexed byte offset inside raw ECU DID payload (typically 1 or 2).",
+      "mul": "Formula multiplier (integer value, default: 1). Formula: ((raw * mul) / div) + add.",
+      "div": "Formula divisor (integer value, default: 1). Formula: ((raw * mul) / div) + add.",
+      "add": "Formula offset addition (integer value, default: 0).",
+      "unit": "Engineering unit display string (e.g., 'RPM', 'Bar', 'kg/h', 'mbar', 'km/h', '°C', 'V', '%')."
+    }
+  },
+  "RPM": {
+    "id": "0x580C",
+    "memory_size": 1,
+    "position": 1,
+    "mul": 40,
+    "div": 1,
+    "add": 0,
+    "unit": "RPM"
+  },
+  "HPFP_Pressure": {
+    "id": "0x58F0",
+    "memory_size": 2,
+    "position": 1,
+    "mul": 1,
+    "div": 2000,
+    "add": 0,
+    "unit": "Bar"
+  },
+  "MAF": {
+    "id": "0x5ABC",
+    "memory_size": 2,
+    "position": 1,
+    "mul": 1,
+    "div": 10,
+    "add": 0,
+    "unit": "kg/h"
+  },
+  "Throttle_Pressure": {
+    "id": "0x58DD",
+    "memory_size": 2,
+    "position": 1,
+    "mul": 5,
+    "div": 64,
+    "add": 0,
+    "unit": "mbar"
+  },
+  "Vehicle_Speed": {
+    "id": "0x580D",
+    "memory_size": 1,
+    "position": 1,
+    "mul": 5,
+    "div": 4,
+    "add": 0,
+    "unit": "km/h"
+  },
+  "Oil_Temp": {
+    "id": "0x4402",
+    "memory_size": 1,
+    "position": 1,
+    "mul": 1,
+    "div": 1,
+    "add": -60,
+    "unit": "°C"
+  },
+  "Engine_Temp_2": {
+    "id": "0x581F",
+    "memory_size": 1,
+    "position": 1,
+    "mul": 3,
+    "div": 4,
+    "add": -48,
+    "unit": "°C"
+  },
+  "Engine_Temp_1": {
+    "id": "0x5805",
+    "memory_size": 1,
+    "position": 1,
+    "mul": 3,
+    "div": 4,
+    "add": -48,
+    "unit": "°C"
+  },
+  "IAT": {
+    "id": "0x580F",
+    "memory_size": 1,
+    "position": 1,
+    "mul": 3,
+    "div": 4,
+    "add": -48,
+    "unit": "°C"
+  }
+}
