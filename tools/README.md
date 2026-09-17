@@ -55,18 +55,24 @@ tools/
 ├── tests/                   # Automated unit & integration regression tests
 │   ├── test_cockpit_3d.py
 │   ├── test_common_components.py
+│   ├── test_ddli_composer.py
 │   ├── test_gear_algorithms.py
 │   ├── test_gear_lab.py
 │   ├── test_streamer.py
 │   ├── test_trim_log.py
 │   └── test_tuner.py
+├── fixtures/                # Sample .bin and candump .log captures for tuning & tests
+│   ├── 20260912_log_165944.bin
+│   ├── candump-2024-02-24_015831.log
+│   └── candump-2024-02-24_020530.log
 ├── decode.py                # Batch CLI decoder
 ├── visualize.py             # Interactive signal visualizer entrypoint
 ├── tuner.py                 # Algorithm tuner entrypoint
 ├── gear_lab.py              # Gear estimator lab entrypoint
 ├── trim_log.py              # Log trimmer & slicer entrypoint
 ├── cockpit_3d.py            # 3D Cyber-Cockpit & trajectory replayer entrypoint
-└── streamer.py              # CAN Log Replayer & UDP Streamer entrypoint
+├── streamer.py              # CAN Log Replayer & UDP Streamer entrypoint
+└── ddli_composer.py         # BMWP2000 DDLI Composer & Master DID Editor
 ```
 
 ---

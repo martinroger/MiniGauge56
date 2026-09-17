@@ -125,4 +125,38 @@ def find_bin_files(
                 files.append(p)
 
     files.sort(key=natural_sort_key)
+    if not files:
+        fixtures_dir = decoder_dir / "fixtures"
+        if fixtures_dir.is_dir():
+            for p in fixtures_dir.glob("*.bin"):
+                res = p.resolve()
+                if res not in seen and p.is_file():
+                    seen.add(res)
+                    files.append(p)
+            files.sort(key=natural_sort_key)
+
     return files
+
+
+def resolve_bin_file(filename: str, search_dirs: Optional[Sequence[Path]] = None) -> Optional[Path]:
+    """Resolves a .bin filename across candidate search dirs, cwd, and fixtures."""
+    p = Path(filename)
+    if p.is_file():
+        return p
+
+    decoder_dir = Path(__file__).resolve().parent.parent
+    cwd = Path(".").resolve()
+    dirs = list(search_dirs) if search_dirs is not None else [decoder_dir, cwd]
+
+    for d in dirs:
+        cand = d / filename
+        if cand.is_file():
+            return cand
+
+    fixtures_dir = decoder_dir / "fixtures"
+    cand_fixture = fixtures_dir / filename
+    if cand_fixture.is_file():
+        return cand_fixture
+
+    return None
+

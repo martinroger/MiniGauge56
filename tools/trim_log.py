@@ -31,6 +31,7 @@ from common import (
     CanFrame,
     read_bin_file,
     find_bin_files,
+    resolve_bin_file,
     BaseAppHandler,
     start_server,
     RECORD_STRUCT,
@@ -234,10 +235,8 @@ class TrimmerHttpHandler(BaseAppHandler):
 
         elif path == "/api/preview":
             fn = self.get_query_param("file")
-            target = SCRIPT_DIR / fn
-            if not target.is_file():
-                target = Path(fn)
-            if not target.is_file():
+            target = resolve_bin_file(fn, [SCRIPT_DIR])
+            if not target or not target.is_file():
                 self.send_json({"error": "Log file not found"}, status=404)
                 return
             self.send_json(get_preview_data(target))

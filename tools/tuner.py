@@ -36,6 +36,7 @@ from common import (
     CanFrame,
     read_bin_file,
     find_bin_files,
+    resolve_bin_file,
     natural_sort_key,
     DbcDatabase,
     get_dbc,
@@ -457,12 +458,10 @@ class TunerHandler(BaseAppHandler):
                 if not filename:
                     self.send_error(400, "Missing 'file' parameter")
                     return
-                p = SCRIPT_DIR / filename
-                if not p.is_file():
-                    p = Path(filename)
-                if not p.is_file() and INITIAL_LOG_FILE and INITIAL_LOG_FILE.name == filename:
+                p = resolve_bin_file(filename, [SCRIPT_DIR])
+                if not p and INITIAL_LOG_FILE and INITIAL_LOG_FILE.name == filename:
                     p = INITIAL_LOG_FILE
-                if not p.is_file():
+                if not p or not p.is_file():
                     self.send_error(404, f"File {filename} not found")
                     return
 
@@ -475,12 +474,10 @@ class TunerHandler(BaseAppHandler):
                 if not filename:
                     self.send_error(400, "Missing 'file' parameter")
                     return
-                p = SCRIPT_DIR / filename
-                if not p.is_file():
-                    p = Path(filename)
-                if not p.is_file() and INITIAL_LOG_FILE and INITIAL_LOG_FILE.name == filename:
+                p = resolve_bin_file(filename, [SCRIPT_DIR])
+                if not p and INITIAL_LOG_FILE and INITIAL_LOG_FILE.name == filename:
                     p = INITIAL_LOG_FILE
-                if not p.is_file():
+                if not p or not p.is_file():
                     self.send_error(404, f"File {filename} not found")
                     return
 
@@ -493,12 +490,10 @@ class TunerHandler(BaseAppHandler):
                 if not filename:
                     self.send_error(400, "Missing 'file' parameter")
                     return
-                p = SCRIPT_DIR / filename
-                if not p.is_file():
-                    p = Path(filename)
-                if not p.is_file() and INITIAL_LOG_FILE and INITIAL_LOG_FILE.name == filename:
+                p = resolve_bin_file(filename, [SCRIPT_DIR])
+                if not p and INITIAL_LOG_FILE and INITIAL_LOG_FILE.name == filename:
                     p = INITIAL_LOG_FILE
-                if not p.is_file():
+                if not p or not p.is_file():
                     self.send_error(404, f"File {filename} not found")
                     return
 

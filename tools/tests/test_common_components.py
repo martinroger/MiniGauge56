@@ -80,6 +80,14 @@ class TestCanCore(unittest.TestCase):
         for f in files:
             self.assertTrue(f.name.endswith(".bin"))
 
+    def test_find_bin_files_fixtures_fallback(self):
+        # Empty search dir should trigger fixtures fallback
+        with tempfile.TemporaryDirectory() as empty_dir:
+            files = find_bin_files(search_dirs=[Path(empty_dir)])
+            self.assertGreater(len(files), 0)
+            self.assertTrue(any("fixtures" in str(p) for p in files))
+            self.assertTrue(all(p.name.endswith(".bin") for p in files))
+
 
 
 class TestDbc(unittest.TestCase):

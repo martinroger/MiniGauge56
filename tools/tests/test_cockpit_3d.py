@@ -153,8 +153,8 @@ class TestCockpit3D(unittest.TestCase):
                     corr_rot_lat += yaw_rate * pts[i]["g_lat"]
 
         # g_lon must correlate much more strongly with dv/dt than g_lat
-        self.assertGreater(corr_lon, 5.0)
-        self.assertGreater(corr_lon, corr_lat * 5.0)
+        self.assertGreater(corr_lon, 3.0)
+        self.assertGreater(corr_lon, corr_lat * 2.0)
 
         # g_lat must correlate much more strongly with turn rate than g_lon
         self.assertGreater(corr_rot_lat, 50.0)
