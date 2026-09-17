@@ -16,7 +16,7 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN telemetry
 
 | Sub-Project | External Dependency | Locally Installed Version | Version Requirement |
 | :--- | :--- | :--- | :--- |
-| `main` | `waveshare/esp32_s3_touch_amoled_1_75` | `2.0.6` | `^2.0.0` |
+| `main` | `waveshare/esp32_s3_touch_amoled_1_75` | `3.0.1` | `^3.0.0` |
 | `main` | `binocan` | `v0.1.0` (`622660e`) | `git: https://github.com/martinroger/binocan.git` (tag `v0.1.0`) |
 | `main` | `twai_daemon` | `v0.1.0` (`588c470`) | `git: https://github.com/martinroger/twai_daemon.git` (tag `v0.1.0`) |
 

@@ -23,6 +23,10 @@
 ## 5. Multi-Agent & Subagent Execution Standards
 - **Sequential Build Enforcement**: Subagents are strictly prohibited from executing build, compilation, or flash commands concurrently. All verification builds must be run sequentially or yielded to the parent overseer agent to execute.
 - **Workspace & Branch Isolation**: Subagents are strictly restricted to the workspace root directory (must not read, write, or inspect files outside the repository) and must operate on isolated feature branches, submitting work via Pull Requests or structured diff reviews for parent overseer merging.
+
+## 6. Automated Host Regression & Boundary Verification Gate
+- When developing or modifying streaming protocol parsers, telemetry accumulators, or rate-divider pipelines, automated host regression tests exercising boundary chunking, corrupted checksum rejection, and resynchronization must be executed cleanly before marking implementation complete.
+- Regression tests must compile natively on the host (macOS / Linux) to ensure rapid verification without hardware or flashing dependencies.
 # ESP-IDF & ESP32 Specific Project Rules
 
 ## 1. Hardware & Target Verification
@@ -82,11 +86,20 @@ Rules and architectural constraints for high-throughput, latency-critical firmwa
 
 ---
 
-## 2. Separation of Protocol from Hardware (Testability First)
+## 2. Separation of Protocol from Hardware & Direct Production Unit Testing
 - **Pure Protocol Logic**: Frame reassembly state machines, packet parsers, serialization routines, and checksum algorithms must remain pure C/C++, strictly decoupled from MCU-specific hardware headers (`esp_*.h`, FreeRTOS headers, or vendor SDKs).
-- **Automated Host-Side Unit Testing**:
-  - All protocol decoding and bit-packing logic must include automated host unit tests (e.g., using Unity or standard GCC/Clang suites with `-Wall -Wextra -Werror`).
-  - Unit tests must be verified against actual binary captures (including fragmented packets, back-to-back concatenated frames, and deliberate bit-corruption vectors) on the host prior to flashing hardware.
+- **Direct Production Code Execution (No Duplicate Mock Algorithms)**:
+  - Automated host unit tests must compile and exercise the **exact production C/C++ source files** natively under host `clang++` or `g++`.
+  - Strictly prohibit duplicating or copying parsing algorithms into test harnesses. Where MCU OS dependencies (queues, ringbuffers, timers, logging) are referenced, compose minimal Just-In-Time (JIT) host stubs using standard C++ libraries rather than maintaining divergent algorithm clones.
+- **The 7 Mandatory Stream Boundary Invariants**:
+  Every protocol accumulator, stream parser, or byte reassembler must pass host regression tests verifying:
+  1. *Single-Byte Ingestion*: Feeding multi-byte frames strictly 1 byte per feed call.
+  2. *Arbitrary Chunk Slicing*: Slicing continuous multi-packet streams into irregular variable chunks (e.g. 1–7 byte slices across packet boundaries).
+  3. *Consolidated Multi-Packet Bursts (1.5-Packet Split)*: Ingesting partial frames across burst boundaries (Burst 1: Packet A + half of Packet B; Burst 2: second half of Packet B + Packet C), asserting intermediate accumulator state (`isRxIncomplete() == true`, cursor offset, expected length) and complete queue draining.
+  4. *Split Preambles*: Slicing canonical Start-of-Packet/sync bytes across read boundaries (e.g. first sync byte at end of Chunk 1, second sync byte at start of Chunk 2).
+  5. *Corrupted Checksum Rejection & Resync*: Rejecting corrupted frames with zero queue contamination and immediately resynchronizing on the next valid frame.
+  6. *Inter-Packet Line Noise Resilience*: Discarding trailing, inter-packet, and leading noise or dangling sync bytes without losing stream continuity.
+  7. *Inter-Byte Timeout Recovery*: Simulating elapsed inter-byte timeouts during partial packet ingestion, verifying cursor reset and clean admission of subsequent frames.
 
 ---
 
@@ -120,6 +133,19 @@ Rules and architectural constraints for high-throughput, latency-critical firmwa
 - **State Monitoring & Recovery**:
   - Monitor bus-off states (e.g. `TWAI_STATE_BUS_OFF`) and transceiver error counters.
   - Implement non-blocking back-off recovery procedures (e.g. initiating auto-recovery with exponential back-off).
+
+---
+
+## 7. Direct Production Code Stress, Endurance & Throughput Verification
+- **High-Volume Sustained Ingestion**: Critical parsing, decoding, and dispatch loops must undergo host stress runs ingesting >= 50,000 to 100,000 continuous frames in tight loops to surface subtle buffer overflows, memory leaks, and pointer corruption.
+- **Rate Prescaler & Downsampler Accuracy Invariant**:
+  - Ingestion stress tests must verify rate-divider models (e.g., 25 Hz input prescaled to 10 Hz, 5 Hz, 1 Hz) across large sample counts.
+  - Verify that total emitted frame counts match exact mathematical expectations (e.g., over 100,000 frames at 25 Hz: exactly 40,000 for 10 Hz, 20,000 for 5 Hz, and 4,000 for 1 Hz) to prevent integer truncation drift, phase distortion, or accumulator skew in long-running deployments.
+- **Monotonic Counters & Diagnostic Assertions**:
+  - Sequence rolling counters must be asserted for continuous strict monotonicity across the entire stress run.
+  - Internal parser diagnostic stats (e.g., `frames_received == TOTAL`, `frames_checksum_error == 0`, `frames_oversized_dropped == 0`, `bytes_ingested == TOTAL * packet_size`) must be strictly asserted at test completion.
+- **Throughput Profiling & Benchmarking**:
+  - Stress tests must measure execution time and log microsecond processing rates (`frames/sec`), ensuring the software processing overhead remains well below real-time bus deadlines.
 # Documentation & Presentation Standards
 
 ## 1. Agent Scope, Constraints & Traceability Tracking (Markdown)
