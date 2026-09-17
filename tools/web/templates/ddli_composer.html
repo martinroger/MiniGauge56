@@ -45,8 +45,9 @@
           <span class="file-badge" id="badge-ddlis-file" title="DDLIs target configuration file">ddlis.json</span>
           <span class="file-badge" id="badge-dids-file" title="DIDs target configuration file">dids.json</span>
         </div>
-        <button type="button" class="btn-icon" id="theme-toggle-btn" title="Toggle Light/Dark Theme" aria-label="Toggle Theme">
-          <span class="theme-icon">🌓</span>
+        <button type="button" class="btn-theme-toggle" id="theme-toggle-btn" data-role="theme-toggle" title="Theme: Auto (follows OS). Click to toggle Light / Dark / Auto">
+          <span id="themeIcon" class="theme-icon">🌓</span>
+          <span id="themeLabel" class="theme-label">Auto</span>
         </button>
       </div>
     </header>

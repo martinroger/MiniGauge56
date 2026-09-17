@@ -7,11 +7,54 @@
 .app-layout {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Header & Logo styling */
+.app-header {
+  flex-shrink: 0;
+}
+
+.app-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.logo-icon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.logo-text h1 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+
+.logo-text h1 span {
+  color: var(--primary);
+}
+
+.logo-sub {
+  font-size: 0.72rem;
+  color: var(--text-muted);
 }
 
 .app-main {
   flex: 1;
+  overflow-y: auto;
+  min-height: 0;
   max-width: 1440px;
   width: 100%;
   margin: 0 auto;
