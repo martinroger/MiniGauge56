@@ -1,7 +1,7 @@
 """MiniGauge Shared Calibration Data Store.
 
 Handles loading, validating, and persisting shared gear estimation and algorithm
-calibration parameters (decoder/gear_calibration.json) interoperating seamlessly
+calibration parameters (tools/gear_calibration.json) interoperating seamlessly
 between tuner.py, gear_lab.py, and embedded C header generators.
 Zero pip dependencies (Python 3 stdlib only).
 """

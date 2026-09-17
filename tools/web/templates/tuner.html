@@ -782,8 +782,8 @@
             <span>Show Simulated Gear Gauge</span>
           </label>
           <div style="display:flex; gap:0.4rem; margin-top:0.75rem;">
-            <button id="btn-save-shared-cal" style="flex:1; font-size:0.75rem;" title="Save current parameters to decoder/gear_calibration.json">💾 Save Cal</button>
-            <button id="btn-load-shared-cal" style="flex:1; font-size:0.75rem;" title="Load shared parameters from decoder/gear_calibration.json">📥 Load Cal</button>
+            <button id="btn-save-shared-cal" style="flex:1; font-size:0.75rem;" title="Save current parameters to tools/gear_calibration.json">💾 Save Cal</button>
+            <button id="btn-load-shared-cal" style="flex:1; font-size:0.75rem;" title="Load shared parameters from tools/gear_calibration.json">📥 Load Cal</button>
           </div>
           <div style="margin-top:0.4rem;">
             <button id="btn-reset-gear-defaults" style="width:100%;" title="Reset gear parameters to Bayesian calibrated defaults">Reset Gear Defaults</button>
@@ -2165,7 +2165,7 @@
           computeAndRenderGear();
         }
         if (!silent) {
-          alert('Shared Calibration loaded from decoder/gear_calibration.json');
+          alert('Shared Calibration loaded from tools/gear_calibration.json');
         }
       } catch (e) {
         if (!silent) alert('Load calibration error: ' + e.message);
@@ -2196,7 +2196,7 @@
           });
           const res = await resp.json();
           if (res.status === 'ok') {
-            alert('Shared Calibration saved to decoder/gear_calibration.json');
+            alert('Shared Calibration saved to tools/gear_calibration.json');
           } else {
             alert('Failed to save calibration: ' + (res.error || 'error'));
           }

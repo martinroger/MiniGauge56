@@ -16,10 +16,20 @@ import webbrowser
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type
 
+from socketserver import TCPServer
+
 try:
-    from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+    from http.server import ThreadingHTTPServer as _StdThreadingHTTPServer, BaseHTTPRequestHandler
 except ImportError:  # Fallback for minimal Python environments
-    from http.server import HTTPServer as ThreadingHTTPServer, BaseHTTPRequestHandler
+    from http.server import HTTPServer as _StdThreadingHTTPServer, BaseHTTPRequestHandler
+
+
+class ThreadingHTTPServer(_StdThreadingHTTPServer):
+    """Threading HTTPServer that bypasses slow socket.getfqdn reverse DNS lookups."""
+
+    def server_bind(self) -> None:
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 SCRIPT_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = SCRIPT_DIR / "web" / "static"
@@ -50,6 +60,10 @@ class BaseAppHandler(BaseHTTPRequestHandler):
         """Silences spammy HTTP access logs unless verbose_logging is enabled."""
         if self.verbose_logging:
             super().log_message(format, *args)
+
+    def address_string(self) -> str:
+        """Returns client host IP directly without performing slow DNS reverse lookup."""
+        return str(self.client_address[0])
 
     def parse_query(self) -> Tuple[str, Dict[str, List[str]]]:
         """Parses the request URL path and query string parameters."""

@@ -465,8 +465,8 @@
             <button id="btn-auto-optimize" data-alias="btn-auto-tune" class="btn-accent" style="width:100%; padding:0.3rem 0.4rem; font-size:0.72rem;" title="Run automated parameter grid search to maximize glitch-free scores">⚡ Auto-Optimize Parameters</button>
           </div>
           <div style="display:flex; gap:0.35rem; margin-top:0.35rem;">
-            <button id="btn-save-shared-cal" style="flex:1; padding:0.22rem 0.35rem; font-size:0.68rem;" title="Save current tuning parameters to decoder/gear_calibration.json">💾 Save Shared Cal</button>
-            <button id="btn-load-shared-cal" style="flex:1; padding:0.22rem 0.35rem; font-size:0.68rem;" title="Load parameters from decoder/gear_calibration.json">📥 Load Shared Cal</button>
+            <button id="btn-save-shared-cal" style="flex:1; padding:0.22rem 0.35rem; font-size:0.68rem;" title="Save current tuning parameters to tools/gear_calibration.json">💾 Save Shared Cal</button>
+            <button id="btn-load-shared-cal" style="flex:1; padding:0.22rem 0.35rem; font-size:0.68rem;" title="Load parameters from tools/gear_calibration.json">📥 Load Shared Cal</button>
           </div>
         </div>
       </div>
@@ -2458,7 +2458,7 @@
           });
           const res = await resp.json();
           if (res.status === 'ok') {
-            alert('Shared Calibration saved successfully to decoder/gear_calibration.json');
+            alert('Shared Calibration saved successfully to tools/gear_calibration.json');
           } else {
             alert('Failed to save calibration: ' + (res.message || 'error'));
           }
@@ -2537,7 +2537,7 @@
         }
 
         if (!silent) {
-          alert('Shared Calibration loaded from decoder/gear_calibration.json');
+          alert('Shared Calibration loaded from tools/gear_calibration.json');
         }
       } catch (e) {
         if (!silent) alert('Load calibration error: ' + e.message);

@@ -77,7 +77,8 @@ class TestStreamer(unittest.TestCase):
     def test_log_timeline_indexing(self):
         """Tests reading a real .bin log, indexing signals, and sampling at timeline points."""
         bin_files = find_bin_files(DECODER_DIR)
-        self.assertTrue(len(bin_files) > 0, "No .bin log files found in decoder dir")
+        if not bin_files:
+            self.skipTest("No .bin log files found in tools dir")
 
         timeline = LogTimeline(bin_files[0], self.db)
         self.assertGreater(timeline.frame_count, 0)
@@ -102,15 +103,19 @@ class TestStreamer(unittest.TestCase):
         """Starts PlaybackStreamer and captures actual UDP datagrams on loopback port."""
         # Find an open UDP port for testing
         test_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        test_sock.bind(("127.0.0.1", 0))
-        _, test_port = test_sock.getsockname()
-        test_sock.settimeout(2.0)
-
-        streamer = PlaybackStreamer(target_host="127.0.0.1", target_port=test_port)
-        bin_files = find_bin_files(DECODER_DIR)
-        streamer.load_log(bin_files[0], self.db)
-
+        streamer = None
         try:
+            test_sock.bind(("127.0.0.1", 0))
+            _, test_port = test_sock.getsockname()
+            test_sock.settimeout(2.0)
+
+            bin_files = find_bin_files(DECODER_DIR)
+            if not bin_files:
+                self.skipTest("No .bin log files found in tools dir")
+
+            streamer = PlaybackStreamer(target_host="127.0.0.1", target_port=test_port)
+            streamer.load_log(bin_files[0], self.db)
+
             # Start streaming
             streamer.play()
             time.sleep(0.1)
@@ -137,7 +142,8 @@ class TestStreamer(unittest.TestCase):
             self.assertAlmostEqual(status_seek["current_time_s"], 10.0, places=1)
 
         finally:
-            streamer.close()
+            if streamer:
+                streamer.close()
             test_sock.close()
 
     def test_streamer_web_assets(self):
@@ -162,7 +168,8 @@ class TestStreamer(unittest.TestCase):
     def test_timeline_traces(self):
         """Verifies downsampled trace extraction for Speed & RPM Plotly chart."""
         bin_files = find_bin_files(DECODER_DIR)
-        self.assertTrue(len(bin_files) > 0)
+        if not bin_files:
+            self.skipTest("No .bin log files found in tools dir")
 
         timeline = LogTimeline(bin_files[0], self.db)
         traces = timeline.get_traces(max_points=2500)

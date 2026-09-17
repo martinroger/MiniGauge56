@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DECODER_DIR = REPO_ROOT / "decoder"
+DECODER_DIR = REPO_ROOT / "tools"
 if str(DECODER_DIR) not in sys.path:
     sys.path.insert(0, str(DECODER_DIR))
 
@@ -15,9 +15,17 @@ class TestGearAlgorithms(unittest.TestCase):
     def setUpClass(cls):
         cls.db = get_dbc(DECODER_DIR / "binocan.dbc")
         cls.bin_file = DECODER_DIR / "20260906_log_172515.bin"
+        if not cls.bin_file.is_file():
+            from common.can_core import find_bin_files
+            bins = find_bin_files(DECODER_DIR)
+            if bins:
+                cls.bin_file = bins[0]
+            else:
+                raise unittest.SkipTest("No .bin log file found on disk for algorithm tests")
         cls.data = extract_algo_data(cls.bin_file, cls.db)
         cls.g = cls.data["gear"]
         cls.n = len(cls.g["times"])
+
 
     def _simulate(self, rpm_filter_enabled=False, rpm_filter_type='EMA', rpm_filter_tau=0.1, latch_enabled=False, latch_hold_ms=200):
         n = self.n

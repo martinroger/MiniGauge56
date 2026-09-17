@@ -18,11 +18,13 @@ The toolset follows a modular layered architecture:
 |  - trim_log.html          - map.css (GPS Drawer, HUD)       - plotly_theme.js |
 |  - cockpit_3d.html        - cockpit_3d.css (HUD, Glow)      - cockpit_3d.js   |
 |  - streamer.html          - streamer.css (Dual HUD, LED)    - streamer.js     |
+|  - ddli_composer.html     - ddli_composer.css (Composer)    - ddli_composer.js|
 +---------------------------------------+---------------------------------------+
                                         | HTTP / JSON / Static Assets
 +---------------------------------------v---------------------------------------+
 |                       PYTHON OFFLINE APPLICATION LAYER                        |
 | visualize.py  tuner.py  gear_lab.py  trim_log.py  cockpit_3d.py  streamer.py  |
+|                         ddli_composer.py                                      |
 +---------------------------------------+---------------------------------------+
                                         | Shared Services
 +---------------------------------------v---------------------------------------+
@@ -43,30 +45,30 @@ The toolset follows a modular layered architecture:
 
 ## 2. Core Components
 
-### 2.1 Low-Level CAN Engine (`decoder/common/can_core.py`)
+### 2.1 Low-Level CAN Engine (`tools/common/can_core.py`)
 - **`CanFrame`**: Immutable record container representing a single hardware frame. Supports both 4-argument and 5-argument constructors, exposing canonical attributes `timestamp_ms`, `can_id`, `dlc`, `data`, and calculated time offsets `time_rel_s`.
 - **`read_bin_file`**: Fast binary parser reading consecutive 16-byte records formatted as `<IHB8sx` (4-byte timestamp in ms, 2-byte CAN arbitration ID, 1-byte DLC, 8 bytes data payload, and 1-byte padding).
 - **`find_bin_files`**: Multi-file discoverer with natural sorting (`log_2.bin` before `log_10.bin`).
 
-### 2.2 CAN Database Parser (`decoder/common/dbc.py`)
+### 2.2 CAN Database Parser (`tools/common/dbc.py`)
 - **`DbcDatabase`**: Zero-dependency parser for standard Vector DBC files. Resolves `BO_` (Message definitions), `SG_` (Signal definitions), `VAL_` (Enumerated value tables), and `SIG_VALTYPE_` (IEEE 754 floating point markers).
 - **`MessageDef` & `SignalDef`**: Decode bitfields packed across byte boundaries supporting both Motorola (Big Endian) and Intel (Little Endian) schemes, physical linear conversions (`y = mx + b`), min/max clamping, and string value mappings. Aliased as `DbcMessage` and `DbcSignal` for backward compatibility.
 
-### 2.3 Shared Calibration Store (`decoder/common/calibration.py`)
-- Manages cross-tool algorithm synchronization via `decoder/gear_calibration.json`.
+### 2.3 Shared Calibration Store (`tools/common/calibration.py`)
+- Manages cross-tool algorithm synchronization via `tools/gear_calibration.json`.
 - Implements atomic file persistence with ISO-8601 timestamps and parameter aliasing between heuristic and Bayesian nomenclature (`tolerance` <=> `tolerance_abs`, `latch_ms` <=> `latch_time_ms`).
 
-### 2.4 Reusable HTTP Server Framework (`decoder/common/http_server.py`)
+### 2.4 Reusable HTTP Server Framework (`tools/common/http_server.py`)
 - **`BaseAppHandler`**: Extends Python's `BaseHTTPRequestHandler` with convenience helpers for CORS preflight, JSON request extraction (`read_json_body`), response formatting (`send_json`), template streaming (`send_html`), and static file routing (`serve_static`).
 - **`start_server`**: Threading HTTP server launcher featuring collision-free dynamic TCP port allocation, terminal diagnostic banners, and browser auto-launching.
 
-### 2.5 3D Cyber-Cockpit & Trajectory Replayer (`decoder/cockpit_3d.py`)
+### 2.5 3D Cyber-Cockpit & Trajectory Replayer (`tools/cockpit_3d.py`)
 - **`lat_lon_to_enu`**: High-precision local East-North-Up coordinate conversion relative to initial GPS anchor point, translating WGS84 coordinates to local meters with sub-millimeter precision.
 - **`extract_cockpit_trajectory`**: Decodes CAN binary records into 3D spatial points with synchronized engine (RPM, gear, temps), dynamic (speed, G-force, roll/pitch), and electrical telemetry (battery voltage, tell-tales).
 - **Three.js WebGL Graphics Pipeline**: Renders 3D trajectory ribbons with instantaneous speed heatmapping, greyed-out future horizon, vertical reference stanchions extending to the $0\text{m}$ ground plane, vehicle frame 3D G-vector arrows, fixed-frustum non-culling 1200-particle trail, distance-smoothed lookahead chase camera ($45,000\text{m}$ render distance), tethered orbit camera tracking (preserving constant orbit radius), local smoothed road grade estimation ($\pm 25\text{m}$ spatial window), and live vertical exaggeration ($1.0\times$ to $5.0\times$).
 - **`vx-binocle-espidf` Instrument Cluster**: Pure SVG needle-less perimeter gauges mathematically aligned with graduations for RPM (0–80 with $\times 100$ RPM sub-label) and Speed (0–240 KPH), centered numeric RPM and speed readouts, centered lower diagnostic readouts (`COOL`, `FUEL`), floating bottom gear dock, enlarged $192\text{px}$ uncontainerized G-meter with additive blending/summing dwell heatmap, red indicator dot, automatic red alert thresholding, and collapsible HUD controls.
 
-### 2.6 CAN Log Replayer & UDP Streamer (`decoder/streamer.py`)
+### 2.6 CAN Log Replayer & UDP Streamer (`tools/streamer.py`)
 - **`pack_udp_packet`**: Serializes 14-byte binary datagrams (`VehicleUdpPacket`) with `0xAA 0x55` magic, 16-bit telltales mask, speed freq x10, rpm freq x10, coolant duty x100, fuel resistance x10, and 16-bit arithmetic checksum.
 - **`LogTimeline`**: Time-indexed random-access timeline builder indexing mapped signals across the log. Prioritizes measured interface board debug signals (`0x300`–`0x305`) over converted vehicle signals, and performs bit-exact telltale mask mapping with hardware polarity inversions and active Ignition protection.
 - **`PlaybackStreamer`**: High-precision 50 Hz streaming loop with microsecond-level clock drift compensation, non-blocking seeking, speed scaling (`0.25x` to `5.0x`), seamless loop replay, and safe standby transmission on stop.
@@ -77,21 +79,21 @@ The toolset follows a modular layered architecture:
 ## 3. Web Asset Delivery Strategy
 
 Assets are organized into dedicated directories:
-- **`decoder/web/static/css/`**:
+- **`tools/web/static/css/`**:
   - `theme.css`: Color tokens for Ubuntu Yaru Dark and Cold White Light, supporting live switching via CSS custom properties.
   - `base.css`: CSS reset, typography, responsive flexbox layout, and headers.
   - `components.css`: Reusable UI controls including buttons, dynamic-gradient sliders, cards, data tables, and badges.
   - `map.css`: Collapsible Leaflet GPS drawer, velocity HUD, and rotating compass styling.
   - `cockpit_3d.css`: Cyberpunk negative-space HUD layout, glassmorphic panels, neon glow filters, and collapsible bar animations.
   - `streamer.css`: Circular cluster gauges, telltale annunciator grid, and UDP packet inspector.
-- **`decoder/web/static/js/`**:
+- **`tools/web/static/js/`**:
   - `theme.js`: OS `prefers-color-scheme` listener with `localStorage` persistence and `minigauge-theme-changed` dispatch.
   - `toast.js`: Non-intrusive notification banner manager.
   - `plotly_theme.js`: Plotly layout generators syncing dark/light modes and container ResizeObservers.
   - `leaflet_map.js`: Leaflet GPS track drawer with binary search telemetry synchronization.
   - `cockpit_3d.js`: Three.js WebGL scene lifecycle, speed heatmap shader, warp particle system, G-force camera roll, and dual-screen SVG gauge updating.
   - `streamer.js`: Replay transport controls, scrub bar dragging, dual circular HUD arcs, and live UDP packet inspector.
-- **`decoder/web/templates/`**:
+- **`tools/web/templates/`**:
   - `visualize.html`, `tuner.html`, `gear_lab.html`, `trim_log.html`, `cockpit_3d.html`, and `streamer.html`.
   - Clean HTML5 documents containing zero inline style blocks or embedded third-party script definitions.
 
@@ -253,11 +255,35 @@ sequenceDiagram
     Engine->>Emu: UDP sendto(0xD940 standby, 0 km/h, 0 RPM)
 ```
 
+### 4.7 BMWP2000 DDLI Composer & Master DID Editor Loop (`ddli_composer.py`)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as ddli_composer.js (Web UI)
+    participant Srv as DDLIComposerHandler (Python HTTP)
+    participant File as Filesystem (config/*.json)
+
+    UI->>Srv: GET /api/config
+    Srv->>File: Read config/dids.json & config/ddlis.json
+    File-->>Srv: Raw JSON objects
+    Srv-->>UI: 200 OK JSON {dids, ddlis, dids_path, ddlis_path}
+    UI->>UI: renderPalette(), renderActiveTrain(), renderDidsTable()
+    UI->>UI: updateFramingMetrics(): Compute RAM payload bytes & ISO-TP framing (SF vs. FF+CF)
+    Note over UI: User adds DIDs to train, reorders (▲/▼), or edits DID dictionary
+    UI->>Srv: POST /api/ddlis {ddlis: [...]}
+    Srv->>Srv: validate_ddlis(): Check local_id hex format, duplicates & modes
+    Srv->>File: create_backup(ddlis.json) -> ddlis.json.bak_YYYYMMDD_HHMMSS
+    Srv->>File: Write formatted JSON (indent=2)
+    Srv-->>UI: 200 OK {status: "ok", backup: "ddlis.json.bak_...", count: N}
+    UI->>UI: showToast("ddlis.json saved successfully! Backup created.")
+```
+
 ---
 
 ## 5. Security & Operational Boundaries
 
 1. **Localhost Binding Invariant**: By default, all HTTP services bind strictly to loopback (`127.0.0.1`), ensuring services are never exposed to external networks without deliberate intent.
-2. **Directory Traversal Protection**: `BaseAppHandler.serve_static` enforces strict path resolution relative to `decoder/web/static`. Any requested path resolving outside the static asset root is rejected with `HTTP 403 Forbidden`.
+2. **Directory Traversal Protection**: `BaseAppHandler.serve_static` enforces strict path resolution relative to `tools/web/static`. Any requested path resolving outside the static asset root is rejected with `HTTP 403 Forbidden`.
 3. **No External Runtime Fetch**: All client libraries (Leaflet, Plotly) fall back to local assets or CDN links gracefully, and zero pip packages are loaded on the host runtime.
 

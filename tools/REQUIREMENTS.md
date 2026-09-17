@@ -1,6 +1,6 @@
 # MiniGauge Decoder Toolset Requirements Specification
 
-This document defines the functional, technical, and architectural requirements for the Python 3 offline diagnostic, calibration, and slicing toolset located in `decoder/`. The toolset consists of 7 modular utilities:
+This document defines the functional, technical, and architectural requirements for the Python 3 offline diagnostic, calibration, and slicing toolset located in `tools/`. The toolset consists of 7 modular utilities:
 1. **Batch Decoder & Exporter (`decode.py`)**
 2. **Interactive Signal Visualizer (`visualize.py`)**
 3. **Algorithm Calibration & Tuning Lab (`tuner.py`)**
@@ -21,8 +21,8 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-SYS-004** | Unified Design System & OS Theme Sync | All web-based interfaces MUST implement the unified design palette (Ubuntu Yaru Dark with faded orange accents and dark slider tracks; Cold White Light with faded royal blue accents, pure white slider tracks, and 1px container accent borders). All tools MUST automatically detect and adapt to the host OS color scheme (`prefers-color-scheme: light`) with live reactive updates and manual overrides persisted in `localStorage`. |
 | **REQ-SYS-005** | Portable Relative Linking | All internal documentation references MUST use relative file paths without machine-specific absolute filesystem paths. |
 | **REQ-SYS-006** | Interactive Parameter Tooltips | All algorithmic sliders, parameter inputs, and stage toggles in `tuner.py` and `gear_lab.py` MUST provide informative hover tooltips (using styled info badges `ⓘ` and native HTML attributes) detailing physical roles and operational effects. |
-| **REQ-SYS-007** | Automated Regression & DOM Verification Suite | The decoder toolset MUST maintain automated, repeatable integration test suites in `decoder/tests/` verifying server lifecycles, API endpoints, C99 export compilation with GCC (`-Wall -Wextra -Werror`), DOM ID integrity between client-side JavaScript and HTML templates, and algorithm offline simulations without leaving working tree artifacts. |
-| **REQ-SYS-008** | Modular Package Architecture & Static Asset Separation | Core CAN parsing (`can_core.py`), DBC interpretation (`dbc.py`), calibration persistence (`calibration.py`), and HTTP request handling (`http_server.py`) MUST be decoupled into the `decoder/common/` package. All shared web styling (`*.css`) and client-side scripts (`*.js`) MUST reside in `decoder/web/static/`, and semantic HTML structures MUST reside in `decoder/web/templates/`, eliminating embedded CSS/HTML strings from Python application files. |
+| **REQ-SYS-007** | Automated Regression & DOM Verification Suite | The decoder toolset MUST maintain automated, repeatable integration test suites in `tools/tests/` verifying server lifecycles, API endpoints, C99 export compilation with GCC (`-Wall -Wextra -Werror`), DOM ID integrity between client-side JavaScript and HTML templates, and algorithm offline simulations without leaving working tree artifacts. |
+| **REQ-SYS-008** | Modular Package Architecture & Static Asset Separation | Core CAN parsing (`can_core.py`), DBC interpretation (`dbc.py`), calibration persistence (`calibration.py`), and HTTP request handling (`http_server.py`) MUST be decoupled into the `tools/common/` package. All shared web styling (`*.css`) and client-side scripts (`*.js`) MUST reside in `tools/web/static/`, and semantic HTML structures MUST reside in `tools/web/templates/`, eliminating embedded CSS/HTML strings from Python application files. |
 
 ---
 
@@ -80,13 +80,13 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TUN-GEAR-004** | Confidence Thresholding & State 14 | The tool MUST provide a confidence cutoff slider (`slider-m2-conf`, range 0.10 to 0.90). When posterior confidence fails the threshold, the output MUST report DBC State 14 (*Uncertain*) rather than spuriously holding stale gears. |
 | **REQ-TUN-GEAR-005** | Gear Ratio Centers & Cluster Peaks | The tool MUST support 5 individual gear center ratios (`gear-r-1` through `gear-r-5`), supported by 1-click **Auto-Detect Peaks** clustering and Gaussian variance distribution tracking. |
 | **REQ-TUN-GEAR-006** | Temporal Output Latching | The tool MUST provide a temporal latch duration slider (`slider-m2-latch`, range 0 to 600 ms) to suppress transient shift chatter by requiring sustained probability commitment. |
-| **REQ-TUN-GEAR-007** | Shared Calibration Auto-Loading & Persistence | The tool MUST automatically fetch and load `decoder/gear_calibration.json` via `GET /api/calibration` on startup if present, and support saving updated Bayesian parameters via `POST /api/calibration`. |
+| **REQ-TUN-GEAR-007** | Shared Calibration Auto-Loading & Persistence | The tool MUST automatically fetch and load `tools/gear_calibration.json` via `GET /api/calibration` on startup if present, and support saving updated Bayesian parameters via `POST /api/calibration`. |
 | **REQ-TUN-GEAR-008** | Dynamic Math Explainer | The sidebar MUST display a dynamic mathematical explainer card that rebuilds its formulas, active parameter values, and explanatory text in real time as presets or modular stage checkboxes change. |
 | **REQ-TUN-GEAR-009** | Ratio Histogram & Auto-Peak Detection | The UI MUST display a sample ratio histogram with projected tolerance bands, accompanied by an **Auto-Detect Peaks** function that clusters driving ratios to seed nominal gear ratios $R_1..R_5$. |
 | **REQ-TUN-GEAR-010** | Synchronized Dynamics Timeline | The UI MUST plot a synchronized dual-axis graph of `ITF_speed_kph` and `ITF_rpm` alongside the ratio and estimated gear curves, maintaining time synchronization with pan/zoom and the GPS track drawer. |
 | **REQ-TUN-GEAR-011** | In-Scope Glitch Marker Annotations | The gear timeline scope MUST visually flag detected algorithm glitches directly on the plot: 🔴 Neutral Dropouts, 🟠 Micro-Dwell Chatter, and 🟣 Coast-Down Phantom Shifts with interactive hover diagnostics. |
 | **REQ-TUN-GEAR-012** | Drive Replayer & Simulated Gear Gauge | The UI MUST incorporate an interactive drive playback player with play/pause, step controls, variable playback speed (0.25x to 10x), scrub bar, and a simulated gear position gauge card with a show/hide toggle. Playback MUST synchronize in real time with the vertical timeline needle, telemetry scope, and Leaflet GPS vehicle track marker. |
-| **REQ-TUN-GEAR-013** | Cross-Tool Shared Calibration | The tool MUST provide standard `GET /api/calibration` and `POST /api/calibration` endpoints and UI buttons ("💾 Save Cal" / "📥 Load Cal") interoperating with `decoder/gear_calibration.json` to seamlessly exchange tuned parameters with `gear_lab.py`. |
+| **REQ-TUN-GEAR-013** | Cross-Tool Shared Calibration | The tool MUST provide standard `GET /api/calibration` and `POST /api/calibration` endpoints and UI buttons ("💾 Save Cal" / "📥 Load Cal") interoperating with `tools/gear_calibration.json` to seamlessly exchange tuned parameters with `gear_lab.py`. |
 
 ### 4.3 Tab 2: Fuel Level Filter Requirements
 
@@ -139,7 +139,7 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-LAB-011** | Model Theory & Assumptions Panel | The UI MUST incorporate a collapsible sidebar panel summarizing core assumptions, mathematical formulas, state-space representations, and operational tradeoffs for each model. |
 | **REQ-LAB-012** | Drive Replayer & Triple Gauge Pod | The UI MUST incorporate an interactive drive playback player with play/pause, step controls, variable playback speed (0.25x to 10x), scrub bar, and a Triple Simulated Gear Position Gauge Pod displaying M1 (Heuristic), M2 (Kinematic Bayes), and M3 (HMM) side-by-side with real-time gear, speed, RPM, and status. |
 | **REQ-LAB-013** | Automated Parameter Grid Search Optimizer | The tool MUST provide a 1-click **⚡ Auto-Optimize Parameters** function (`POST /api/auto_tune`) executing automated grid search across algorithmic parameters to maximize the Glitch-Free Quality Score across logs. |
-| **REQ-LAB-014** | Cross-Tool Shared Calibration | The tool MUST provide `GET /api/calibration` and `POST /api/calibration` endpoints and UI buttons ("💾 Save Shared Cal" / "📥 Load Shared Cal") interoperating with `decoder/gear_calibration.json`, and auto-load existing calibration upon page initialization. |
+| **REQ-LAB-014** | Cross-Tool Shared Calibration | The tool MUST provide `GET /api/calibration` and `POST /api/calibration` endpoints and UI buttons ("💾 Save Shared Cal" / "📥 Load Shared Cal") interoperating with `tools/gear_calibration.json`, and auto-load existing calibration upon page initialization. |
 | **REQ-LAB-015** | Dedicated Submodel Tabs | The UI MUST provide dedicated tabs for each algorithm (M1 Heuristic, M2 Kinematic Bayes, M3 HMM State-Space) featuring focused dynamic visualizations, individual parameter calibration sliders, and two-way parameter synchronization with the main overview tab and JSON calibration. |
 | **REQ-LAB-016** | DBC Uncertain State (State 14) Handling | The algorithms MUST distinguish between true Neutral (vehicle stationary or engine below idle) and Uncertain (State 14 in DBC: rolling vehicle above cutoff with engine above idle, e.g. mid-shift or unclassified ratio). |
 | **REQ-LAB-017** | Dual-Chart Needle Synchronization | In all active tabs, the interactive playback timeline needle MUST scroll simultaneously across both the dynamics plot (speed/RPM) and the gear/model timeline plot with exact vertical pixel alignment. |
@@ -204,17 +204,43 @@ This document defines the functional, technical, and architectural requirements 
 
 ---
 
-## 9. Implementation Traceability Matrix
+## 9. BMWP2000 DDLI Composer & Master DID Editor (`ddli_composer.py`) Requirements
+
+### 9.1 Scope & Purpose
+`ddli_composer.py` provides an interactive local web workstation to visually compose, reorder, evaluate, and persist ISO 14230-3 Dynamically Defined Local Identifier (DDLI) trains and manage the master Data Identifier (DID) dictionary with zero external pip dependencies.
+
+### 9.2 Functional Requirements
+
+| ID | Title | Requirement Statement |
+|---|---|---|
+| **REQ-COMP-001** | Standalone Zero-Pip Local Web Server | The tool MUST run with zero external pip dependencies, serving an interactive two-tab dashboard (DDLI Train Composer & Master DID Editor) on an ephemeral or user-selected port (`--port`, default 8092) with automatic browser opening. |
+| **REQ-COMP-002** | Dual-File Dynamic Configuration Binding | The tool MUST bind to `config/dids.json` and `config/ddlis.json` by default, or alternate user-provided paths (`--dids`, `--ddlis`), preserving `_schema_guide` metadata objects across reads and writes. |
+| **REQ-COMP-003** | Visual DDLI Sequence Composition & Reordering | The composer MUST provide a dual-column layout (available master DIDs palette on left, ordered active train sequence on right) with 1-click addition, reordering controls (Move Up, Move Down), signal removal, and train metadata editing (`local_id`, `name`, `transmission_mode`). |
+| **REQ-COMP-004** | ISO-TP Framing & CAN Frame Capacity Inspector | The tool MUST compute and display real-time telemetry metrics: total RAM payload bytes, ISO 14230-3 positive response size (`+2B` for `0x61` SID and `local_id`), ISO 15765-2 framing (`Single Frame (SF)` vs. `Multi-Frame (1 FF + N CF)`), and total CAN frame count. |
+| **REQ-COMP-005** | Master DID Dictionary Editor & Live Formula Preview | The tool MUST provide a searchable data table of all defined DIDs, an Add/Edit modal dialog with real-time formula string preview `((raw * mul) / div) + add [unit]`, and collision prevention on renamed keys. |
+| **REQ-COMP-006** | Automatic Timestamped Backup Persistence | Before modifying or writing to `config/ddlis.json` or `config/dids.json`, the backend MUST create a timestamped backup copy (`.bak_YYYYMMDD_HHMMSS`) in the same directory. |
+| **REQ-COMP-007** | Strict Structural and Type Validation | The backend MUST validate incoming JSON payloads (`POST /api/ddlis`, `POST /api/dids`), rejecting invalid hexadecimal patterns (`0xXX`, `0xXXXX`), out-of-range memory sizes (1, 2, 4 bytes), zero divisors, duplicate local IDs, and invalid transmission modes with `HTTP 400 Bad Request`. |
+
+---
+
+## 10. Implementation Traceability Matrix
 
 | Requirement ID | Implementing File | Function / Component / Handler | Verification Method |
 |---|---|---|---|
-| **REQ-SYS-001** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py`, `streamer.py` | Top-level imports (stdlib only) | Automated headless test (no pip dependencies) |
+| **REQ-SYS-001** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py`, `streamer.py`, `ddli_composer.py` | Top-level imports (stdlib only) | Automated headless test (no pip dependencies) |
 | **REQ-SYS-002** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py`, `streamer.py` | `read_bin_file()`, `CAN_FRAME_STRUCT`, `CANFrame` | Binary unpack test against `.bin` captures |
 | **REQ-SYS-003** | `decode.py`, `visualize.py`, `tuner.py`, `gear_lab.py`, `cockpit_3d.py`, `streamer.py` | `DbcDatabase.parse()`, `DbcMessage.decode()` | DBC parse verification with signed/scale/enum/float |
-| **REQ-SYS-004** | `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py`, `streamer.py` | CSS variables, `initTheme()`, `prefers-color-scheme` | Theme toggle & OS scheme auto-detection tests |
+| **REQ-SYS-004** | `visualize.py`, `tuner.py`, `gear_lab.py`, `trim_log.py`, `cockpit_3d.py`, `streamer.py`, `ddli_composer.py` | CSS variables, `initTheme()`, `prefers-color-scheme` | Theme toggle & OS scheme auto-detection tests |
 | **REQ-SYS-005** | All `.md` files | Markdown relative links | Static doc link validation |
-| **REQ-SYS-006** | `tuner.py`, `gear_lab.py`, `cockpit_3d.py` | `.info-icon`, `title` attributes on controls | DOM verification of hover tooltips across all tabs |
-| **REQ-SYS-007** | `decoder/tests/` | `test_trim_log.py`, `test_tuner.py`, `test_gear_lab.py`, `test_gear_algorithms.py`, `test_cockpit_3d.py`, `test_streamer.py` | Full test suite execution via `python3 -m unittest` |
+| **REQ-SYS-006** | `tuner.py`, `gear_lab.py`, `cockpit_3d.py`, `ddli_composer.py` | `.info-icon`, `title` attributes on controls | DOM verification of hover tooltips across all tabs |
+| **REQ-SYS-007** | `tools/tests/` | `test_trim_log.py`, `test_tuner.py`, `test_gear_lab.py`, `test_gear_algorithms.py`, `test_cockpit_3d.py`, `test_streamer.py`, `test_ddli_composer.py` | Full test suite execution via `python3 -m unittest` |
+| **REQ-COMP-001** | `ddli_composer.py`, `ddli_composer.html` | `DDLIComposerHandler`, `start_server()` | Server startup and DOM verification in `test_ddli_composer.py` |
+| **REQ-COMP-002** | `ddli_composer.py` | `do_GET` (`/api/config`), `DEFAULT_DIDS_PATH`, `DEFAULT_DDLIS_PATH` | Integration test `test_04_api_config_get` |
+| **REQ-COMP-003** | `ddli_composer.js` | `renderSequenceList()`, `handleSequenceAction()`, `addDidToActiveTrain()` | Client controller sequence ordering & DOM updates |
+| **REQ-COMP-004** | `ddli_composer.js` | `updateFramingMetrics()` | ISO-TP Single Frame vs. Multi-Frame math verification |
+| **REQ-COMP-005** | `ddli_composer.html`, `ddli_composer.js` | `renderDidsTable()`, `openEditDidModal()`, `updateFormulaPreview()` | Modal lifecycle and live formula preview verification |
+| **REQ-COMP-006** | `ddli_composer.py` | `create_backup()` | Unit test `test_create_backup` asserting `.bak_` creation |
+| **REQ-COMP-007** | `ddli_composer.py` | `validate_dids()`, `validate_ddlis()`, `POST /api/ddlis`, `POST /api/dids` | Unit & API tests in `test_ddli_composer.py` |
 | **REQ-STR-001** | `streamer.py` | `pack_udp_packet()`, `struct.pack("<2sHHHHHH")` | Unit test in `test_streamer.py` verifying 14 bytes and checksum |
 | **REQ-STR-002** | `streamer.py` | `LogTimeline._decode_signals()`, `LogTimeline.sample_at()` | Unit test verifying primary debug vs. fallback conversion |
 | **REQ-STR-003** | `streamer.py` | `LogTimeline._compute_telltales_mask()` | Unit test verifying bit inversion, Ignition bit 15, and standby `0xD940` |
@@ -290,5 +316,5 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TRIM-006** | `trim_log.py` | `default_output_name()`, overwrite checks | Non-destructive naming & safety tests |
 | **REQ-TRIM-007** | `trim_log.py` | `HTML_PAGE`, `TrimRequestHandler` | Web GUI endpoint and download validation |
 | **REQ-TRIM-008** | `trim_log.py` | `renderGpsMap()`, `updateMapSlice()`, Leaflet | Side-by-side map drawer, route snapping & placeholder |
-| **REQ-SYS-008** | `decoder/common/`, `decoder/web/` | `can_core.py`, `dbc.py`, `calibration.py`, `http_server.py`, static assets, templates | `test_common_components.py` suite (7 tests) & zero-pip imports |
+| **REQ-SYS-008** | `tools/common/`, `tools/web/` | `can_core.py`, `dbc.py`, `calibration.py`, `http_server.py`, static assets, templates | `test_common_components.py` suite (7 tests) & zero-pip imports |
 

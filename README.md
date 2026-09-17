@@ -31,3 +31,4 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN telemetry
 - [Binocan Component Repository](https://github.com/martinroger/binocan)
 - [RaceBox BLE Component Guide](components/racebox_ble/HOWTO.md)
 - [RaceBox TWAI Component Guide](components/racebox_twai/HOWTO.md)
+- [CAN Log & Diagnostic Tools Suite (Decoder, Visualizer, Tuner, DDLI Composer)](tools/README.md)

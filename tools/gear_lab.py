@@ -810,7 +810,7 @@ def generate_esp32_c_header(means: List[float], vars_: List[float], A: List[List
         cal_comment_block = (
             "/*\n"
             " * ============================================================================\n"
-            " * Calibration Snapshot (decoder/gear_calibration.json):\n"
+            " * Calibration Snapshot (tools/gear_calibration.json):\n"
             " * ----------------------------------------------------------------------------\n"
             + "\n".join(cal_lines)
             + "\n * ============================================================================\n"
