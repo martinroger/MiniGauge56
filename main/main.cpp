@@ -1,94 +1,497 @@
 #include <stdio.h>
+#include <time.h>
+#include <sys/time.h>
 #include "esp32_s3_touch_amoled_1_75.h"
 #include "ui.h"
 #include "esp_log.h"
-#include <dirent.h>
-#include <sys/stat.h>
-#include <string.h>
+#include "logging.h"
+#include "twai_daemon.h"
+#include "racebox_companion.h"
+#include "gear_estimator_params.h"
+#include "binocan.h"
 
-lv_display_t *main_display;
+/**
+ * @file main.cpp
+ * @brief Application entry point and UI/hardware coordination for MiniGauge56.
+ *
+ * Coordinates AMOLED display management, touch events, SD card mounting,
+ * modern TWAI CAN daemon lifecycle, RaceBox BLE Central connection,
+ * GPS 3D fix system time synchronization, and real-time telemetry display updates.
+ */
 
-static void list_dir(const char *path)
+/** @brief Global LVGL display object pointer */
+lv_display_t *main_display = NULL;
+
+static gear_bayesian_state_t gear_estimator;
+static float speed_freq = 0.0;
+static binocan_dbg_itf_speed_t temp_speed_frame;
+static float rpm_freq = 0.0;
+static binocan_dbg_itf_rpm_t temp_rpm_frame;
+
+/** @brief Flag indicating whether the AMOLED display backlight is asleep/off */
+bool display_off = false;
+
+bool backlight_override = false;
+
+/** @brief Software timer handle for display inactivity sleep timeout */
+static TimerHandle_t sleepDisplayTimer = NULL;
+
+/** @brief Indicates whether a BLE connection with a RaceBox is currently established */
+static bool s_rbx_connected = false;
+
+/** @brief Latest GPS fix status reported by RaceBox PVT telemetry (0=None, 2=2D, 3=3D, etc.) */
+static uint8_t s_rbx_fix_status = 0;
+
+/** @brief Latest number of satellites used in GPS navigational solution */
+static uint8_t s_rbx_num_sv = 0;
+
+/**
+ * @brief Converts UTC calendar time fields to Unix epoch seconds.
+ *
+ * @param[in] tm Pointer to struct tm with year, month, day, hour, min, sec.
+ * @return time_t Seconds elapsed since Unix epoch (1970-01-01 00:00:00 UTC).
+ */
+static time_t utc_tm_to_epoch(const struct tm *tm)
 {
-    const char *TAG = "SD";
-    DIR *dir = opendir(path);
-    if (!dir) {
-        ESP_LOGW(TAG, "opendir failed: %s", path);
-        return;
-    }
-    struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL) {
-        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
-        char full[512];
-        snprintf(full, sizeof(full), "%s/%s", path, ent->d_name);
-        struct stat st;
-        if (stat(full, &st) == 0) {
-            ESP_LOGI(TAG, "%c %s", (S_ISDIR(st.st_mode) ? 'd' : '-'), full);
-        } else {
-            ESP_LOGI(TAG, "? %s", full);
-        }
-    }
-    closedir(dir);
+    int year = tm->tm_year + 1900;
+    int mon = tm->tm_mon + 1;
+    int day = tm->tm_mday;
+
+    int a = (14 - mon) / 12;
+    int y = year + 4800 - a;
+    int m = mon + 12 * a - 3;
+    long jdn = day + (153 * m + 2) / 5 + 365L * y + y / 4 - y / 100 + y / 400 - 32045;
+    long days = jdn - 2440588L; // JDN of 1970-01-01
+
+    return (time_t)(days * 86400L + tm->tm_hour * 3600L + tm->tm_min * 60L + tm->tm_sec);
 }
 
+/**
+ * @brief Callback invoked whenever a 25 Hz RaceBox PVT telemetry frame is decoded.
+ *
+ * Updates current fix status and satellite count, and upon receiving the first
+ * valid 3D GPS fix, updates the ESP32 internal POSIX RTC system clock via settimeofday()
+ * so that SD file creation dates and log filenames reflect the accurate UTC time.
+ *
+ * @param[in] pvt Pointer to canonical decoded RaceBox PVT telemetry struct.
+ * @param[in] user_data User context pointer passed during callback registration (unused).
+ * @note Thread-safety: Called from the NimBLE client task context.
+ */
+static void on_racebox_telemetry(const racebox_pvt_t *pvt, void *user_data)
+{
+    (void)user_data;
+    if (pvt == NULL)
+    {
+        return;
+    }
 
+    // Cache latest GPS fix status and satellite count for UI display
+    s_rbx_fix_status = pvt->fix_status;
+    s_rbx_num_sv = pvt->num_sv;
+
+    // Synchronize system clock upon acquiring the first valid 3D GPS fix
+    if (!is_gps_time_synced && pvt->valid_date && pvt->valid_time && pvt->valid_fix &&
+        pvt->fix_status >= RACEBOX_FIX_3D && pvt->num_sv >= 4)
+    {
+        struct tm tm_utc = {};
+        tm_utc.tm_sec = pvt->second;
+        tm_utc.tm_min = pvt->minute;
+        tm_utc.tm_hour = pvt->hour;
+        tm_utc.tm_mday = pvt->day;
+        tm_utc.tm_mon = pvt->month - 1;
+        tm_utc.tm_year = pvt->year - 1900;
+        tm_utc.tm_isdst = 0;
+
+        time_t epoch_sec = utc_tm_to_epoch(&tm_utc);
+        if (epoch_sec > 1700000000)
+        {
+            struct timeval tv = {
+                .tv_sec = epoch_sec,
+                .tv_usec = (suseconds_t)(pvt->nanoseconds > 0 ? pvt->nanoseconds / 1000 : 0)};
+            settimeofday(&tv, NULL);
+            logging_set_gps_synced(true);
+            ESP_LOGI("GPS_SYNC", "System time synchronized with RaceBox 3D fix: %04d-%02d-%02d %02d:%02d:%02d UTC (SVs: %d)",
+                     pvt->year, pvt->month, pvt->day, pvt->hour, pvt->minute, pvt->second, pvt->num_sv);
+        }
+    }
+}
+
+/**
+ * @brief Callback invoked on RaceBox BLE connection lifecycle events.
+ *
+ * @param[in] event Lifecycle event type (e.g. scan started, discovered, connected, disconnected).
+ * @param[in] data Event payload containing connection or discovery metadata.
+ * @param[in] user_data User context pointer (unused).
+ */
+static void on_racebox_ble_event(racebox_ble_event_t event, const racebox_ble_event_data_t *data, void *user_data)
+{
+    (void)user_data;
+    switch (event)
+    {
+    case RACEBOX_BLE_EVT_SCAN_STARTED:
+        s_rbx_connected = false;
+        ESP_LOGI("RaceBox_BLE", "Scanning for RaceBox peripherals...");
+        break;
+    case RACEBOX_BLE_EVT_DISCOVERED:
+        ESP_LOGI("RaceBox_BLE", "Discovered: '%s'", data ? data->discovered.device.name : "");
+        break;
+    case RACEBOX_BLE_EVT_CONNECTED:
+        s_rbx_connected = true;
+        ESP_LOGI("RaceBox_BLE", "Connected to RaceBox (conn_handle: %d)", data ? data->connected.conn_handle : 0);
+        break;
+    case RACEBOX_BLE_EVT_SUBSCRIBED:
+        s_rbx_connected = true;
+        ESP_LOGI("RaceBox_BLE", "Subscribed to NUS notifications — streaming telemetry and broadcasting to CAN");
+        break;
+    case RACEBOX_BLE_EVT_DISCONNECTED:
+        s_rbx_connected = false;
+        s_rbx_fix_status = 0;
+        s_rbx_num_sv = 0;
+        ESP_LOGW("RaceBox_BLE", "Disconnected (reason: %d). Central will auto-reconnect.", data ? data->disconnected.reason : 0);
+        break;
+    default:
+        break;
+    }
+}
+
+/**
+ * @brief Top-level CAN frame router registered with twai_daemon.
+ *
+ * Dispatches incoming frames from the TWAI RX worker task to all registered consumers
+ * (such as CAN SD logging and future gauge/display decoders).
+ *
+ * @param[in] rx_frame Pointer to received TWAI frame descriptor.
+ * @return esp_err_t ESP_OK on successful dispatch handling.
+ * @note Thread-safety: Executed in the context of twai_daemon's CAN_RX_Task (Core 1).
+ */
+static esp_err_t app_can_frame_router(const twai_frame_t *rx_frame)
+{
+    log_can_frame_handler(rx_frame);
+    // Future gauge decoders (RPM, speed, sensors) hook in here
+    switch (rx_frame->header.id)
+    {
+    case BINOCAN_DBG_ITF_SPEED_FRAME_ID:
+        binocan_dbg_itf_speed_unpack(&temp_speed_frame, rx_frame->buffer, rx_frame->buffer_len);
+        speed_freq = (float)binocan_dbg_itf_speed_dbg_speed_freq_decode(temp_speed_frame.dbg_speed_freq);
+        break;
+
+    case BINOCAN_DBG_ITF_RPM_FRAME_ID:
+        binocan_dbg_itf_rpm_unpack(&temp_rpm_frame, rx_frame->buffer, rx_frame->buffer_len);
+        rpm_freq = (float)binocan_dbg_itf_rpm_dbg_rpm_freq_decode(temp_rpm_frame.dbg_rpm_freq);
+        break;
+
+    default:
+        break;
+    }
+    return ESP_OK;
+}
+
+/**
+ * @brief Wakes up the display backlight and resets the inactivity timer.
+ *
+ * @note Thread-safety: Thread-safe; acquires BSP display lock with 100 ms timeout.
+ * @note Side effects: Powers on display backlight and resets sleepDisplayTimer.
+ */
+void wakeDisplay(void)
+{
+    if (display_off)
+    {
+        if (bsp_display_lock(100) == ESP_OK)
+        {
+            bsp_display_backlight_on();
+            display_off = false;
+            bsp_display_unlock();
+        }
+    }
+    else // If the display is on already
+    {
+        if (bsp_display_lock(100) == ESP_OK)
+        {
+            backlight_override ? bsp_display_brightness_set(50) : bsp_display_backlight_on();
+            bsp_display_unlock();
+        }
+    }
+    // Manage timer
+    if (!backlight_override)
+    {
+        xTimerReset(sleepDisplayTimer, pdMS_TO_TICKS(100));
+    }
+    else
+    {
+        xTimerStop(sleepDisplayTimer, pdMS_TO_TICKS(100));
+    }
+}
+
+/**
+ * @brief Puts the display backlight to sleep to conserve power.
+ *
+ * @note Thread-safety: Thread-safe; acquires BSP display lock with 100 ms timeout.
+ * @note Side effects: Turns off display backlight and marks display_off true.
+ */
+void sleepDisplay(void)
+{
+    if (!display_off)
+    {
+        if (bsp_display_lock(100) == ESP_OK)
+        {
+            bsp_display_backlight_off();
+            display_off = true;
+            bsp_display_unlock();
+        }
+    }
+}
+
+/**
+ * @brief FreeRTOS software timer callback triggered upon display inactivity timeout.
+ *
+ * @param[in] xTimer Handle of the expired FreeRTOS software timer.
+ */
+static void sleepDisplayTimer_cb(TimerHandle_t xTimer)
+{
+    sleepDisplay();
+}
+
+/**
+ * @brief LVGL event callback triggered when the start/stop logging button is clicked.
+ *
+ * @param[in] e Pointer to LVGL event descriptor.
+ * @note Thread-safety: Must be called from the LVGL task context.
+ */
+extern "C" void action_start_stop_clicked(lv_event_t *e)
+{
+    if (display_off)
+    {
+        wakeDisplay();
+        return;
+    }
+
+    if (is_logging)
+    {
+        stop_logging();
+    }
+    else
+    {
+        start_logging();
+        // start_logging_test();
+    }
+    wakeDisplay();
+}
+
+/**
+ * @brief Global touch press event callback to wake display upon any user interaction.
+ *
+ * @param[in] e Pointer to LVGL event descriptor.
+ */
+extern "C" void action_global_pressed(lv_event_t *e)
+{
+    wakeDisplay();
+}
+
+/**
+ * @brief LVGL event callback triggered when the backlight override switch is turned on.
+ *
+ * Forces the display to remain always on at a reduced 50% brightness and cancels inactivity sleep timer.
+ *
+ * @param[in] e Pointer to LVGL event descriptor.
+ * @note Thread-safety: Must be called from the LVGL task context.
+ */
+extern "C" void action_backlight_sw_checked(lv_event_t *e)
+{
+    backlight_override = true;
+    wakeDisplay();
+}
+
+/**
+ * @brief LVGL event callback triggered when the backlight override switch is turned off.
+ *
+ * Restores automatic display power management (100% active brightness with inactivity sleep timeout).
+ *
+ * @param[in] e Pointer to LVGL event descriptor.
+ * @note Thread-safety: Must be called from the LVGL task context.
+ */
+extern "C" void action_backlight_sw_unchecked(lv_event_t *e)
+{
+    backlight_override = false;
+    wakeDisplay(); // For good measure to restart the sleep timer
+}
+
+/**
+ * @brief FreeRTOS UI update task that refreshes LVGL telemetry labels periodically.
+ *
+ * @param[in] pvParameters Task parameters passed by FreeRTOS (unused).
+ * @note Thread-safety: Locks LVGL display mutex before modifying UI widgets.
+ */
+void update_display(void *pvParameters)
+{
+    while (1)
+    {
+        if (bsp_display_lock(100) == ESP_OK)
+        {
+            lv_label_set_text_fmt(objects.filename, "%s", current_log_filename);
+            lv_label_set_text_fmt(objects.filesize, "%lu kB", current_file_size / 1024);
+            lv_label_set_text_fmt(objects.buffered_size, "%lu B", current_buffered_bytes);
+            lv_label_set_text_fmt(objects.start_stop_lbl, "%s", is_logging ? "STOP" : "START");
+            lv_obj_set_state(objects.start_stop_btn, LV_STATE_CHECKED, is_logging);
+            lv_label_set_text_fmt(objects.status, "%s", is_logging ? "Logging" : "Paused");
+
+            if (objects.rbx_status != NULL)
+            {
+                if (!s_rbx_connected)
+                {
+                    lv_label_set_text(objects.rbx_status, "RBX: Scanning...");
+                }
+                else if (s_rbx_fix_status == 0)
+                {
+                    lv_label_set_text_fmt(objects.rbx_status, "RBX: Connected (No Fix, %d Sats)", s_rbx_num_sv);
+                }
+                else if (s_rbx_fix_status == 2)
+                {
+                    lv_label_set_text_fmt(objects.rbx_status, "RBX: 2D Fix (%d Sats)", s_rbx_num_sv);
+                }
+                else
+                {
+                    lv_label_set_text_fmt(objects.rbx_status, "RBX: 3D Fix (%d Sats)%s",
+                                          s_rbx_num_sv, is_gps_time_synced ? " [UTC]" : "");
+                }
+            }
+
+            switch (gear_estimator.latched_gear)
+            {
+            case GEAR_NEUTRAL:
+                lv_label_set_text(objects.gear_readout, "N");
+                break;
+
+            case GEAR_UNCERTAIN:
+                lv_label_set_text(objects.gear_readout, "-");
+                break;
+
+            default:
+                lv_label_set_text_fmt(objects.gear_readout, "%u", gear_estimator.latched_gear);
+                break;
+            }
+
+            lv_label_set_text_fmt(objects.kph_readout, "Spd freq %.1f Hz", speed_freq);
+            lv_label_set_text_fmt(objects.rpm_readout, "RPM freq %.1f Hz", rpm_freq);
+            lv_label_set_text_fmt(objects.ratio_readout, "%.2f", rpm_freq > 0 ? speed_freq / rpm_freq : 0);
+
+            bsp_display_unlock();
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+/**
+ * @brief FreeRTOS task that periodically evaluates the Bayesian gear estimation filter.
+ *
+ * Runs at 40 Hz (25 ms interval), calculating microsecond delta time and updating the
+ * kinematic transition matrix, emission likelihoods, and hysteresis latches.
+ *
+ * @param[in] pvParameters Task parameters passed by FreeRTOS (unused).
+ * @note Thread-safety: Mutates gear_estimator state; reads speed_freq and rpm_freq.
+ */
+void update_gear_estimator(void *pvParameters)
+{
+    int64_t previous_us = esp_timer_get_time();
+    while (1)
+    {
+        vTaskDelay(pdMS_TO_TICKS(25));
+        int64_t now_us = esp_timer_get_time();
+        float dt_s = (float)(now_us - previous_us) / 1000000.0f;
+        previous_us = now_us;
+        gear_bayesian_update(&gear_estimator, speed_freq, rpm_freq, dt_s);
+    }
+}
+
+/**
+ * @brief Application main entry point.
+ *
+ * Initializes display power management timer, mounts SD card, allocates PSRAM
+ * logging buffers, initializes the modern twai_daemon controller, and launches UI.
+ */
 extern "C" void app_main(void)
 {
-    if(bsp_sdcard_mount() != ESP_OK)
+    sleepDisplayTimer = xTimerCreate("slp_disp", pdMS_TO_TICKS(10000), pdFALSE, NULL, sleepDisplayTimer_cb);
+
+    // Initialize necessary frames
+    binocan_dbg_itf_speed_init(&temp_speed_frame);
+    binocan_dbg_itf_rpm_init(&temp_rpm_frame);
+
+    // Initialise the bayesian gear estimator
+    gear_bayesian_init(&gear_estimator);
+
+    if (bsp_sdcard_mount() != ESP_OK)
     {
-        ESP_LOGW(__func__,"Could not mount SD CARD");
+        ESP_LOGW(__func__, "Could not mount SD CARD");
     }
     else
     {
         ESP_LOGI(__func__, "SD card mounted at %s", BSP_SD_MOUNT_POINT);
-        list_dir(BSP_SD_MOUNT_POINT);
+        if (init_can_logging())
+        {
+            ESP_LOGI(__func__, "CAN logger ringbuffer ready");
+        }
+        else
+        {
+            ESP_LOGE(__func__, "Could not allocate CAN logger ringbuffer");
+        }
     }
+
+    // Initialize modern TWAI driver and route frames through app_can_frame_router
+    if (initCAN(app_can_frame_router) == ESP_OK)
+    {
+        ESP_LOGI(__func__, "TWAI modern driver initialized successfully");
+    }
+    else
+    {
+        ESP_LOGE(__func__, "Failed to initialize TWAI modern driver");
+    }
+
+    // Initialize RaceBox Companion (BLE Central scanner & auto CAN broadcaster)
+    racebox_companion_config_t companion_cfg = {
+        .name_prefix = "RaceBox ",
+        .auto_can_forward = true,
+        .pvt_cb = on_racebox_telemetry,
+        .ble_evt_cb = on_racebox_ble_event,
+        .user_data = NULL};
+
+    if (racebox_companion_init(&companion_cfg) == ESP_OK)
+    {
+        ESP_LOGI(__func__, "RaceBox Companion initialized successfully");
+        if (racebox_companion_start() == ESP_OK)
+        {
+            ESP_LOGI(__func__, "RaceBox BLE scanning started");
+        }
+        else
+        {
+            ESP_LOGE(__func__, "Failed to start RaceBox BLE scanning");
+        }
+    }
+    else
+    {
+        ESP_LOGE(__func__, "Failed to initialize RaceBox Companion");
+    }
+
+    // Display init
     main_display = bsp_display_start();
-    bsp_display_brightness_set(100);
-    // if(bsp_display_lock(100))
-    // {
-    //     ESP_LOGI(__func__,"first mutex taken");
-        
-    //     bsp_display_unlock();
-    // }
-    bsp_display_lock(-1);
-    ui_init();
-    bsp_display_unlock();
 
-    uint8_t brightness = 0;
-    // bsp_display_brightness_set(10);
+    if (bsp_display_lock(-1) == ESP_OK)
+    {
+        ui_init();
+        bsp_display_unlock();
+    }
+    else
+    {
+        ESP_LOGE(__func__, "Could not catch mutex for LVGL, aborting");
+        return;
+    }
+    wakeDisplay();
 
-    
-
+    xTaskCreate(update_display, "upd_disp", 4096, NULL, 3, NULL);
+    xTaskCreate(update_gear_estimator, "upd_gear", 4096, NULL, 5, NULL);
     while (true)
     {
-
-        vTaskDelay(pdMS_TO_TICKS(100));
-
-
-        // // Testing brightness control
-        // brightness += 1;
-        // brightness %= 100;
-        
-        // if (bsp_display_lock(-1) == ESP_OK)
-        // {
-        //     bsp_display_brightness_set(brightness);
-        //     bsp_display_unlock();
-        // }
-
-        
-        // bsp_display_brightness_set(brightness);
-        // if (bsp_display_lock(1000))
-        // {
-        //     if (bsp_display_brightness_set(brightness) != ESP_OK)
-        //         ESP_LOGE(__func__, "Cannot set brightness");
-        //     else
-        //         ESP_LOGI(__func__, "Brightness set to %u", brightness);
-        //     bsp_display_unlock();
-        // }
-        // else
-        // {
-        //     ESP_LOGW(__func__,"mutex not available");
-        // }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        ESP_LOGD("STATUS", "File: %s | Size: %lu kB | Buffered: %lu B",
+                 current_log_filename, current_file_size / 1024, current_buffered_bytes);
     }
 }

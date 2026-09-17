@@ -1,0 +1,27 @@
+{
+  "safety-gate": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./pre-tool-safety.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "markdown-hygiene-reminder": {
+    "enabled": true,
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "./pre-invocation-reminder.sh",
+        "timeout": 5
+      }
+    ]
+  }
+}

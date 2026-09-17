@@ -1,0 +1,131 @@
+menu "RaceBox CAN / TWAI Configuration"
+
+    config RACEBOX_CAN_BASE_ID
+        hex "CAN Base ID for RaceBox Telemetry (Standard 11-bit)"
+        default 0x600
+        range 0x000 0x7F8
+        help
+            Base 11-bit CAN identifier for RaceBox frames.
+            Messages occupy [BASE_ID + 0] through [BASE_ID + 5].
+            Default 0x600 ensures low arbitration priority.
+
+    config RACEBOX_TWAI_STATS_ENABLE
+        bool "Enable CAN bus transmission statistics"
+        default y
+        help
+            Enable tracking of CAN transmission metrics in racebox_twai:
+            frames sent per message ID, transmit failure counts, queue depth,
+            peak queue watermark, frames per second (FPS), and estimated
+            bus load percentage.
+            Disabling this reduces CPU overhead in the transmission path
+            when diagnostic statistics are not needed.
+
+    choice RACEBOX_CAN_RATE_SPEED_HEADING
+        prompt "Message 0x600 (Speed & Heading) Broadcast Rate"
+        default RACEBOX_CAN_RATE_SPEED_HEADING_25HZ
+        help
+            Transmission frequency for RB_SPEED_HEADING message.
+
+        config RACEBOX_CAN_RATE_SPEED_HEADING_25HZ
+            bool "25 Hz (Every frame)"
+        config RACEBOX_CAN_RATE_SPEED_HEADING_10HZ
+            bool "10 Hz"
+        config RACEBOX_CAN_RATE_SPEED_HEADING_5HZ
+            bool "5 Hz"
+        config RACEBOX_CAN_RATE_SPEED_HEADING_1HZ
+            bool "1 Hz"
+        config RACEBOX_CAN_RATE_SPEED_HEADING_OFF
+            bool "Disabled"
+    endchoice
+
+    choice RACEBOX_CAN_RATE_LAT_LON
+        prompt "Message 0x601 (Coordinates Lat/Lon) Broadcast Rate"
+        default RACEBOX_CAN_RATE_LAT_LON_25HZ
+        help
+            Transmission frequency for RB_LAT_LON message.
+
+        config RACEBOX_CAN_RATE_LAT_LON_25HZ
+            bool "25 Hz (Every frame)"
+        config RACEBOX_CAN_RATE_LAT_LON_10HZ
+            bool "10 Hz"
+        config RACEBOX_CAN_RATE_LAT_LON_5HZ
+            bool "5 Hz"
+        config RACEBOX_CAN_RATE_LAT_LON_1HZ
+            bool "1 Hz"
+        config RACEBOX_CAN_RATE_LAT_LON_OFF
+            bool "Disabled"
+    endchoice
+
+    choice RACEBOX_CAN_RATE_ALT_ACCURACY
+        prompt "Message 0x602 (Altitude & Accuracy) Broadcast Rate"
+        default RACEBOX_CAN_RATE_ALT_ACCURACY_25HZ
+        help
+            Transmission frequency for RB_ALT_ACCURACY message.
+
+        config RACEBOX_CAN_RATE_ALT_ACCURACY_25HZ
+            bool "25 Hz (Every frame)"
+        config RACEBOX_CAN_RATE_ALT_ACCURACY_10HZ
+            bool "10 Hz"
+        config RACEBOX_CAN_RATE_ALT_ACCURACY_5HZ
+            bool "5 Hz"
+        config RACEBOX_CAN_RATE_ALT_ACCURACY_1HZ
+            bool "1 Hz"
+        config RACEBOX_CAN_RATE_ALT_ACCURACY_OFF
+            bool "Disabled"
+    endchoice
+
+    choice RACEBOX_CAN_RATE_IMU_ACCEL
+        prompt "Message 0x603 (IMU Accelerometer) Broadcast Rate"
+        default RACEBOX_CAN_RATE_IMU_ACCEL_25HZ
+        help
+            Transmission frequency for RB_IMU_ACCEL message.
+
+        config RACEBOX_CAN_RATE_IMU_ACCEL_25HZ
+            bool "25 Hz (Every frame)"
+        config RACEBOX_CAN_RATE_IMU_ACCEL_10HZ
+            bool "10 Hz"
+        config RACEBOX_CAN_RATE_IMU_ACCEL_5HZ
+            bool "5 Hz"
+        config RACEBOX_CAN_RATE_IMU_ACCEL_1HZ
+            bool "1 Hz"
+        config RACEBOX_CAN_RATE_IMU_ACCEL_OFF
+            bool "Disabled"
+    endchoice
+
+    choice RACEBOX_CAN_RATE_IMU_GYRO
+        prompt "Message 0x604 (IMU Gyroscope) Broadcast Rate"
+        default RACEBOX_CAN_RATE_IMU_GYRO_25HZ
+        help
+            Transmission frequency for RB_IMU_GYRO message.
+
+        config RACEBOX_CAN_RATE_IMU_GYRO_25HZ
+            bool "25 Hz (Every frame)"
+        config RACEBOX_CAN_RATE_IMU_GYRO_10HZ
+            bool "10 Hz"
+        config RACEBOX_CAN_RATE_IMU_GYRO_5HZ
+            bool "5 Hz"
+        config RACEBOX_CAN_RATE_IMU_GYRO_1HZ
+            bool "1 Hz"
+        config RACEBOX_CAN_RATE_IMU_GYRO_OFF
+            bool "Disabled"
+    endchoice
+
+    choice RACEBOX_CAN_RATE_UTC_TIME
+        prompt "Message 0x605 (UTC Date & Time) Broadcast Rate"
+        default RACEBOX_CAN_RATE_UTC_TIME_25HZ
+        help
+            Transmission frequency for RB_UTC_TIME message.
+
+        config RACEBOX_CAN_RATE_UTC_TIME_25HZ
+            bool "25 Hz (Every frame)"
+        config RACEBOX_CAN_RATE_UTC_TIME_10HZ
+            bool "10 Hz"
+        config RACEBOX_CAN_RATE_UTC_TIME_5HZ
+            bool "5 Hz"
+        config RACEBOX_CAN_RATE_UTC_TIME_1HZ
+            bool "1 Hz"
+        config RACEBOX_CAN_RATE_UTC_TIME_OFF
+            bool "Disabled"
+    endchoice
+
+endmenu

@@ -1,0 +1,825 @@
+/* MiniGauge CAN Log Streamer Stylesheet */
+
+:root {
+  --bg-primary: #080a0f;
+  --bg-secondary: #0e121a;
+  --bg-tertiary: #141a24;
+  --border-color: rgba(0, 240, 255, 0.15);
+  --border-focus: #00f0ff;
+  --accent-cyan: #00f0ff;
+  --accent-green: #00ff66;
+  --accent-amber: #ffb000;
+  --accent-red: #ff2a55;
+  --accent-blue: #2a88ff;
+  --text-primary: #e6edf3;
+  --text-muted: #8b949e;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.streamer-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 1rem 1.5rem;
+  box-sizing: border-box;
+  gap: 1rem;
+}
+
+/* Header */
+.streamer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.brand-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.brand-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.brand-title .accent {
+  color: var(--accent-cyan);
+}
+
+.brand-sub {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.header-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mono-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.custom-select, .target-input, .target-port-input {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 0.35rem 0.6rem;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.custom-select:focus, .target-input:focus, .target-port-input:focus {
+  border-color: var(--border-focus);
+}
+
+.custom-select {
+  max-width: 260px;
+}
+
+.target-input {
+  width: 170px;
+}
+
+.target-port-input {
+  width: 65px;
+}
+
+.colon {
+  color: var(--text-muted);
+}
+
+.icon-btn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 4px;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.icon-btn:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+.udp-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0.8rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+.dot-stopped {
+  background: #666;
+}
+
+.dot-playing {
+  background: var(--accent-green);
+  box-shadow: 0 0 10px var(--accent-green);
+}
+
+.dot-paused {
+  background: var(--accent-amber);
+  box-shadow: 0 0 8px var(--accent-amber);
+}
+
+.status-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.state-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.rate-label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+/* Transport Bar */
+.transport-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.transport-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.btn-transport {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 6px;
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-transport:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+.btn-play {
+  min-width: 44px;
+  background: rgba(0, 240, 255, 0.1);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+.btn-play.is-playing {
+  background: rgba(0, 255, 102, 0.15);
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+}
+
+.scrub-container {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 250px;
+  gap: 0.75rem;
+}
+
+.time-readout {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  min-width: 65px;
+}
+
+.time-readout.duration {
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.scrub-track-wrapper {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+#scrub-slider {
+  width: 100%;
+  appearance: none;
+  height: 6px;
+  background: #1b2230;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+#scrub-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 8px var(--accent-cyan);
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+#scrub-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+}
+
+.scrub-tooltip {
+  position: absolute;
+  top: -28px;
+  transform: translateX(-50%);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  pointer-events: none;
+  display: none;
+  white-space: nowrap;
+}
+
+.transport-options {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.speed-selector {
+  display: flex;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.speed-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 0.35rem 0.6rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.speed-btn:hover {
+  color: var(--text-primary);
+}
+
+.speed-btn.active {
+  background: rgba(0, 240, 255, 0.2);
+  color: var(--accent-cyan);
+}
+
+.toggle-control {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.toggle-control input:checked + .toggle-label {
+  color: var(--accent-cyan);
+}
+
+/* Dashboard Content */
+.dashboard-content {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 1rem;
+  flex: 1;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-content {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cluster-card, .telltales-card, .traces-card, .packet-inspector-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1.25rem;
+  box-sizing: border-box;
+}
+
+/* Dual Circular Gauges */
+.dual-gauge-stage {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  flex-wrap: wrap;
+  gap: 2rem;
+  padding: 1rem 0;
+}
+
+.gauge-container {
+  position: relative;
+  width: 240px;
+  height: 240px;
+}
+
+.gauge-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.gauge-track {
+  fill: none;
+  stroke: #161d2b;
+  stroke-width: 10;
+}
+
+.gauge-bar {
+  fill: none;
+  stroke-width: 10;
+  stroke-linecap: round;
+  stroke-dasharray: 565.48; /* 2 * PI * 90 */
+  stroke-dashoffset: 565.48;
+  transition: stroke-dashoffset 0.1s ease-out;
+}
+
+.speed-bar {
+  stroke: var(--accent-cyan);
+  filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.6));
+}
+
+.rpm-bar {
+  stroke: var(--accent-green);
+  filter: drop-shadow(0 0 6px rgba(0, 255, 102, 0.6));
+}
+
+.gauge-center {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.gauge-metric-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+}
+
+.gauge-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 1;
+  margin: 0.25rem 0;
+}
+
+.speed-value {
+  color: var(--accent-cyan);
+}
+
+.rpm-value {
+  color: var(--accent-green);
+}
+
+.gauge-unit {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.unit-alt {
+  font-size: 0.75rem;
+}
+
+.gauge-detail-badge {
+  margin-top: 0.4rem;
+  padding: 0.15rem 0.5rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+/* Secondary Gauges */
+.secondary-gauges {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.linear-gauge-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+
+.gauge-text-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.sub-val {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.progress-bar-bg {
+  width: 100%;
+  height: 8px;
+  background: #161d2b;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  transition: width 0.15s ease-out;
+}
+
+.coolant-fill {
+  background: linear-gradient(90deg, #2a88ff, #00f0ff, #ff2a55);
+}
+
+.fuel-fill {
+  background: linear-gradient(90deg, #ff2a55, #ffb000, #00ff66);
+}
+
+/* Telltales Annunciator Panel */
+.telltales-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.card-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.card-extra {
+  font-size: 0.8rem;
+  color: var(--accent-cyan);
+}
+
+.telltale-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.telltale-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  background: #111622;
+  border: 1px solid #1a2233;
+  border-radius: 6px;
+  opacity: 0.45;
+  transition: all 0.15s ease-in-out;
+}
+
+.tt-icon {
+  font-size: 1.1rem;
+  min-width: 22px;
+  text-align: center;
+}
+
+.tt-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+/* Active Telltale Glow States */
+.telltale-pill.active {
+  opacity: 1;
+}
+
+#tt-left-turn.active, #tt-right-turn.active {
+  background: rgba(0, 255, 102, 0.15);
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+  box-shadow: 0 0 10px rgba(0, 255, 102, 0.4);
+}
+
+#tt-hi-beams.active {
+  background: rgba(42, 136, 255, 0.15);
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+  box-shadow: 0 0 10px rgba(42, 136, 255, 0.4);
+}
+
+#tt-backlight.active {
+  background: rgba(255, 176, 0, 0.15);
+  border-color: var(--accent-amber);
+  color: var(--accent-amber);
+  box-shadow: 0 0 8px rgba(255, 176, 0, 0.3);
+}
+
+#tt-ignition.active {
+  background: rgba(0, 240, 255, 0.15);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+}
+
+#tt-oil-low.active, #tt-brake-low.active, #tt-coolant-low.active, #tt-alternator.active, #tt-door.active {
+  background: rgba(255, 42, 85, 0.2);
+  border-color: var(--accent-red);
+  color: var(--accent-red);
+  box-shadow: 0 0 10px rgba(255, 42, 85, 0.4);
+}
+
+#tt-park-brake.active, #tt-cel.active, #tt-abs.active, #tt-airbag.active, #tt-alarm.active {
+  background: rgba(255, 176, 0, 0.2);
+  border-color: var(--accent-amber);
+  color: var(--accent-amber);
+  box-shadow: 0 0 10px rgba(255, 176, 0, 0.4);
+}
+
+#tt-button.active {
+  background: rgba(0, 240, 255, 0.2);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+/* Packet Inspector */
+.packet-inspector-card {
+  padding: 0.75rem 1.25rem;
+}
+
+.inspector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.inspector-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.chevron {
+  font-size: 0.7rem;
+  transition: transform 0.2s;
+}
+
+.inspector-body {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hex-dump-box {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: #06080c;
+  border: 1px solid var(--border-color);
+  padding: 0.5rem 0.8rem;
+  border-radius: 4px;
+}
+
+.hex-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.hex-payload {
+  font-size: 0.95rem;
+  color: var(--accent-green);
+  letter-spacing: 2px;
+}
+
+.fields-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.5rem;
+}
+
+.field-cell {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.field-name {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.field-val {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.accent-text {
+  color: var(--accent-cyan);
+}
+
+/* Telemetry Traces Card & Plotly Container */
+.traces-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.traces-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.traces-card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.legend-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.traces-legend {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.speed-dot {
+  background: var(--accent-cyan);
+  box-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
+}
+
+.rpm-dot {
+  background: var(--accent-green);
+  box-shadow: 0 0 6px rgba(0, 255, 102, 0.6);
+}
+
+.plot-container-wrapper {
+  position: relative;
+  width: 100%;
+  height: 180px;
+  background: #06080c;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: crosshair;
+}
+
+.plotly-chart {
+  width: 100%;
+  height: 100%;
+}
+
+.graph-cursor-needle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent-amber);
+  box-shadow: 0 0 8px rgba(255, 176, 0, 0.9), 0 0 2px #fff;
+  pointer-events: none;
+  z-index: 10;
+  display: none;
+  will-change: left;
+}
+
+.graph-cursor-needle .cursor-head {
+  position: absolute;
+  top: 0;
+  left: -4px;
+  width: 10px;
+  height: 7px;
+  background: var(--accent-amber);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  box-shadow: 0 0 4px rgba(255, 176, 0, 0.9);
+}
+

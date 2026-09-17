@@ -17,9 +17,18 @@ enum ScreensEnum {
 
 typedef struct _objects_t {
     lv_obj_t *main;
-    lv_obj_t *main_tabview;
-    lv_obj_t *main_tab;
-    lv_obj_t *settings_tab;
+    lv_obj_t *filename;
+    lv_obj_t *filesize;
+    lv_obj_t *buffered_size;
+    lv_obj_t *status;
+    lv_obj_t *start_stop_btn;
+    lv_obj_t *start_stop_lbl;
+    lv_obj_t *rbx_status;
+    lv_obj_t *backlight_switch;
+    lv_obj_t *rpm_readout;
+    lv_obj_t *kph_readout;
+    lv_obj_t *ratio_readout;
+    lv_obj_t *gear_readout;
 } objects_t;
 
 extern objects_t objects;

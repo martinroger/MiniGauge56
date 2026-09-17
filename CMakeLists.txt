@@ -5,4 +5,15 @@
 cmake_minimum_required(VERSION 3.5)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+
+add_compile_options(
+    -Wno-missing-field-initializers
+    -Wno-unused-but-set-variable
+    -Wno-unused-variable
+    -Wno-unused-function
+    -Wno-extra
+)
+
 project(MiniGauge56)
+
+idf_build_set_property(COMPILE_OPTIONS "-Wno-stringop-truncation" APPEND)
