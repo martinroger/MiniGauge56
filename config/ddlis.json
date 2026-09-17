@@ -1,0 +1,29 @@
+[
+  {
+    "_schema_guide": {
+      "description": "Dynamically Defined Local Identifier (DDLI) Train Composition Schema Guide",
+      "keys": {
+        "local_id": "Hexadecimal Local Identifier byte string (e.g., '0xF0', '0xF1', '0xF2').",
+        "name": "Descriptive human-readable name string (e.g., 'Engine_Core_Metrics', 'Transmission_Metrics').",
+        "transmission_mode": "ISO 14230-3 transmission mode options: 'fast' (0x04 periodic broadcast), 'medium' (0x03), 'slow' (0x02), 'single' (0x01 active polling on demand), 'stop' (0x00 stop transmission).",
+        "dids": "Array of DID string keys referenced in sequence order from master dids.json (e.g., ['RPM', 'HPFP_Pressure', 'Oil_Temp'])."
+      }
+    }
+  },
+  {
+    "local_id": "0xF0",
+    "name": "Engine_Core_Metrics",
+    "transmission_mode": "fast",
+    "dids": [
+      "RPM",
+      "HPFP_Pressure",
+      "MAF",
+      "Throttle_Pressure",
+      "Vehicle_Speed",
+      "Oil_Temp",
+      "Engine_Temp_2",
+      "Engine_Temp_1",
+      "IAT"
+    ]
+  }
+]

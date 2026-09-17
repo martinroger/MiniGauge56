@@ -9,6 +9,7 @@ graph TD
     subgraph External Transports
         RB[RaceBox Mini / Micro / S] -->|BLE 5.0 GATT Notifications| BLE_MOD[racebox_ble Central]
         BUS[Vehicle CAN Bus / Transceiver] <-->|TWAI ISO 11898-2| TWAI_MOD[twai_daemon]
+        ECU[DME Engine ECU 0x12] <-->|KWP2000 0x612 / 0x6F1| TWAI_MOD
     end
 
     subgraph Core 1: Ingestion & Telemetry Processing
@@ -17,6 +18,10 @@ graph TD
         COMP -->|racebox_twai_broadcast| TWAI_MOD
         TWAI_MOD -->|app_can_frame_router| ROUTER{CAN Router}
         ROUTER -->|log_can_frame_handler| RB_BUF[(PSRAM Ringbuffer - 32 KB)]
+        ROUTER -->|bmwp2000_feed_can_frame| BMWP_Q[(BMWP FreeRTOS rx_queue)]
+        BMWP_Q --> BMWP_TASK[bmwp_daemon_task - Core 1]
+        BMWP_TASK -->|twai_transmit_msg| TWAI_MOD
+        BMWP_TASK -->|on_bmwp_telemetry_updated| BMWP_CACHE[(Inline Telemetry Cache)]
         ROUTER -->|binocan_*_unpack| CAN_SIG[CAN Signals: Speed / RPM Freq]
     end
 
@@ -27,9 +32,11 @@ graph TD
         GEAR_TASK -->|Bayesian Filter & Latch| GEAR_ST[(gear_estimator State)]
         GEAR_ST -->|latched_gear| UI_TASK[update_display - 10 Hz]
         CAN_SIG -->|telemetry metrics| UI_TASK
+        BMWP_CACHE -->|telemetry snapshot| UI_TASK
         UI_TASK -->|LVGL Mutex bsp_display_lock| AMOLED[RM69090 AMOLED Display]
     end
 ```
+
 
 ---
 
@@ -105,7 +112,42 @@ sequenceDiagram
     end
 ```
 
+### 3.3 BMWP2000 Diagnostic Telemetry & Fast DDLI Stream
+The `bmwp2000` protocol engine communicates with the engine ECU (DME `0x12`) using ISO 14230-3 (KWP2000) over ISO 15765-2 (ISO-TP):
+
+```mermaid
+sequenceDiagram
+    participant DAEMON as bmwp_daemon_task (Core 1)
+    participant TWAI as twai_daemon TX Pool
+    participant BUS as Physical CAN Bus
+    participant ROUTER as app_can_frame_router
+    participant CB as on_bmwp_telemetry_updated
+    participant CACHE as Inline Telemetry Cache
+
+    DAEMON->>TWAI: Clear DDLI SID 0x2C (0x6F1)
+    TWAI->>BUS: CAN Frame (0x6F1)
+    BUS-->>ROUTER: Positive Response 0x6C (0x612)
+    ROUTER->>DAEMON: bmwp2000_feed_can_frame(rx)
+
+    DAEMON->>TWAI: Dynamically Define Local Identifier SID 0x2C (0xF0)
+    TWAI->>BUS: Multi-frame ISO-TP Request (0x6F1)
+    BUS-->>ROUTER: Positive Response 0x6C (0x612)
+    ROUTER->>DAEMON: bmwp2000_feed_can_frame(rx)
+
+    DAEMON->>TWAI: Read Data By Local Identifier SID 0x21 (0xF0, Mode 0x04 Fast)
+    TWAI->>BUS: CAN Frame (0x6F1)
+
+    loop Fast Periodic Telemetry Stream
+        BUS-->>ROUTER: DDLI 0xF0 Stream Frames (0x612)
+        ROUTER->>DAEMON: bmwp2000_feed_can_frame(rx)
+        Note over DAEMON: Assemble ISO-TP multi-frame,<br/>unpack DIDs via master dictionary
+        DAEMON->>CB: bmwp2000_register_callback()
+        CB->>CACHE: Update RPM, Oil Temp, Coolant, HPFP
+    end
+```
+
 ---
+
 
 ## 4. Bayesian Gear Estimation Model
 

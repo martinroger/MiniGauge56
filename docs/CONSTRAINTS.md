@@ -48,3 +48,10 @@
 ### 2.7 AMOLED Display Power Management & Burn-In Mitigation
 - **Inactivity Sleep Timeout**: The AMOLED display backlight powers off completely after 10 seconds of touch inactivity to minimize power consumption and protect the OLED panel.
 - **Always-On Brightness Clamping**: When the "Always on" override mode is engaged via `objects.backlight_switch`, display brightness is clamped to 50% (`bsp_display_brightness_set(50)`) rather than full 100% brightness to mitigate permanent OLED burn-in during prolonged static telemetry display.
+
+### 2.8 BMWP2000 Protocol Engine & Fast Ingestion Constraints
+- **Zero Dynamic Allocation in Hot Path**: Incoming CAN frames are pre-filtered using a 4-tier fast rejection filter (`0x600 + target_ecu_id`, length >= 2, target address matching tester ID, valid ISO-TP PCI) and pushed into the FreeRTOS `rx_queue` by value without dynamic memory allocations (`malloc`/`new`).
+- **Producer Non-Blocking Protection**: `bmwp2000_feed_can_frame()` performs zero-wait enqueueing (`xQueueSend(rx_queue, frame, 0)`). If the daemon queue is full, frames are dropped immediately to ensure `app_can_frame_router` and `twai_daemon`'s `CAN_RX_Task` are never blocked.
+- **Anti-Hyper-Polling Backoff**: On un-terminated bench testbeds or when the engine ignition is switched OFF, the protocol engine backs off for 3 seconds (`CONFIG_BMWP2000_BACKOFF_DELAY_MS`) after 3 consecutive request timeouts (`CONFIG_BMWP2000_MAX_RETRY_COUNT`), avoiding bus flooding and CPU starvation.
+- **Thread-Safe Snapshot Access**: Telemetry metrics are decoded within the isolated `bmwp_daemon_task` (Core 1, priority 5) and cached silently, making them safely accessible for future LVGL UI bindings via thread-safe getters (`bmwp2000_get_did_value()`).
+

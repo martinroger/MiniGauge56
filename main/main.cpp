@@ -9,6 +9,7 @@
 #include "racebox_companion.h"
 #include "gear_estimator_params.h"
 #include "binocan.h"
+#include "bmwp2000.h"
 
 /**
  * @file main.cpp
@@ -16,7 +17,8 @@
  *
  * Coordinates AMOLED display management, touch events, SD card mounting,
  * modern TWAI CAN daemon lifecycle, RaceBox BLE Central connection,
- * GPS 3D fix system time synchronization, and real-time telemetry display updates.
+ * BMWP2000 KWP2000 diagnostic telemetry daemon, GPS 3D fix system time
+ * synchronization, and real-time telemetry display updates.
  */
 
 /** @brief Global LVGL display object pointer */
@@ -27,6 +29,44 @@ static float speed_freq = 0.0;
 static binocan_dbg_itf_speed_t temp_speed_frame;
 static float rpm_freq = 0.0;
 static binocan_dbg_itf_rpm_t temp_rpm_frame;
+
+/** @brief Counter of valid decoded BMWP2000 DDLI telemetry frames */
+static uint32_t s_bmwp_frame_count = 0;
+
+/** @brief Timestamp of last received BMWP2000 telemetry frame (esp_timer_get_time in microseconds) */
+static int64_t s_bmwp_last_frame_us = 0;
+
+/** @brief Cached engine RPM decoded from BMWP2000 telemetry */
+static double s_bmwp_cached_rpm = 0.0;
+
+/** @brief Cached oil temperature (degC) decoded from BMWP2000 telemetry */
+static double s_bmwp_cached_oil_temp = 0.0;
+
+/** @brief Cached engine coolant temperature (degC) decoded from BMWP2000 telemetry */
+static double s_bmwp_cached_engine_temp = 0.0;
+
+/** @brief Cached high-pressure fuel pump pressure (Bar) decoded from BMWP2000 telemetry */
+static double s_bmwp_cached_hpfp = 0.0;
+
+/**
+ * @brief Callback triggered when a fresh BMWP2000 DDLI packet is parsed.
+ *
+ * Silently updates internal cached telemetry metrics for subsequent UI / status retrieval.
+ *
+ * @param[in] user_ctx User context pointer passed during callback registration (unused).
+ * @note Thread-safety: Executed in the context of bmwp_daemon_task.
+ */
+static void on_bmwp_telemetry_updated(void *user_ctx)
+{
+    (void)user_ctx;
+    s_bmwp_frame_count++;
+    s_bmwp_last_frame_us = esp_timer_get_time();
+
+    bmwp2000_get_did_value("RPM", &s_bmwp_cached_rpm);
+    bmwp2000_get_did_value("Oil_Temp", &s_bmwp_cached_oil_temp);
+    bmwp2000_get_did_value("Engine_Temp_1", &s_bmwp_cached_engine_temp);
+    bmwp2000_get_did_value("HPFP_Pressure", &s_bmwp_cached_hpfp);
+}
 
 /** @brief Flag indicating whether the AMOLED display backlight is asleep/off */
 bool display_off = false;
@@ -167,6 +207,7 @@ static void on_racebox_ble_event(racebox_ble_event_t event, const racebox_ble_ev
 static esp_err_t app_can_frame_router(const twai_frame_t *rx_frame)
 {
     log_can_frame_handler(rx_frame);
+    bmwp2000_feed_can_frame(rx_frame);
     // Future gauge decoders (RPM, speed, sensors) hook in here
     switch (rx_frame->header.id)
     {
@@ -471,6 +512,25 @@ extern "C" void app_main(void)
         ESP_LOGE(__func__, "Failed to initialize RaceBox Companion");
     }
 
+    // Initialize BMWP2000 Diagnostic Daemon (ISO 14230-3 / ISO 15765-2)
+    if (bmwp2000_init() == ESP_OK)
+    {
+        ESP_LOGI(__func__, "BMWP2000 diagnostic engine initialized successfully");
+        bmwp2000_register_callback(on_bmwp_telemetry_updated, NULL);
+        if (bmwp2000_start() == ESP_OK)
+        {
+            ESP_LOGI(__func__, "BMWP2000 background daemon task started");
+        }
+        else
+        {
+            ESP_LOGE(__func__, "Failed to start BMWP2000 background daemon task");
+        }
+    }
+    else
+    {
+        ESP_LOGE(__func__, "Failed to initialize BMWP2000 diagnostic engine");
+    }
+
     // Display init
     main_display = bsp_display_start();
 
@@ -493,5 +553,8 @@ extern "C" void app_main(void)
         vTaskDelay(pdMS_TO_TICKS(1000));
         ESP_LOGD("STATUS", "File: %s | Size: %lu kB | Buffered: %lu B",
                  current_log_filename, current_file_size / 1024, current_buffered_bytes);
+        ESP_LOGD("BMWP_STATUS", "Frames: %lu | RPM: %.0f | Oil: %.1f degC | Coolant: %.1f degC | HPFP: %.1f Bar",
+                 (unsigned long)s_bmwp_frame_count, s_bmwp_cached_rpm, s_bmwp_cached_oil_temp, s_bmwp_cached_engine_temp, s_bmwp_cached_hpfp);
     }
 }
+
