@@ -7,9 +7,9 @@
 #include "logging.h"
 #include "twai_daemon.h"
 #include "racebox_companion.h"
-#include "gear_estimator_params.h"
-#include "binocan.h"
+// #include "binocan.h"
 #include "bmwp2000.h"
+#include "math.h"
 
 /**
  * @file main.cpp
@@ -24,11 +24,6 @@
 /** @brief Global LVGL display object pointer */
 lv_display_t *main_display = NULL;
 
-static gear_bayesian_state_t gear_estimator;
-static float speed_freq = 0.0;
-static binocan_dbg_itf_speed_t temp_speed_frame;
-static float rpm_freq = 0.0;
-static binocan_dbg_itf_rpm_t temp_rpm_frame;
 
 /** @brief Counter of valid decoded BMWP2000 DDLI telemetry frames */
 static uint32_t s_bmwp_frame_count = 0;
@@ -209,21 +204,12 @@ static esp_err_t app_can_frame_router(const twai_frame_t *rx_frame)
     log_can_frame_handler(rx_frame);
     bmwp2000_feed_can_frame(rx_frame);
     // Future gauge decoders (RPM, speed, sensors) hook in here
-    switch (rx_frame->header.id)
-    {
-    case BINOCAN_DBG_ITF_SPEED_FRAME_ID:
-        binocan_dbg_itf_speed_unpack(&temp_speed_frame, rx_frame->buffer, rx_frame->buffer_len);
-        speed_freq = (float)binocan_dbg_itf_speed_dbg_speed_freq_decode(temp_speed_frame.dbg_speed_freq);
-        break;
+    // switch (rx_frame->header.id)
+    // {
 
-    case BINOCAN_DBG_ITF_RPM_FRAME_ID:
-        binocan_dbg_itf_rpm_unpack(&temp_rpm_frame, rx_frame->buffer, rx_frame->buffer_len);
-        rpm_freq = (float)binocan_dbg_itf_rpm_dbg_rpm_freq_decode(temp_rpm_frame.dbg_rpm_freq);
-        break;
-
-    default:
-        break;
-    }
+    // default:
+    //     break;
+    // }
     return ESP_OK;
 }
 
@@ -396,50 +382,18 @@ void update_display(void *pvParameters)
                 }
             }
 
-            switch (gear_estimator.latched_gear)
-            {
-            case GEAR_NEUTRAL:
-                lv_label_set_text(objects.gear_readout, "N");
-                break;
+            lv_label_set_text_fmt(objects.bmw_engine_temp, "%.1f", s_bmwp_cached_engine_temp);
+            lv_label_set_text_fmt(objects.bmw_frames_count,"%lu",s_bmwp_frame_count);
+            lv_label_set_text_fmt(objects.bmw_hpfp,"%.1f",s_bmwp_cached_hpfp);
+            lv_label_set_text_fmt(objects.bmw_oil_temp,"%.1f",s_bmwp_cached_oil_temp);
+            lv_label_set_text_fmt(objects.bmw_rpm,"%lu",lround(s_bmwp_cached_rpm));
 
-            case GEAR_UNCERTAIN:
-                lv_label_set_text(objects.gear_readout, "-");
-                break;
+            //Here should put the state of the daemon
 
-            default:
-                lv_label_set_text_fmt(objects.gear_readout, "%u", gear_estimator.latched_gear);
-                break;
-            }
-
-            lv_label_set_text_fmt(objects.kph_readout, "Spd freq %.1f Hz", speed_freq);
-            lv_label_set_text_fmt(objects.rpm_readout, "RPM freq %.1f Hz", rpm_freq);
-            lv_label_set_text_fmt(objects.ratio_readout, "%.2f", rpm_freq > 0 ? speed_freq / rpm_freq : 0);
 
             bsp_display_unlock();
         }
         vTaskDelay(pdMS_TO_TICKS(100));
-    }
-}
-
-/**
- * @brief FreeRTOS task that periodically evaluates the Bayesian gear estimation filter.
- *
- * Runs at 40 Hz (25 ms interval), calculating microsecond delta time and updating the
- * kinematic transition matrix, emission likelihoods, and hysteresis latches.
- *
- * @param[in] pvParameters Task parameters passed by FreeRTOS (unused).
- * @note Thread-safety: Mutates gear_estimator state; reads speed_freq and rpm_freq.
- */
-void update_gear_estimator(void *pvParameters)
-{
-    int64_t previous_us = esp_timer_get_time();
-    while (1)
-    {
-        vTaskDelay(pdMS_TO_TICKS(25));
-        int64_t now_us = esp_timer_get_time();
-        float dt_s = (float)(now_us - previous_us) / 1000000.0f;
-        previous_us = now_us;
-        gear_bayesian_update(&gear_estimator, speed_freq, rpm_freq, dt_s);
     }
 }
 
@@ -453,12 +407,6 @@ extern "C" void app_main(void)
 {
     sleepDisplayTimer = xTimerCreate("slp_disp", pdMS_TO_TICKS(10000), pdFALSE, NULL, sleepDisplayTimer_cb);
 
-    // Initialize necessary frames
-    binocan_dbg_itf_speed_init(&temp_speed_frame);
-    binocan_dbg_itf_rpm_init(&temp_rpm_frame);
-
-    // Initialise the bayesian gear estimator
-    gear_bayesian_init(&gear_estimator);
 
     if (bsp_sdcard_mount() != ESP_OK)
     {
@@ -495,22 +443,22 @@ extern "C" void app_main(void)
         .ble_evt_cb = on_racebox_ble_event,
         .user_data = NULL};
 
-    if (racebox_companion_init(&companion_cfg) == ESP_OK)
-    {
-        ESP_LOGI(__func__, "RaceBox Companion initialized successfully");
-        if (racebox_companion_start() == ESP_OK)
-        {
-            ESP_LOGI(__func__, "RaceBox BLE scanning started");
-        }
-        else
-        {
-            ESP_LOGE(__func__, "Failed to start RaceBox BLE scanning");
-        }
-    }
-    else
-    {
-        ESP_LOGE(__func__, "Failed to initialize RaceBox Companion");
-    }
+    // if (racebox_companion_init(&companion_cfg) == ESP_OK)
+    // {
+    //     ESP_LOGI(__func__, "RaceBox Companion initialized successfully");
+    //     if (racebox_companion_start() == ESP_OK)
+    //     {
+    //         ESP_LOGI(__func__, "RaceBox BLE scanning started");
+    //     }
+    //     else
+    //     {
+    //         ESP_LOGE(__func__, "Failed to start RaceBox BLE scanning");
+    //     }
+    // }
+    // else
+    // {
+    //     ESP_LOGE(__func__, "Failed to initialize RaceBox Companion");
+    // }
 
     // Initialize BMWP2000 Diagnostic Daemon (ISO 14230-3 / ISO 15765-2)
     if (bmwp2000_init() == ESP_OK)
@@ -547,7 +495,6 @@ extern "C" void app_main(void)
     wakeDisplay();
 
     xTaskCreate(update_display, "upd_disp", 4096, NULL, 3, NULL);
-    xTaskCreate(update_gear_estimator, "upd_gear", 4096, NULL, 5, NULL);
     while (true)
     {
         vTaskDelay(pdMS_TO_TICKS(1000));

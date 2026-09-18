@@ -4,26 +4,66 @@
       "description": "Dynamically Defined Local Identifier (DDLI) Train Composition Schema Guide",
       "keys": {
         "local_id": "Hexadecimal Local Identifier byte string (e.g., '0xF0', '0xF1', '0xF2').",
-        "name": "Descriptive human-readable name string (e.g., 'Engine_Core_Metrics', 'Transmission_Metrics').",
-        "transmission_mode": "ISO 14230-3 transmission mode options: 'fast' (0x04 periodic broadcast), 'medium' (0x03), 'slow' (0x02), 'single' (0x01 active polling on demand), 'stop' (0x00 stop transmission).",
-        "dids": "Array of DID string keys referenced in sequence order from master dids.json (e.g., ['RPM', 'HPFP_Pressure', 'Oil_Temp'])."
+        "name": "Descriptive human-readable name string (e.g., 'engineCore', 'boostAir').",
+        "transmission_mode": "ISO 14230-3 transmission mode options: 'single' (0x01 active polling on demand), 'fast' (0x04), 'medium' (0x03), 'slow' (0x02), 'stop' (0x00).",
+        "dids": "Array of DID string keys referenced in sequence order from master dids.json."
       }
     }
   },
   {
     "local_id": "0xF0",
-    "name": "Engine_Core_Metrics",
-    "transmission_mode": "fast",
+    "name": "engineCore",
+    "transmission_mode": "single",
     "dids": [
-      "RPM",
-      "HPFP_Pressure",
-      "MAF",
-      "Throttle_Pressure",
-      "Vehicle_Speed",
-      "Oil_Temp",
-      "Engine_Temp_2",
-      "Engine_Temp_1",
-      "IAT"
+      "rpm",
+      "hpfpPressure",
+      "maf",
+      "throttlePressure",
+      "vehicleSpeed",
+      "oilTemp",
+      "engineTemp",
+      "iat"
+    ]
+  },
+  {
+    "local_id": "0xF1",
+    "name": "boostAir",
+    "transmission_mode": "single",
+    "dids": [
+      "targetBoost",
+      "throttlePressure",
+      "manifoldPressure",
+      "wastegatePwm",
+      "ambientPressure",
+      "intakeAirTempPreThrottle"
+    ]
+  },
+  {
+    "local_id": "0xF2",
+    "name": "combustionKnock",
+    "transmission_mode": "single",
+    "dids": [
+      "knockVoltageCyl1",
+      "knockVoltageCyl2",
+      "knockVoltageCyl3",
+      "knockVoltageCyl4",
+      "ignitionTimingCyl1",
+      "lambdaActual",
+      "misfireCounterCyl1"
+    ]
+  },
+  {
+    "local_id": "0xF3",
+    "name": "valvetrain",
+    "transmission_mode": "single",
+    "dids": [
+      "vanosPositionIntake",
+      "vanosPositionExhaust",
+      "vanosTargetIntake",
+      "vanosTargetExhaust",
+      "vvtExcentricAngle",
+      "vvtTargetAngle",
+      "vvtMotorCurrent"
     ]
   }
 ]
