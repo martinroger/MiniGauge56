@@ -17,6 +17,12 @@ enum ScreensEnum {
 
 typedef struct _objects_t {
     lv_obj_t *main;
+    lv_obj_t *bmw_frames_count;
+    lv_obj_t *bmw_rpm;
+    lv_obj_t *bmw_oil_temp;
+    lv_obj_t *bmw_engine_temp;
+    lv_obj_t *bmw_hpfp;
+    lv_obj_t *bmw_state;
     lv_obj_t *filename;
     lv_obj_t *filesize;
     lv_obj_t *buffered_size;
@@ -25,10 +31,6 @@ typedef struct _objects_t {
     lv_obj_t *start_stop_lbl;
     lv_obj_t *rbx_status;
     lv_obj_t *backlight_switch;
-    lv_obj_t *rpm_readout;
-    lv_obj_t *kph_readout;
-    lv_obj_t *ratio_readout;
-    lv_obj_t *gear_readout;
 } objects_t;
 
 extern objects_t objects;

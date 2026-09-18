@@ -163,7 +163,7 @@
                 {
                   "type": "tabset",
                   "id": "#12f58e2c-761e-4d5b-840f-64b130b57832",
-                  "weight": 1.3765690376569037,
+                  "weight": 2.0035273368606696,
                   "enableClose": false,
                   "children": [
                     {
@@ -174,12 +174,13 @@
                       "enableClose": false,
                       "icon": "svg:hierarchy"
                     }
-                  ]
+                  ],
+                  "active": true
                 },
                 {
                   "type": "tabset",
                   "id": "#dbccbf03-c7ff-4e06-ad27-536fa34e19a0",
-                  "weight": 1,
+                  "weight": 0.3730417007962335,
                   "enableClose": false,
                   "children": [
                     {
@@ -245,8 +246,7 @@
                       "enableClose": false,
                       "icon": "svg:properties"
                     }
-                  ],
-                  "active": true
+                  ]
                 },
                 {
                   "type": "tabset",
@@ -1094,7 +1094,7 @@
       "transform": {
         "translate": {
           "x": -233,
-          "y": -270.265625
+          "y": -276.21875
         },
         "scale": 1
       },
@@ -1108,11 +1108,7 @@
       "selectionBack": {
         "0": {
           "0": {
-            "0": {
-              "0": {},
-              "$selected": true
-            },
-            "1": {}
+            "0": {}
           }
         }
       }
