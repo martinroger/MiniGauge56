@@ -48,7 +48,7 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN logger, a
 | **REQ-RB-03** | Timestamped Log Filenames | Switch log file naming to `/sdcard/YYYYMMDD_log_HHMMSS.bin` when GPS time is synchronized. |
 | **REQ-RB-04** | RaceBox CAN Broadcasting | Broadcast 25 Hz messages `0x600`-`0x605` onto CAN bus via `racebox_twai` and `twai_daemon`. |
 | **REQ-GEAR-01** | Kinematic-Conditioned Bayesian Gear Estimation | Classify gear state (N, 1..5, Uncertain) at 40 Hz using dynamic transition matrix, Gaussian emission likelihood, and 200 ms latch filter. |
-| **REQ-BMWP-01** | BMWP2000 Component Integration | Manage and link `bmwp2000` v1.0.0 component via ESP-IDF Component Manager. |
+| **REQ-BMWP-01** | BMWP2000 Component Integration | Manage and link `bmwp2000` v1.2.0 component via ESP-IDF Component Manager. |
 | **REQ-BMWP-02** | Non-Blocking ISO-TP Frame Routing | Delegate received CAN frames to `bmwp2000_feed_can_frame()` within `app_can_frame_router()` without blocking producer. |
 | **REQ-BMWP-03** | Custom Project DID & DDLI JSON Paths | Resolve and embed project-level `config/dids.json` and `config/ddlis.json` via Kconfig configuration. |
 | **REQ-BMWP-04** | Diagnostic Telemetry Cache & Status Monitoring | Silently cache decoded DIDs via callback and report frame counts and engine parameters in 1-second status loop. |
@@ -56,6 +56,12 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN logger, a
 | **REQ-UI-02** | Real-Time Telemetry & Gear Readouts | Refresh gear readout, speed frequency (Hz), RPM frequency (Hz), and ratio labels on the `gear_estimator` tab. |
 | **REQ-UI-03** | AMOLED Backlight Management & Override | Power down AMOLED display after 10 s inactivity; support Always-On switch setting brightness to 50% and stopping sleep timer. |
 | **REQ-DOC-01** | Doxygen Compliance | All exported functions and file headers in `main/` include Doxygen docstrings. |
+| **REQ-VIEW-01** | Multi-Format Log Ingestion & Upload | Support reading `.bin`, candump `.log`, and Vector `.asc` files via CLI, local picker, or base64 API upload. |
+| **REQ-VIEW-02** | Protocol Diagnostics & Compliance Flagging | Detect and flag orphaned CFs, sequence jumps, session timeouts, and premature cancellations. |
+| **REQ-VIEW-03** | Resizable Tabular & Inspector Interface | Horizontal draggable pane splitter and column width adjustment with localStorage persistence. |
+| **REQ-VIEW-04** | Universal DDLI DID Unpacking | Dynamically unpack signals for subfunctions 0x01 and 0x02 regardless of registration in `dids.json`. |
+| **REQ-VIEW-05** | Collapsible Raw CAN & Services Sidebar | HTML5 `<details>` CAN frame accordion and toggleable canonical KWP2000 checklist sidebar with count badges. |
+| **REQ-VIEW-06** | SID Parameter Decryption & Dual Delta Timing | Decrypt service parameters (transmissionMode, polling rates) and display inter-frame and request-to-request intervals. |
 
 ---
 
@@ -77,7 +83,7 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN logger, a
 | **REQ-RB-03** | [`main/logging.cpp`](../main/logging.cpp)<br>[`main/logging.h`](../main/logging.h) | `is_gps_time_synced`, `current_log_filename` | Filename format verification |
 | **REQ-RB-04** | [`components/racebox_twai/racebox_twai.c`](../components/racebox_twai/racebox_twai.c) | `racebox_twai_broadcast_pvt()`, `0x600` | Telemetry CAN broadcast review |
 | **REQ-GEAR-01** | [`main/gear_estimator_params.h`](../main/gear_estimator_params.h)<br>[`main/main.cpp`](../main/main.cpp) | `gear_bayesian_update()`, `update_gear_estimator()` | Mathematical model and latch timing check |
-| **REQ-BMWP-01** | [`main/idf_component.yml`](../main/idf_component.yml) | `bmwp2000`, `v1.0.0` | Dependency resolution & compilation |
+| **REQ-BMWP-01** | [`main/idf_component.yml`](../main/idf_component.yml) | `bmwp2000`, `v1.2.0` | Dependency resolution & compilation |
 | **REQ-BMWP-02** | [`main/main.cpp`](../main/main.cpp) | `bmwp2000_feed_can_frame()` | Non-blocking filter verification |
 | **REQ-BMWP-03** | [`config/dids.json`](../config/dids.json)<br>[`config/ddlis.json`](../config/ddlis.json)<br>[`sdkconfig.defaults`](../sdkconfig.defaults) | `CONFIG_BMWP2000_CUSTOM_DIDS_PATH`, `CONFIG_BMWP2000_CUSTOM_DDLIS_PATH` | Embedded Flash asset verification |
 | **REQ-BMWP-04** | [`main/main.cpp`](../main/main.cpp) | `on_bmwp_telemetry_updated()`, `bmwp2000_get_did_value()` | Metric caching and heartbeat output check |
@@ -85,4 +91,10 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN logger, a
 | **REQ-UI-02** | [`main/main.cpp`](../main/main.cpp)<br>[`components/ui/src/screens.h`](../components/ui/src/screens.h) | `objects.gear_readout`, `objects.kph_readout` | LVGL readout refresh verification |
 | **REQ-UI-03** | [`main/main.cpp`](../main/main.cpp) | `wakeDisplay()`, `action_backlight_sw_checked()` | Power management and brightness check |
 | **REQ-DOC-01** | [`main/logging.h`](../main/logging.h)<br>[`main/logging.cpp`](../main/logging.cpp)<br>[`main/main.cpp`](../main/main.cpp) | `@file`, `@brief`, `@param`, `@note` | Doxygen syntax compliance review |
+| **REQ-VIEW-01** | [`tools/bmwp2000_viewer.py`](../tools/bmwp2000_viewer.py)<br>[`tools/common/log_loader.py`](../tools/common/log_loader.py) | `load_log_file()`, `handle_upload()` | Automated unit test & API test |
+| **REQ-VIEW-02** | [`tools/common/isotp_kwp.py`](../tools/common/isotp_kwp.py) | `IsoTpReassembler`, `_abort_session()` | Automated unit test & boundary tests |
+| **REQ-VIEW-03** | [`tools/web/static/js/bmwp2000_viewer.js`](../tools/web/static/js/bmwp2000_viewer.js) | `setupPaneResizer()`, `setupColumnResizers()` | Playwright in-browser verification |
+| **REQ-VIEW-04** | [`tools/common/isotp_kwp.py`](../tools/common/isotp_kwp.py) | `unpack_ddli_payload()`, `dissect_message()` | Automated unit test on fixture logs |
+| **REQ-VIEW-05** | [`tools/web/templates/bmwp2000_viewer.html`](../tools/web/templates/bmwp2000_viewer.html)<br>[`tools/web/static/css/bmwp2000_viewer.css`](../tools/web/static/css/bmwp2000_viewer.css) | `.can-frames-accordion`, `#services-sidebar` | Playwright in-browser snapshot verification |
+| **REQ-VIEW-06** | [`tools/common/isotp_kwp.py`](../tools/common/isotp_kwp.py)<br>[`tools/bmwp2000_viewer.py`](../tools/bmwp2000_viewer.py) | `transmissionMode`, `req_interval_ms` | Automated unit test & Playwright verification |
 

@@ -55,3 +55,9 @@
 - **Anti-Hyper-Polling Backoff**: On un-terminated bench testbeds or when the engine ignition is switched OFF, the protocol engine backs off for 3 seconds (`CONFIG_BMWP2000_BACKOFF_DELAY_MS`) after 3 consecutive request timeouts (`CONFIG_BMWP2000_MAX_RETRY_COUNT`), avoiding bus flooding and CPU starvation.
 - **Thread-Safe Snapshot Access**: Telemetry metrics are decoded within the isolated `bmwp_daemon_task` (Core 1, priority 5) and cached silently, making them safely accessible for future LVGL UI bindings via thread-safe getters (`bmwp2000_get_did_value()`).
 
+### 2.9 BMWP2000 Exchange Viewer Web Tool Constraints
+- **Zero Pip Dependencies**: The host toolset (`tools/bmwp2000_viewer.py` and `tools/common/`) runs strictly on Python 3 standard libraries (`http.server`, `urllib`, `struct`, `json`, `pathlib`, `unittest`).
+- **Standard Protocol Nomenclature**: Dissector implementations adhere strictly to ISO 14230-3 / KWP2000 and ISO 15765-2 terminology (`readDataByLocalIdentifier`, `recordLocalIdentifier`, `transmissionMode`, `dynamicallyDefineLocalIdentifier`, `responseCode`).
+- **Unified UI Design Tokens**: Styles inherit from `theme.css` maintaining Yaru Dark / Cold White light palette and responsive card layouts.
+- **Non-Diagnostic Stream Separation**: Background CAN broadcast frames are kept cleanly separated from diagnostic ISO-TP sessions and dynamically toggled in the timeline without re-requesting log parsing.
+

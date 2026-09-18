@@ -23,5 +23,5 @@ dependencies:
     version: v0.1.0
   bmwp2000:
     git: https://github.com/martinroger/BMWP2000.git
-    version: v1.0.1
+    version: v1.2.0
 
