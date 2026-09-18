@@ -316,5 +316,13 @@ This document defines the functional, technical, and architectural requirements 
 | **REQ-TRIM-006** | `trim_log.py` | `default_output_name()`, overwrite checks | Non-destructive naming & safety tests |
 | **REQ-TRIM-007** | `trim_log.py` | `HTML_PAGE`, `TrimRequestHandler` | Web GUI endpoint and download validation |
 | **REQ-TRIM-008** | `trim_log.py` | `renderGpsMap()`, `updateMapSlice()`, Leaflet | Side-by-side map drawer, route snapping & placeholder |
+| **REQ-VIEW-001** | `bmwp2000_viewer.py`, `log_loader.py` | Multi-format log ingestion (`.bin`, `.log`, `.asc`) | `test_candump_log_parsing`, format detection tests |
+| **REQ-VIEW-002** | `isotp_kwp.py` | ISO-TP multi-frame reassembly (`SF`, `FF`, `CF`, `FC`) | `test_isotp_single_frame_reassembly`, `test_isotp_multi_frame_reassembly` |
+| **REQ-VIEW-003** | `isotp_kwp.py` | KWP2000 service dissection (`0x2C`, `0x21`, `0x10`, `0x1A`, `0x3E`) | `test_kwp2000_ddli_dissection_and_unknown_did_detection` |
+| **REQ-VIEW-004** | `isotp_kwp.py` | Negative Response Code (NRC) decoding (`0x7F`) | `test_negative_response_decoding` |
+| **REQ-VIEW-005** | `isotp_kwp.py` | Unimplemented / unknown command flagging | `test_unimplemented_service_highlighting` |
+| **REQ-VIEW-006** | `isotp_kwp.py` | Dynamic DDLI discovery and DID scaling | `test_kwp2000_ddli_dissection_and_unknown_did_detection` |
+| **REQ-VIEW-007** | `bmwp2000_viewer.py` | Discovered DID persistence with `.bak_*` backup | `test_post_add_did_with_backup` |
+| **REQ-VIEW-008** | `bmwp2000_viewer.html`, `theme.css` | Color coding (Outgoing blue, Incoming green, NRC red, Unknown amber) | UI inspection and theme token verification |
 | **REQ-SYS-008** | `tools/common/`, `tools/web/` | `can_core.py`, `dbc.py`, `calibration.py`, `http_server.py`, static assets, templates | `test_common_components.py` suite (7 tests) & zero-pip imports |
 

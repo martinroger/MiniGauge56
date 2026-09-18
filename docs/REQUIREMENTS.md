@@ -56,6 +56,12 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN logger, a
 | **REQ-UI-02** | Real-Time Telemetry & Gear Readouts | Refresh gear readout, speed frequency (Hz), RPM frequency (Hz), and ratio labels on the `gear_estimator` tab. |
 | **REQ-UI-03** | AMOLED Backlight Management & Override | Power down AMOLED display after 10 s inactivity; support Always-On switch setting brightness to 50% and stopping sleep timer. |
 | **REQ-DOC-01** | Doxygen Compliance | All exported functions and file headers in `main/` include Doxygen docstrings. |
+| **REQ-VIEW-01** | Multi-Format Log Ingestion & Upload | Support reading `.bin`, candump `.log`, and Vector `.asc` files via CLI, local picker, or base64 API upload. |
+| **REQ-VIEW-02** | Protocol Diagnostics & Compliance Flagging | Detect and flag orphaned CFs, sequence jumps, session timeouts, and premature cancellations. |
+| **REQ-VIEW-03** | Resizable Tabular & Inspector Interface | Horizontal draggable pane splitter and column width adjustment with localStorage persistence. |
+| **REQ-VIEW-04** | Universal DDLI DID Unpacking | Dynamically unpack signals for subfunctions 0x01 and 0x02 regardless of registration in `dids.json`. |
+| **REQ-VIEW-05** | Collapsible Raw CAN & Services Sidebar | HTML5 `<details>` CAN frame accordion and toggleable canonical KWP2000 checklist sidebar with count badges. |
+| **REQ-VIEW-06** | SID Parameter Decryption & Dual Delta Timing | Decrypt service parameters (transmissionMode, polling rates) and display inter-frame and request-to-request intervals. |
 
 ---
 
@@ -85,4 +91,10 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge, high-throughput CAN logger, a
 | **REQ-UI-02** | [`main/main.cpp`](../main/main.cpp)<br>[`components/ui/src/screens.h`](../components/ui/src/screens.h) | `objects.gear_readout`, `objects.kph_readout` | LVGL readout refresh verification |
 | **REQ-UI-03** | [`main/main.cpp`](../main/main.cpp) | `wakeDisplay()`, `action_backlight_sw_checked()` | Power management and brightness check |
 | **REQ-DOC-01** | [`main/logging.h`](../main/logging.h)<br>[`main/logging.cpp`](../main/logging.cpp)<br>[`main/main.cpp`](../main/main.cpp) | `@file`, `@brief`, `@param`, `@note` | Doxygen syntax compliance review |
+| **REQ-VIEW-01** | [`tools/bmwp2000_viewer.py`](../tools/bmwp2000_viewer.py)<br>[`tools/common/log_loader.py`](../tools/common/log_loader.py) | `load_log_file()`, `handle_upload()` | Automated unit test & API test |
+| **REQ-VIEW-02** | [`tools/common/isotp_kwp.py`](../tools/common/isotp_kwp.py) | `IsoTpReassembler`, `_abort_session()` | Automated unit test & boundary tests |
+| **REQ-VIEW-03** | [`tools/web/static/js/bmwp2000_viewer.js`](../tools/web/static/js/bmwp2000_viewer.js) | `setupPaneResizer()`, `setupColumnResizers()` | Playwright in-browser verification |
+| **REQ-VIEW-04** | [`tools/common/isotp_kwp.py`](../tools/common/isotp_kwp.py) | `unpack_ddli_payload()`, `dissect_message()` | Automated unit test on fixture logs |
+| **REQ-VIEW-05** | [`tools/web/templates/bmwp2000_viewer.html`](../tools/web/templates/bmwp2000_viewer.html)<br>[`tools/web/static/css/bmwp2000_viewer.css`](../tools/web/static/css/bmwp2000_viewer.css) | `.can-frames-accordion`, `#services-sidebar` | Playwright in-browser snapshot verification |
+| **REQ-VIEW-06** | [`tools/common/isotp_kwp.py`](../tools/common/isotp_kwp.py)<br>[`tools/bmwp2000_viewer.py`](../tools/bmwp2000_viewer.py) | `transmissionMode`, `req_interval_ms` | Automated unit test & Playwright verification |
 
