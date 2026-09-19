@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MiniGauge - BMWP2000 DDLI Composer & DID Editor</title>
+  <title>MiniGauge - BMWP2000 LID Composer & CID Editor</title>
   <link rel="stylesheet" href="/static/css/base.css">
   <link rel="stylesheet" href="/static/css/theme.css">
   <link rel="stylesheet" href="/static/css/components.css">
-  <link rel="stylesheet" href="/static/css/ddli_composer.css">
+  <link rel="stylesheet" href="/static/css/lid_composer.css">
 </head>
 <body class="theme-dark">
   <div class="app-layout">
@@ -23,7 +23,7 @@
           </svg>
           <div class="logo-text">
             <h1>MiniGauge <span>BMWP2000</span></h1>
-            <span class="logo-sub">DDLI Train Composer & Master DID Editor</span>
+            <span class="logo-sub">LID Train Composer & Master CID Editor</span>
           </div>
         </div>
       </div>
@@ -32,18 +32,18 @@
         <!-- Navigation Tabs -->
         <nav class="nav-tabs" role="tablist">
           <button type="button" class="tab-btn active" id="tab-btn-composer" data-tab="tab-composer" role="tab" aria-selected="true">
-            <span class="tab-icon">⚡</span> DDLI Train Composer
+            <span class="tab-icon">⚡</span> LID Train Composer
           </button>
-          <button type="button" class="tab-btn" id="tab-btn-dids" data-tab="tab-dids" role="tab" aria-selected="false">
-            <span class="tab-icon">📖</span> Master DID Editor
+          <button type="button" class="tab-btn" id="tab-btn-cids" data-tab="tab-cids" role="tab" aria-selected="false">
+            <span class="tab-icon">📖</span> Master CID Editor
           </button>
         </nav>
       </div>
 
       <div class="header-right">
         <div class="file-badges">
-          <span class="file-badge" id="badge-ddlis-file" title="DDLIs target configuration file">ddlis.json</span>
-          <span class="file-badge" id="badge-dids-file" title="DIDs target configuration file">dids.json</span>
+          <span class="file-badge" id="badge-lids-file" title="LIDs target configuration file">lids.json</span>
+          <span class="file-badge" id="badge-cids-file" title="CIDs target configuration file">cids.json</span>
         </div>
         <button type="button" class="btn-theme-toggle" id="theme-toggle-btn" data-role="theme-toggle" title="Theme: Auto (follows OS). Click to toggle Light / Dark / Auto">
           <span id="themeIcon" class="theme-icon">🌓</span>
@@ -54,24 +54,24 @@
 
     <!-- Main Content Area -->
     <main class="app-main">
-      <!-- TAB 1: DDLI Train Composer -->
+      <!-- TAB 1: LID Train Composer -->
       <section id="tab-composer" class="tab-pane active" role="tabpanel">
         <!-- Top Train Selector & Action Bar -->
         <div class="card train-selector-card">
           <div class="train-selector-row">
             <div class="form-group flex-1">
-              <label for="select-ddli-train">Active DDLI Train:</label>
-              <select id="select-ddli-train" class="form-select"></select>
+              <label for="select-lid-train">Active LID Train:</label>
+              <select id="select-lid-train" class="form-select"></select>
             </div>
             <div class="train-actions">
               <button type="button" class="btn btn-secondary" id="btn-new-train">
-                <span>➕</span> New DDLI
+                <span>➕</span> New LID
               </button>
-              <button type="button" class="btn btn-danger" id="btn-delete-train" title="Delete current DDLI train">
+              <button type="button" class="btn btn-danger" id="btn-delete-train" title="Delete current LID train">
                 <span>🗑️</span> Delete
               </button>
-              <button type="button" class="btn btn-primary" id="btn-save-ddlis">
-                <span>💾</span> Save ddlis.json
+              <button type="button" class="btn btn-primary" id="btn-save-lids">
+                <span>💾</span> Save lids.json
               </button>
             </div>
           </div>
@@ -103,8 +103,8 @@
         <div class="card telemetry-card">
           <div class="telemetry-grid">
             <div class="telemetry-item">
-              <span class="telemetry-label">Train DIDs Count:</span>
-              <span class="telemetry-val" id="metric-did-count">0</span>
+              <span class="telemetry-label">Train CIDs Count:</span>
+              <span class="telemetry-val" id="metric-cid-count">0</span>
             </div>
             <div class="telemetry-item">
               <span class="telemetry-label">RAM Payload Bytes:</span>
@@ -126,25 +126,25 @@
           </div>
         </div>
 
-        <!-- Dual Column DID Sequence Builder -->
+        <!-- Dual Column CID Sequence Builder -->
         <div class="composer-split-view">
-          <!-- Left Column: Available DIDs Palette -->
-          <div class="card did-palette-card">
+          <!-- Left Column: Available CIDs Palette -->
+          <div class="card cid-palette-card">
             <div class="palette-header">
-              <h3>Available Master DIDs</h3>
+              <h3>Available Master CIDs</h3>
               <div class="search-box">
-                <input type="text" id="search-palette" placeholder="Filter DIDs by name, hex, or unit...">
+                <input type="text" id="search-palette" placeholder="Filter CIDs by name, hex, or unit...">
               </div>
             </div>
-            <div class="palette-list" id="palette-did-list">
-              <!-- Dynamically populated DID items -->
+            <div class="palette-list" id="palette-cid-list">
+              <!-- Dynamically populated CID items -->
             </div>
           </div>
 
           <!-- Right Column: Active Train Sequence -->
           <div class="card train-sequence-card">
             <div class="sequence-header">
-              <h3>Active Train DID Sequence (Ordered)</h3>
+              <h3>Active Train CID Sequence (Ordered)</h3>
               <span class="sequence-subtitle">Sequence dispatched by ECU during transmission</span>
             </div>
             <div class="sequence-list" id="active-sequence-list">
@@ -154,38 +154,40 @@
         </div>
       </section>
 
-      <!-- TAB 2: Master DID Editor -->
-      <section id="tab-dids" class="tab-pane" role="tabpanel">
-        <div class="card did-table-card">
+      <!-- TAB 2: Master CID Editor -->
+      <section id="tab-cids" class="tab-pane" role="tabpanel">
+        <div class="card cid-table-card">
           <div class="table-action-bar">
             <div class="search-box flex-1">
-              <input type="text" id="search-dids" placeholder="Search Master DIDs by name, ID, or engineering unit...">
+              <input type="text" id="search-cids" placeholder="Search Master CIDs by name, ID, or engineering unit...">
             </div>
-            <button type="button" class="btn btn-secondary" id="btn-add-did">
-              <span>➕</span> Add New DID
+            <button type="button" class="btn btn-secondary" id="btn-add-cid">
+              <span>➕</span> Add New CID
             </button>
-            <button type="button" class="btn btn-primary" id="btn-save-dids">
-              <span>💾</span> Save dids.json
+            <button type="button" class="btn btn-primary" id="btn-save-cids">
+              <span>💾</span> Save cids.json
             </button>
           </div>
 
           <div class="table-responsive">
-            <table class="data-table" id="table-dids">
+            <table class="data-table" id="table-cids">
               <thead>
                 <tr>
-                  <th>DID Name</th>
+                  <th>CID Name</th>
                   <th>Hex ID</th>
+                  <th>Description</th>
                   <th>RAM Size</th>
+                  <th>Type</th>
                   <th>Offset</th>
-                  <th>Formula Multiplier</th>
-                  <th>Formula Divisor</th>
+                  <th>Multiplier</th>
+                  <th>Divisor</th>
                   <th>Offset Add</th>
                   <th>Unit</th>
                   <th>Formula Preview</th>
                   <th>Actions</th>
                 </tr>
               </thead>
-              <tbody id="tbody-dids">
+              <tbody id="tbody-cids">
                 <!-- Dynamically populated -->
               </tbody>
             </table>
@@ -201,57 +203,67 @@
         <span id="footer-status-msg">Ready</span>
       </div>
       <div class="footer-info">
-        <span>ISO 14230-3 (KWP2000) & ISO 15765-2 (ISO-TP)</span>
+        <span>BMW-FAST-over-CAN (ISO 14230-3 & ISO 15765-2)</span>
       </div>
     </footer>
   </div>
 
-  <!-- Add/Edit DID Modal Dialog -->
-  <div class="modal-overlay" id="modal-did" aria-hidden="true">
-    <div class="modal-content card" role="dialog" aria-labelledby="modal-did-title">
+  <!-- Add/Edit CID Modal Dialog -->
+  <div class="modal-overlay" id="modal-cid" aria-hidden="true">
+    <div class="modal-content card" role="dialog" aria-labelledby="modal-cid-title">
       <div class="modal-header">
-        <h3 id="modal-did-title">Add / Edit Data Identifier</h3>
+        <h3 id="modal-cid-title">Add / Edit Common Identifier (CID)</h3>
         <button type="button" class="btn-close" id="btn-close-modal" aria-label="Close modal">✕</button>
       </div>
-      <form id="form-did" class="modal-body">
-        <input type="hidden" id="did-original-name">
+      <form id="form-cid" class="modal-body">
+        <input type="hidden" id="cid-original-name">
         <div class="form-grid">
           <div class="form-group">
-            <label for="input-did-name">DID Name / Symbol:</label>
-            <input type="text" id="input-did-name" required placeholder="RPM" class="mono">
-            <small class="form-hint">Unique dictionary key (alphanumeric & underscores)</small>
+            <label for="input-cid-name">CID Name / Symbol:</label>
+            <input type="text" id="input-cid-name" required placeholder="RPM" class="mono">
+            <small class="form-hint">Unique key. Existing names will be automatically suffixed (e.g. _1).</small>
           </div>
           <div class="form-group">
-            <label for="input-did-hex">Hex Identifier (e.g. 0x580C):</label>
-            <input type="text" id="input-did-hex" required placeholder="0x580C" class="mono" maxlength="8">
+            <label for="input-cid-hex">Hex Identifier (e.g. 0x580C):</label>
+            <input type="text" id="input-cid-hex" required placeholder="0x580C" class="mono" maxlength="8">
           </div>
           <div class="form-group">
-            <label for="select-did-size">ECU RAM Size:</label>
-            <select id="select-did-size" class="form-select">
+            <label for="input-cid-desc">Description:</label>
+            <input type="text" id="input-cid-desc" placeholder="Human-readable parameter description">
+          </div>
+          <div class="form-group">
+            <label for="select-cid-size">ECU RAM Size:</label>
+            <select id="select-cid-size" class="form-select">
               <option value="1">1 byte (uint8 / int8)</option>
               <option value="2">2 bytes (uint16 / int16)</option>
               <option value="4">4 bytes (uint32 / int32)</option>
             </select>
           </div>
-          <div class="form-group">
-            <label for="input-did-position">Byte Offset in Payload:</label>
-            <input type="number" id="input-did-position" value="1" min="1" max="8">
+          <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-top: 24px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" id="input-cid-signed" style="width: 16px; height: 16px;">
+              <span>Signed Integer (Two's complement)</span>
+            </label>
           </div>
           <div class="form-group">
-            <label for="input-did-mul">Multiplier (mul):</label>
-            <input type="number" id="input-did-mul" value="1" step="1">
+            <label for="input-cid-position">Byte Offset in Payload:</label>
+            <input type="number" id="input-cid-position" value="1" min="1" max="8">
           </div>
           <div class="form-group">
-            <label for="input-did-div">Divisor (div):</label>
-            <input type="number" id="input-did-div" value="1" step="1">
+            <label for="input-cid-mul">Multiplier (mul):</label>
+            <input type="number" id="input-cid-mul" value="1" step="any">
           </div>
           <div class="form-group">
-            <label for="input-did-add">Offset Addition (add):</label>
-            <input type="number" id="input-did-add" value="0" step="1">
+            <label for="input-cid-div">Divisor (div):</label>
+            <input type="number" id="input-cid-div" value="1" step="any">
           </div>
           <div class="form-group">
-            <label for="input-did-unit">Engineering Unit:</label>
-            <input type="text" id="input-did-unit" placeholder="RPM, Bar, °C, km/h">
+            <label for="input-cid-add">Offset Addition (add):</label>
+            <input type="number" id="input-cid-add" value="0" step="any">
+          </div>
+          <div class="form-group">
+            <label for="input-cid-unit">Engineering Unit:</label>
+            <input type="text" id="input-cid-unit" placeholder="RPM, Bar, °C, km/h">
           </div>
         </div>
 
@@ -262,7 +274,7 @@
 
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" id="btn-cancel-modal">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="btn-save-modal-did">Apply DID</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-modal-cid">Apply CID</button>
         </div>
       </form>
     </div>
@@ -272,6 +284,6 @@
 
   <script src="/static/js/theme.js"></script>
   <script src="/static/js/toast.js"></script>
-  <script src="/static/js/ddli_composer.js"></script>
+  <script src="/static/js/lid_composer.js"></script>
 </body>
 </html>

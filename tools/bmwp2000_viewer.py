@@ -34,8 +34,8 @@ from common.isotp_kwp import (
     KWP_NRC_NAMES,
 )
 
-DEFAULT_DIDS_PATH = REPO_ROOT / "config" / "dids.json"
-DIDS_FILE_PATH: Path = DEFAULT_DIDS_PATH
+DEFAULT_CIDS_PATH = REPO_ROOT / "config" / "cids.json"
+CIDS_FILE_PATH: Path = DEFAULT_CIDS_PATH
 INITIAL_LOG_FILE: Optional[Path] = None
 
 
@@ -49,8 +49,8 @@ def create_backup(target_file: Path) -> Optional[Path]:
     return backup_path
 
 
-def load_dids_dictionary(path: Path) -> Dict[str, Any]:
-    """Loads master DIDs dictionary from JSON file."""
+def load_cids_dictionary(path: Path) -> Dict[str, Any]:
+    """Loads master CIDs dictionary from JSON file."""
     if path.is_file():
         try:
             return json.loads(path.read_text(encoding="utf-8"))
@@ -61,14 +61,14 @@ def load_dids_dictionary(path: Path) -> Dict[str, Any]:
 
 def analyze_log_exchanges(
     log_path: Path,
-    parse_dids: bool = True,
-    master_dids: Optional[Dict[str, Any]] = None,
+    parse_cids: bool = True,
+    master_cids: Optional[Dict[str, Any]] = None,
     include_raw_can: bool = True,
 ) -> Dict[str, Any]:
     """Parses a log file and reconstructs BMWP2000 diagnostic exchanges and raw CAN traffic."""
     frames = load_log_file(log_path)
     reassembler = IsoTpReassembler()
-    dissector = BmwP2000Dissector(master_dids)
+    dissector = BmwP2000Dissector(master_cids)
 
     # Ingest frames and correlate raw CAN frames and reassembled ISO-TP messages
     events: List[Dict[str, Any]] = []
@@ -79,9 +79,9 @@ def analyze_log_exchanges(
 
         interrupted_msg, completed_msg = reassembler.process_frame_events(frame)
         if interrupted_msg:
-            events.append(dissector.dissect_message(interrupted_msg, parse_dids=parse_dids))
+            events.append(dissector.dissect_message(interrupted_msg, parse_cids=parse_cids))
         if completed_msg:
-            events.append(dissector.dissect_message(completed_msg, parse_dids=parse_dids))
+            events.append(dissector.dissect_message(completed_msg, parse_cids=parse_cids))
 
         # If not an ISO-TP candidate or if raw CAN inclusion is enabled for non-diagnostic frames
         if include_raw_can and not is_candidate:
@@ -116,7 +116,7 @@ def analyze_log_exchanges(
             events.append(raw_event)
 
     for flushed_msg in reassembler.flush_interrupted_sessions():
-        events.append(dissector.dissect_message(flushed_msg, parse_dids=parse_dids))
+        events.append(dissector.dissect_message(flushed_msg, parse_cids=parse_cids))
 
     # Sort all events chronologically by time_s
     events.sort(key=lambda x: x["time_s"])
@@ -251,28 +251,28 @@ def analyze_log_exchanges(
         "unimplemented_count": sum(1 for m in diag_messages if not m["is_implemented"]),
         "interrupted_count": sum(1 for m in diag_messages if m.get("is_interrupted", False)),
         "non_compliant_count": sum(1 for m in diag_messages if not m.get("is_compliant", True)),
-        "ddli_count": len(dissector.active_ddlis),
+        "lid_count": len(dissector.active_lids),
         "identified_services_count": len(identified_services),
     }
 
-    # Gather any unknown DIDs discovered in DDLI frames
-    unknown_dids: List[Dict[str, Any]] = []
+    # Gather any unknown CIDs discovered in LID definition frames
+    unknown_cids: List[Dict[str, Any]] = []
     seen_unknown = set()
     for m in diag_messages:
-        for uk in m.get("details", {}).get("unknown_dids", []):
-            did_id = uk["id"]
-            if did_id not in seen_unknown:
-                seen_unknown.add(did_id)
-                unknown_dids.append(uk)
+        for uk in m.get("details", {}).get("unknown_cids", []):
+            cid_id = uk["id"]
+            if cid_id not in seen_unknown:
+                seen_unknown.add(cid_id)
+                unknown_cids.append(uk)
 
-    active_ddlis_summary = {
+    active_lids_summary = {
         f"0x{lid:02X}": {
-            "name": ddli.name,
-            "subfunction": ddli.subfunction,
-            "entries_count": len(ddli.entries),
-            "total_bytes": ddli.total_bytes,
+            "name": lid_def.name,
+            "subfunction": lid_def.entries[0].definition_mode if lid_def.entries else 0x02,
+            "entries_count": len(lid_def.entries),
+            "total_bytes": lid_def.total_bytes,
         }
-        for lid, ddli in dissector.active_ddlis.items()
+        for lid, lid_def in dissector.active_lids.items()
     }
 
     return {
@@ -284,8 +284,8 @@ def analyze_log_exchanges(
         "exchanges": exchanges,
         "canonical_services": canonical_services,
         "identified_services": identified_services,
-        "active_ddlis": active_ddlis_summary,
-        "unknown_dids": unknown_dids,
+        "active_lids": active_lids_summary,
+        "unknown_cids": unknown_cids,
     }
 
 
@@ -323,14 +323,14 @@ class BmwP2000ViewerHandler(BaseAppHandler):
             self.send_json(files_meta)
             return
 
-        if path == "/api/dids":
-            dids = load_dids_dictionary(DIDS_FILE_PATH)
-            self.send_json(dids)
+        if path == "/api/cids":
+            cids = load_cids_dictionary(CIDS_FILE_PATH)
+            self.send_json(cids)
             return
 
         if path == "/api/exchanges":
             target_name = query.get("file", [""])[0]
-            parse_dids = query.get("parse_dids", ["true"])[0].lower() != "false"
+            parse_cids = query.get("parse_cids", ["true"])[0].lower() != "false"
 
             target_path = None
             if target_name:
@@ -355,11 +355,11 @@ class BmwP2000ViewerHandler(BaseAppHandler):
                 self.send_error(404, f"Log file '{target_name}' not found")
                 return
 
-            master_dids = load_dids_dictionary(DIDS_FILE_PATH)
+            master_cids = load_cids_dictionary(CIDS_FILE_PATH)
             analysis = analyze_log_exchanges(
                 target_path,
-                parse_dids=parse_dids,
-                master_dids=master_dids,
+                parse_cids=parse_cids,
+                master_cids=master_cids,
             )
             self.send_json(analysis)
             return
@@ -401,23 +401,45 @@ class BmwP2000ViewerHandler(BaseAppHandler):
             })
             return
 
-        if path == "/api/add_did":
+        if path == "/api/add_cid":
             payload = self.read_json_body()
             if payload is None:
                 self.send_error(400, "Invalid or missing JSON payload")
                 return
 
-            did_name = str(payload.get("name", "")).strip()
+            cid_name = str(payload.get("name", "")).strip()
             raw_id = str(payload.get("id", "")).strip()
             mem_size = payload.get("memory_size", 1)
             position = payload.get("position", 1)
-            mul = payload.get("mul", 1)
-            div = payload.get("div", 1)
-            add = payload.get("add", 0)
             unit = str(payload.get("unit", "")).strip()
+            description = str(payload.get("description", "")).strip()
+            is_signed = bool(payload.get("signed", False))
 
-            if not did_name:
-                self.send_error(400, "Missing DID name")
+            try:
+                mul = float(payload.get("mul", 1.0))
+                if mul.is_integer():
+                    mul = int(mul)
+            except (ValueError, TypeError):
+                mul = 1
+
+            try:
+                div = float(payload.get("div", 1.0))
+                if abs(div) < 1e-12:
+                    div = 1.0
+                elif div.is_integer():
+                    div = int(div)
+            except (ValueError, TypeError):
+                div = 1
+
+            try:
+                add = float(payload.get("add", 0.0))
+                if add.is_integer():
+                    add = int(add)
+            except (ValueError, TypeError):
+                add = 0
+
+            if not cid_name:
+                self.send_error(400, "Missing CID name")
                 return
 
             if not re.match(r"^0[xX][0-9a-fA-F]{2,6}$", raw_id):
@@ -426,30 +448,48 @@ class BmwP2000ViewerHandler(BaseAppHandler):
 
             # Canonicalize hex string as '0xXXXX' with uppercase hex digits
             hex_digits = raw_id[2:].upper()
-            did_hex = f"0x{hex_digits}"
+            cid_hex = f"0x{hex_digits}"
 
-            # Read current dids
-            current_dids = load_dids_dictionary(DIDS_FILE_PATH)
+            # Read current cids
+            current_cids = load_cids_dictionary(CIDS_FILE_PATH)
+
+            # Ensure unique key name by suffixing an incrementing counter if needed
+            unique_name = cid_name
+            if unique_name in current_cids:
+                counter = 1
+                match = re.match(r"^(.*?)(?:_(\d+))?$", cid_name)
+                root = match.group(1) if match else cid_name
+                while f"{root}_{counter}" in current_cids:
+                    counter += 1
+                unique_name = f"{root}_{counter}"
 
             # Create backup before mutation
-            backup_created = create_backup(DIDS_FILE_PATH)
+            backup_created = create_backup(CIDS_FILE_PATH)
 
-            current_dids[did_name] = {
-                "id": did_hex,
+            cid_entry: Dict[str, Any] = {
+                "id": cid_hex,
                 "memory_size": int(mem_size),
                 "position": int(position),
-                "mul": int(mul),
-                "div": int(div) if int(div) != 0 else 1,
-                "add": int(add),
+                "signed": is_signed,
+                "mul": mul,
+                "div": div,
+                "add": add,
                 "unit": unit,
             }
+            if description:
+                cid_entry["description"] = description
 
-            DIDS_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            DIDS_FILE_PATH.write_text(json.dumps(current_dids, indent=2), encoding="utf-8")
+            current_cids[unique_name] = cid_entry
+
+            CIDS_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            CIDS_FILE_PATH.write_text(json.dumps(current_cids, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
             self.send_json({
                 "status": "success",
-                "message": f"DID '{did_name}' ({did_hex}) added successfully",
+                "name": unique_name,
+                "original_name": cid_name,
+                "renamed": (unique_name != cid_name),
+                "message": f"CID '{unique_name}' ({cid_hex}) added successfully" + (f" (suffixed from '{cid_name}')" if unique_name != cid_name else ""),
                 "backup": str(backup_created) if backup_created else None,
             })
             return
@@ -475,10 +515,10 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Path to initial CAN log file (.bin, candump .log, or Vector .asc)",
     )
     parser.add_argument(
-        "--dids",
+        "--cids",
         type=str,
-        default=str(DEFAULT_DIDS_PATH),
-        help=f"Path to master dids.json file (default: {DEFAULT_DIDS_PATH})",
+        default=str(DEFAULT_CIDS_PATH),
+        help=f"Path to master cids.json file (default: {DEFAULT_CIDS_PATH})",
     )
     parser.add_argument(
         "--no-browser",
@@ -494,11 +534,11 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
 
 def main() -> None:
-    global DIDS_FILE_PATH, INITIAL_LOG_FILE
+    global CIDS_FILE_PATH, INITIAL_LOG_FILE
 
     args = parse_arguments(sys.argv[1:])
 
-    DIDS_FILE_PATH = Path(args.dids).resolve()
+    CIDS_FILE_PATH = Path(args.cids).resolve()
     if args.log:
         p = Path(args.log).resolve()
         if p.is_file():

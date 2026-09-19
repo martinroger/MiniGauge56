@@ -1,10 +1,10 @@
 {
   "_schema_guide": {
-    "description": "Master DID Dictionary Schema Guide & Example Value Options",
+    "description": "Master Common Identifier (CID) Dictionary Schema Guide & Example Value Options (ISO 14230-3)",
     "keys": {
-      "id": "Hexadecimal ECU Data Identifier string (e.g., '0x580C', '0x58F0', '0x4402').",
+      "id": "Hexadecimal ECU Common Identifier string (e.g., '0x580C', '0x58F0', '0x4402').",
       "memory_size": "Length in bytes in ECU RAM: 1 (uint8/int8), 2 (uint16/int16), 4 (uint32/int32).",
-      "position": "1-indexed byte offset inside raw ECU DID payload (typically 1 or 2).",
+      "position": "1-indexed byte offset inside raw ECU parameter payload (typically 1).",
       "signed": "Boolean indicating signed integer representation (true for int8/int16/int32, default: false).",
       "mul": "Formula multiplier (floating-point or integer, default: 1.0). Formula: ((raw * mul) / div) + add.",
       "div": "Formula divisor (floating-point or integer, default: 1.0). Formula: ((raw * mul) / div) + add.",

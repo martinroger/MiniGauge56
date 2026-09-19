@@ -17,7 +17,7 @@
  *
  * Coordinates AMOLED display management, touch events, SD card mounting,
  * modern TWAI CAN daemon lifecycle, RaceBox BLE Central connection,
- * BMWP2000 KWP2000 diagnostic telemetry daemon, GPS 3D fix system time
+ * BMWP2000 diagnostic telemetry daemon (BMW-FAST-over-CAN), GPS 3D fix system time
  * synchronization, and real-time telemetry display updates.
  */
 
@@ -25,7 +25,7 @@
 lv_display_t *main_display = NULL;
 
 
-/** @brief Counter of valid decoded BMWP2000 DDLI telemetry frames */
+/** @brief Counter of valid decoded BMWP2000 LID telemetry frames */
 static uint32_t s_bmwp_frame_count = 0;
 
 /** @brief Timestamp of last received BMWP2000 telemetry frame (esp_timer_get_time in microseconds) */
@@ -44,7 +44,7 @@ static double s_bmwp_cached_engine_temp = 0.0;
 static double s_bmwp_cached_hpfp = 0.0;
 
 /**
- * @brief Callback triggered when a fresh BMWP2000 DDLI packet is parsed.
+ * @brief Callback triggered when a fresh BMWP2000 LID packet is parsed.
  *
  * Silently updates internal cached telemetry metrics for subsequent UI / status retrieval.
  *
@@ -57,10 +57,10 @@ static void on_bmwp_telemetry_updated(void *user_ctx)
     s_bmwp_frame_count++;
     s_bmwp_last_frame_us = esp_timer_get_time();
 
-    bmwp2000_get_did_value("RPM", &s_bmwp_cached_rpm);
-    bmwp2000_get_did_value("Oil_Temp", &s_bmwp_cached_oil_temp);
-    bmwp2000_get_did_value("Engine_Temp_1", &s_bmwp_cached_engine_temp);
-    bmwp2000_get_did_value("HPFP_Pressure", &s_bmwp_cached_hpfp);
+    bmwp2000_get_cid_value("rpm", &s_bmwp_cached_rpm);
+    bmwp2000_get_cid_value("oilTemp", &s_bmwp_cached_oil_temp);
+    bmwp2000_get_cid_value("engineTemp", &s_bmwp_cached_engine_temp);
+    bmwp2000_get_cid_value("hpfpPressure", &s_bmwp_cached_hpfp);
 }
 
 /** @brief Flag indicating whether the AMOLED display backlight is asleep/off */

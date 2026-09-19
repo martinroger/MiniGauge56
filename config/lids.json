@@ -1,12 +1,12 @@
 [
   {
     "_schema_guide": {
-      "description": "Dynamically Defined Local Identifier (DDLI) Train Composition Schema Guide",
+      "description": "Dynamically Defined Local Identifier (LID) Train Composition Schema Guide (ISO 14230-3)",
       "keys": {
         "local_id": "Hexadecimal Local Identifier byte string (e.g., '0xF0', '0xF1', '0xF2').",
         "name": "Descriptive human-readable name string (e.g., 'engineCore', 'boostAir').",
         "transmission_mode": "ISO 14230-3 transmission mode options: 'single' (0x01 active polling on demand), 'fast' (0x04), 'medium' (0x03), 'slow' (0x02), 'stop' (0x00).",
-        "dids": "Array of DID string keys referenced in sequence order from master dids.json."
+        "cids": "Array of CID string keys referenced in sequence order from master cids.json."
       }
     }
   },
@@ -14,7 +14,7 @@
     "local_id": "0xF0",
     "name": "engineCore",
     "transmission_mode": "single",
-    "dids": [
+    "cids": [
       "rpm",
       "hpfpPressure",
       "maf",
@@ -29,7 +29,7 @@
     "local_id": "0xF1",
     "name": "boostAir",
     "transmission_mode": "single",
-    "dids": [
+    "cids": [
       "targetBoost",
       "throttlePressure",
       "manifoldPressure",
@@ -42,7 +42,7 @@
     "local_id": "0xF2",
     "name": "combustionKnock",
     "transmission_mode": "single",
-    "dids": [
+    "cids": [
       "knockVoltageCyl1",
       "knockVoltageCyl2",
       "knockVoltageCyl3",
@@ -56,7 +56,7 @@
     "local_id": "0xF3",
     "name": "valvetrain",
     "transmission_mode": "single",
-    "dids": [
+    "cids": [
       "vanosPositionIntake",
       "vanosPositionExhaust",
       "vanosTargetIntake",

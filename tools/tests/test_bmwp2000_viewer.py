@@ -4,10 +4,10 @@ Verifies:
 - Multi-format log loader (.bin, candump .log, Vector .asc)
 - Fixture regression on candump-2024-02-24_015831.log & candump-2024-02-24_020530.log
 - ISO-TP transport framing (SF, FF, CF, multi-frame reassembly)
-- KWP2000 protocol dissection (0x2C DDLI, 0x21 Data, 0x7F NRC error decoding)
+- KWP2000 protocol dissection (0x2C LID, 0x21 Data, 0x22 CID, 0x7F NRC error decoding)
 - Unimplemented / unknown service detection
-- Dynamic DDLI registration and DID formula scaling
-- POST /api/add_did atomic backup creation
+- Dynamic LID registration and CID formula scaling
+- POST /api/add_cid atomic backup creation
 - HTTP API endpoints and server lifecycles
 
 Zero pip dependencies (Python 3 stdlib only).
@@ -37,8 +37,8 @@ from common.log_loader import detect_log_format, load_log_file, parse_candump_lo
 from common.isotp_kwp import (
     IsoTpReassembler,
     BmwP2000Dissector,
-    DdliDefinition,
-    DdliEntry,
+    LidDefinition,
+    LidEntry,
 )
 import bmwp2000_viewer
 from bmwp2000_viewer import (
@@ -103,32 +103,34 @@ class TestBmwP2000ViewerLogic(unittest.TestCase):
         self.assertEqual(len(msg.raw_payload), 14)
         self.assertEqual(msg.raw_payload[:3], bytes.fromhex("2CF002"))
 
-    def test_kwp2000_ddli_dissection_and_unknown_did_detection(self):
-        master_dids = {
+    def test_kwp2000_lid_dissection_and_unknown_cid_detection(self):
+        master_cids = {
             "RPM": {"id": "0x580C", "mul": 40, "div": 1, "add": 0, "unit": "RPM"},
         }
-        dissector = BmwP2000Dissector(master_dids)
+        dissector = BmwP2000Dissector(master_cids)
         reassembler = IsoTpReassembler()
 
-        # Reassemble DDLI setup: LocalId 0xF0, subfunction 0x01, DIDs: 0x580C (RPM, 1 byte), 0x9999 (Unknown, 2 bytes)
-        payload = bytes.fromhex("2CF001580C010199990102")
+        # Reassemble LID setup: LocalId 0xF0, two mode 0x02 entries:
+        # Entry 1: 0x02 (mode), 0x01 (pos_in_lid), 0x01 (mem_size), 0x58 0x0C (CID RPM), 0x01 (pos_in_cid)
+        # Entry 2: 0x02 (mode), 0x02 (pos_in_lid), 0x02 (mem_size), 0x99 0x99 (Unknown CID), 0x01 (pos_in_cid)
+        payload = bytes.fromhex("2CF0020101580C01020202999901")
         frame = CanFrame(100, 0.1, 0x6F1, 8, bytes([0x12, len(payload)]) + payload)
         msg = reassembler.process_frame(frame)
 
         dissected = dissector.dissect_message(msg)
         self.assertEqual(dissected["service_id"], "0x2C")
         self.assertEqual(dissected["service_name"], "dynamicallyDefineLocalIdentifier")
-        self.assertIn(0xF0, dissector.active_ddlis)
+        self.assertIn(0xF0, dissector.active_lids)
 
         entries = dissected["details"]["entries"]
         self.assertEqual(len(entries), 2)
-        self.assertEqual(entries[0]["did_name"], "RPM")
+        self.assertEqual(entries[0]["cid_name"], "RPM")
         self.assertTrue(entries[0]["is_known"])
-        self.assertEqual(entries[1]["did_name"], "UNKNOWN_0x9999")
+        self.assertEqual(entries[1]["cid_name"], "UNKNOWN_0x9999")
         self.assertFalse(entries[1]["is_known"])
 
-        # Verify unknown DIDs list for prompt
-        unknowns = dissected["details"]["unknown_dids"]
+        # Verify unknown CIDs list for prompt
+        unknowns = dissected["details"]["unknown_cids"]
         self.assertEqual(len(unknowns), 1)
         self.assertEqual(unknowns[0]["id"], "0x9999")
 
@@ -163,9 +165,9 @@ class TestBmwP2000ViewerLogic(unittest.TestCase):
         self.assertGreater(analysis["frame_count"], 100)
         self.assertGreater(analysis["stats"]["outgoing_count"], 5)
         self.assertGreater(analysis["stats"]["incoming_count"], 5)
-        # Should detect DDLI setup and positive response
-        ddli_exchanges = [e for e in analysis["exchanges"] if e["service_id"] in ("0x2C", "0x6C")]
-        self.assertGreater(len(ddli_exchanges), 0)
+        # Should detect LID setup and positive response
+        lid_exchanges = [e for e in analysis["exchanges"] if e["service_id"] in ("0x2C", "0x6C")]
+        self.assertGreater(len(lid_exchanges), 0)
 
     def test_fixture_analysis_candump2(self):
         analysis = analyze_log_exchanges(self.candump_log2)
@@ -186,7 +188,7 @@ class TestBmwP2000ViewerLogic(unittest.TestCase):
         self.assertEqual(dissected["service_id"], "0x21")
         self.assertEqual(dissected["details"]["recordLocalIdentifier"], "0xF0")
         self.assertEqual(dissected["details"]["transmissionMode"], "0x04")
-        self.assertEqual(dissected["details"]["transmission_mode_name"], "fastRate")
+        self.assertEqual(dissected["details"]["transmission_mode_name"], "fast")
 
         # 2. 0x10 StartDiagnosticSession with bmwSpecialDiagnosticSession (0x86)
         payload10 = bytes.fromhex("1086")
@@ -216,7 +218,6 @@ class TestBmwP2000ViewerLogic(unittest.TestCase):
         # Verify request intervals on consecutive requests
         requests = [e for e in exchanges if e.get("direction") == "OUTGOING"]
         self.assertGreater(len(requests), 5)
-        # First request has None req_interval_ms, second has a float >= 0
         self.assertIsNone(requests[0]["req_interval_ms"])
         self.assertIsNotNone(requests[1]["req_interval_ms"])
         self.assertGreater(requests[1]["req_interval_ms"], 0.0)
@@ -226,7 +227,6 @@ class TestBmwP2000ViewerLogic(unittest.TestCase):
         canonical = analysis["canonical_services"]
         self.assertGreater(len(canonical), 10)
 
-        # Candump1 has 0x2C, 0x21, 0x6C, 0x61
         active_sids = {s["sid_hex"] for s in canonical if s["is_active"]}
         self.assertIn("0x2C", active_sids)
         self.assertIn("0x21", active_sids)
@@ -237,22 +237,18 @@ class TestBmwP2000ServerAndApi(unittest.TestCase):
 
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.test_dids_file = Path(self.temp_dir.name) / "dids.json"
-        self.test_dids_file.write_text(json.dumps({
+        self.test_cids_file = Path(self.temp_dir.name) / "cids.json"
+        self.test_cids_file.write_text(json.dumps({
             "_schema_guide": {"description": "test guide"},
             "RPM": {"id": "0x580C", "memory_size": 1, "position": 1, "mul": 40, "div": 1, "add": 0, "unit": "RPM"}
         }, indent=2), encoding="utf-8")
-        bmwp2000_viewer.DIDS_FILE_PATH = self.test_dids_file
+        bmwp2000_viewer.CIDS_FILE_PATH = self.test_cids_file
 
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def _create_mock_handler(self, path: str, method: str = "GET", body: Optional[bytes] = None):
+    def _create_mock_handler(self, path: str, method: str = "GET", body: bytes = None):
         import io
-
-        class MockRequest:
-            def makefile(self, *args, **kwargs):
-                return io.BytesIO(body or b"")
 
         class DummyHandler(BmwP2000ViewerHandler):
             def __init__(self):
@@ -306,31 +302,79 @@ class TestBmwP2000ServerAndApi(unittest.TestCase):
         self.assertIn("stats", data)
         self.assertGreater(len(data["exchanges"]), 0)
 
-    def test_post_add_did_with_backup(self):
-        new_did = {
+    def test_post_add_cid_with_backup_and_unique_suffixing(self):
+        new_cid = {
             "name": "Target_Boost",
             "id": "0x58F2",
             "memory_size": 2,
             "position": 1,
-            "mul": 1,
-            "div": 1000,
-            "add": 0,
+            "signed": False,
+            "mul": 0.0390625,
+            "div": 1.0,
+            "add": 0.0,
             "unit": "Bar",
+            "description": "Target boost pressure"
         }
-        body_bytes = json.dumps(new_did).encode("utf-8")
-        h = self._create_mock_handler("/api/add_did", method="POST", body=body_bytes)
+        body_bytes = json.dumps(new_cid).encode("utf-8")
+        h = self._create_mock_handler("/api/add_cid", method="POST", body=body_bytes)
         h.do_POST()
         self.assertEqual(h.status_code, 200)
         res_data = json.loads(h.wfile.getvalue().decode("utf-8"))
         self.assertEqual(res_data["status"], "success")
+        self.assertEqual(res_data["name"], "Target_Boost")
         self.assertIsNotNone(res_data["backup"])
 
         backup_path = Path(res_data["backup"])
         self.assertTrue(backup_path.is_file())
 
-        saved_dids = json.loads(self.test_dids_file.read_text(encoding="utf-8"))
-        self.assertIn("Target_Boost", saved_dids)
-        self.assertEqual(saved_dids["Target_Boost"]["id"], "0x58F2")
+        saved_cids = json.loads(self.test_cids_file.read_text(encoding="utf-8"))
+        self.assertIn("Target_Boost", saved_cids)
+        self.assertEqual(saved_cids["Target_Boost"]["id"], "0x58F2")
+        self.assertEqual(saved_cids["Target_Boost"]["mul"], 0.0390625)
+        self.assertEqual(saved_cids["Target_Boost"]["description"], "Target boost pressure")
+
+        # Now add duplicate "Target_Boost" - verify suffixing to "Target_Boost_1"
+        h2 = self._create_mock_handler("/api/add_cid", method="POST", body=body_bytes)
+        h2.do_POST()
+        self.assertEqual(h2.status_code, 200)
+        res_data2 = json.loads(h2.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(res_data2["name"], "Target_Boost_1")
+        self.assertTrue(res_data2["renamed"])
+
+        saved_cids2 = json.loads(self.test_cids_file.read_text(encoding="utf-8"))
+        self.assertIn("Target_Boost", saved_cids2)
+        self.assertIn("Target_Boost_1", saved_cids2)
+
+    def test_signed_integer_unpacking(self):
+        master_cids = {
+            "ambientTemp": {"id": "0x4401", "signed": True, "mul": 1, "div": 1, "add": 0, "unit": "°C"},
+            "timingAdvance": {"id": "0x4402", "signed": True, "mul": 0.5, "div": 1.0, "add": 0, "unit": "deg"},
+        }
+        dissector = BmwP2000Dissector(master_cids)
+        reassembler = IsoTpReassembler()
+
+        # LID setup: Local ID 0xF0, two mode 0x02 entries:
+        # Entry 1: 0x02 (mode), 0x01 (pos_in_lid), 0x01 (mem_size), 0x44 0x01 (CID ambientTemp), 0x01 (pos_in_cid)
+        # Entry 2: 0x02 (mode), 0x02 (pos_in_lid), 0x02 (mem_size), 0x44 0x02 (CID timingAdvance), 0x01 (pos_in_cid)
+        payload = bytes.fromhex("2CF0020101440101020202440201")
+        frame = CanFrame(100, 0.1, 0x6F1, 8, bytes([0x12, len(payload)]) + payload)
+        msg = reassembler.process_frame(frame)
+        dissector.dissect_message(msg)
+
+        # Response: 0x61 0xF0, byte1: 0xFB (-5 in int8), byte2-3: 0xFFF6 (-10 in int16 -> -5.0 deg)
+        resp_payload = bytes.fromhex("61F0FBFFF6")
+        resp_frame = CanFrame(110, 0.11, 0x612, 8, bytes([0xF1, len(resp_payload)]) + resp_payload)
+        resp_msg = reassembler.process_frame(resp_frame)
+        resp_dissected = dissector.dissect_message(resp_msg)
+
+        signals = resp_dissected["details"].get("signals", [])
+        self.assertEqual(len(signals), 2)
+        self.assertEqual(signals[0]["cid_name"], "ambientTemp")
+        self.assertEqual(signals[0]["raw_int"], -5)
+        self.assertEqual(signals[0]["scaled_value"], -5)
+        self.assertEqual(signals[1]["cid_name"], "timingAdvance")
+        self.assertEqual(signals[1]["raw_int"], -10)
+        self.assertEqual(signals[1]["scaled_value"], -5.0)
 
     def test_interrupted_iso_tp_detection(self):
         reassembler = IsoTpReassembler(session_timeout_s=0.5)
@@ -340,7 +384,6 @@ class TestBmwP2000ServerAndApi(unittest.TestCase):
         # Sequence number mismatch on CF: expected 1, send 5
         f2 = CanFrame(105, 0.105, 0x612, 8, bytes.fromhex("F125334455667788"))
         interrupted, completed = reassembler.process_frame_events(f2)
-        # Should record compliance warning
         self.assertIn(0x612, reassembler.active_sessions)
         self.assertFalse(reassembler.active_sessions[0x612]["is_compliant"])
         self.assertTrue(any("sequence number mismatch" in w for w in reassembler.active_sessions[0x612]["warnings"]))
@@ -351,15 +394,17 @@ class TestBmwP2000ServerAndApi(unittest.TestCase):
         self.assertTrue(flushed[0].is_interrupted)
         self.assertFalse(flushed[0].is_compliant)
 
-    def test_ddli_subfunction_0x02_and_unknown_signals_unpacking(self):
-        master_dids = {
+    def test_lid_subfunction_0x02_and_unknown_signals_unpacking(self):
+        master_cids = {
             "Engine_Speed": {"id": "0x580C", "mul": 40, "div": 1, "add": 0, "unit": "RPM"},
         }
-        dissector = BmwP2000Dissector(master_dids)
+        dissector = BmwP2000Dissector(master_cids)
         reassembler = IsoTpReassembler()
 
-        # DDLI setup: Subfunction 0x02, local ID 0xF0, contains 0x580C (2 bytes, known) and 0x7788 (1 byte, unknown)
-        payload = bytes.fromhex("2CF002580C010277880101")
+        # LID setup: Local ID 0xF0, two mode 0x02 entries:
+        # Entry 1: 0x02 (mode), 0x01 (pos_in_lid), 0x02 (mem_size), 0x58 0x0C (CID Engine_Speed), 0x01 (pos_in_cid)
+        # Entry 2: 0x02 (mode), 0x03 (pos_in_lid), 0x01 (mem_size), 0x77 0x88 (Unknown CID), 0x01 (pos_in_cid)
+        payload = bytes.fromhex("2CF0020102580C01020301778801")
         frame = CanFrame(100, 0.1, 0x6F1, 8, bytes([0x12, len(payload)]) + payload)
         msg = reassembler.process_frame(frame)
         dissected = dissector.dissect_message(msg)
@@ -374,12 +419,12 @@ class TestBmwP2000ServerAndApi(unittest.TestCase):
 
         signals = resp_dissected["details"].get("signals", [])
         self.assertEqual(len(signals), 2)
-        # Known DID
-        self.assertEqual(signals[0]["did_name"], "Engine_Speed")
+        # Known CID
+        self.assertEqual(signals[0]["cid_name"], "Engine_Speed")
         self.assertEqual(signals[0]["scaled_value"], 4000)
         self.assertEqual(signals[0]["unit"], "RPM")
-        # Unknown DID: still unpacked with raw values!
-        self.assertEqual(signals[1]["did_hex"], "0x7788")
+        # Unknown CID: still unpacked with raw values!
+        self.assertEqual(signals[1]["cid_hex"], "0x7788")
         self.assertEqual(signals[1]["scaled_value"], 42)
         self.assertEqual(signals[1]["raw_hex"], "2A")
 
