@@ -389,7 +389,27 @@ void update_display(void *pvParameters)
             lv_label_set_text_fmt(objects.bmw_rpm,"%lu",lround(s_bmwp_cached_rpm));
 
             //Here should put the state of the daemon
+            switch (bmwp2000_get_state())
+            {
+            case BMWP2000_STATE_BACKOFF_WAIT:
+                lv_obj_add_state(objects.bmw_state,LV_STATE_DISABLED);
+                lv_obj_set_style_text_color(objects.bmw_state,lv_palette_main(LV_PALETTE_RED),LV_STATE_DISABLED);
+                break;
+            case BMWP2000_STATE_SETUP_LID:
+                lv_obj_add_state(objects.bmw_state,LV_STATE_DISABLED);
+                lv_obj_set_style_text_color(objects.bmw_state,lv_palette_main(LV_PALETTE_AMBER),LV_STATE_DISABLED);
+                break;
 
+            case BMWP2000_STATE_RUNNING:
+                lv_obj_remove_state(objects.bmw_state,LV_STATE_DISABLED);
+                lv_obj_set_style_text_color(objects.bmw_state,lv_palette_main(LV_PALETTE_GREEN),LV_STATE_DEFAULT);
+                break;
+            
+            default:
+                lv_obj_remove_state(objects.bmw_state,LV_STATE_DISABLED);
+                lv_obj_set_style_text_color(objects.bmw_state,lv_palette_main(LV_PALETTE_ORANGE),LV_STATE_DEFAULT);
+                break;
+            }
 
             bsp_display_unlock();
         }
