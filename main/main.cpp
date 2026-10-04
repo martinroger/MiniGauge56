@@ -8,6 +8,7 @@
 #include "twai_daemon.h"
 // #include "binocan.h"
 #include "bmwp2000.h"
+#include "lcd_emulator.h"
 #include "math.h"
 
 /**
@@ -341,6 +342,13 @@ extern "C" void app_main(void)
 
     // Display init
     main_display = bsp_display_start();
+    if (main_display)
+    {
+        if (lcd_emulator_init(main_display) == ESP_OK)
+        {
+            ESP_LOGI(__func__, "Retro LCD flush decorator attached successfully");
+        }
+    }
 
     if (bsp_display_lock(-1) == ESP_OK)
     {

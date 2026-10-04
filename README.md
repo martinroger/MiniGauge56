@@ -10,6 +10,7 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge and high-throughput CAN teleme
 - **BMWP2000 Diagnostic Daemon**: Modular ISO 14230-3 / ISO 15765-2 KWP2000 diagnostic engine (`bmwp2000`) dynamically querying engine parameters (DME 0x12) via periodic fast LID streaming, running concurrently with CAN logging.
 - **Telemetry Logger**: Asynchronous 32 KB PSRAM ringbuffer streaming 8 KB DMA-aligned batch blocks to FATFS on MicroSD (`/sdcard/log_<esp_timer>.bin`).
 - **UI Subsystem**: LVGL 9 running on Waveshare 1.75" Touch AMOLED (`RM69090` + `CST9217`) featuring multi-tab views (logging controls and live telemetry readouts) and configurable Always-On backlight override.
+- **Retro LCD Emulator**: Screen-space flush decimation decorator (`lcd_emulator`) providing authentic monochrome dot-matrix physical rendering, sub-pixel matrix gap modulation, and classic STN/TN palettes with dynamic runtime toggling.
 
 ## External Dependency Matrix
 
@@ -23,6 +24,7 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge and high-throughput CAN teleme
 - [System Requirements & Traceability Matrix](docs/REQUIREMENTS.md)
 - [Platform & Architectural Constraints](docs/CONSTRAINTS.md)
 - [Theory of Operation (TOO)](docs/TOO.MD)
+- [Retro LCD Emulator Guide](components/lcd_emulator/HOWTO.md) & [LCD Theory of Operation](components/lcd_emulator/TOO.MD)
 - [BMWP2000 Diagnostic Component Repository](https://github.com/martinroger/BMWP2000)
 - [TWAI Daemon Component Repository](https://github.com/martinroger/twai_daemon)
-- [Diagnostic Tools Suite (BMWP2000 Viewer, LID Composer)](tools/README.md)
+- [Diagnostic Tools Suite (BMWP2000 Viewer, LID Composer, LCD Simulator)](tools/README.md)

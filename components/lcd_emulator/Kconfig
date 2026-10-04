@@ -1,0 +1,51 @@
+menu "Retro Monochrome LCD Emulator"
+
+    config LCD_EMULATOR_ENABLE_AT_BOOT
+        bool "Enable retro LCD emulation at boot"
+        default y
+        help
+            If enabled, display output starts in retro dot-matrix LCD mode.
+            Can be toggled dynamically at runtime via lcd_emulator_set_enabled().
+
+    config LCD_EMULATOR_DEFAULT_CELL_SIZE
+        int "Default dot pitch (cell size in physical pixels)"
+        default 4
+        range 2 8
+        help
+            Physical pixel width and height of each simulated LCD dot matrix element.
+            4 pixels on a 466x466 screen corresponds to a 116x116 LCD matrix.
+
+    config LCD_EMULATOR_DEFAULT_GAP_SIZE
+        int "Default inactive gap width (pixels)"
+        default 1
+        range 0 2
+        help
+            Physical pixel gap between adjacent LCD dot elements simulating the inactive substrate grid.
+
+    config LCD_EMULATOR_DEFAULT_THRESHOLD
+        int "Default luminance threshold (0..255)"
+        default 135
+        range 0 255
+        help
+            Luminance threshold separating active dark LCD ink from the reflective substrate.
+
+    choice LCD_EMULATOR_DEFAULT_PALETTE
+        prompt "Default LCD Color Palette"
+        default LCD_EMULATOR_PALETTE_OLIVE
+        help
+            Select the default color palette preset applied at boot.
+
+        config LCD_EMULATOR_PALETTE_OLIVE
+            bool "Classic Olive STN (Game Boy / Nokia 5110)"
+
+        config LCD_EMULATOR_PALETTE_CASIO
+            bool "Casio Reflective Grey / Silver"
+
+        config LCD_EMULATOR_PALETTE_AMBER
+            bool "Industrial Amber Backlit"
+
+        config LCD_EMULATOR_PALETTE_CYAN
+            bool "Nokia Cyan EL Backlit"
+    endchoice
+
+endmenu
