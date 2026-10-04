@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MiniGauge56 - Retro LCD Emulation Simulator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    canvas {
+      image-rendering: pixelated;
+    }
+  </style>
+</head>
+<body class="bg-neutral-900 text-neutral-100 antialiased p-4 min-h-screen flex items-center justify-center">
+  <div class="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-2xl p-6 shadow-2xl max-w-5xl w-full">
+    <!-- Header -->
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-700 pb-4 mb-4">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center justify-center w-7 h-7 rounded-md bg-blue-500/20 text-blue-400 font-mono text-xs font-bold">56</span>
+          <h1 class="text-lg font-bold tracking-tight">MiniGauge56 - Retro LCD Flush Simulator</h1>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-medium">466×466 OLED</span>
+        </div>
+        <p class="text-xs text-neutral-400 mt-1">
+          Screen-space pixel decimation, procedural sub-pixel matrix gap modulation, and classic STN/TN palettes for ESP32-S3 / LVGL 9.
+        </p>
+      </div>
+
+      <!-- Mode Toggle Switch -->
+      <div class="flex items-center gap-2 bg-neutral-900 p-1.5 rounded-xl border border-neutral-700">
+        <button id="btnModeOled" class="px-3 py-1 text-xs font-medium rounded-lg text-neutral-400 hover:text-neutral-200 transition-all">
+          Modern AMOLED
+        </button>
+        <button id="btnModeLcd" class="px-3 py-1 text-xs font-semibold rounded-lg bg-neutral-800 text-white shadow-sm border border-neutral-600">
+          Retro Dot-Matrix LCD
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Grid: Visualizer + Controls -->
+    <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+      <!-- Left Column: Display Screen & Sub-pixel Loupe -->
+      <div class="md:col-span-6 flex flex-col items-center gap-4">
+        <div class="relative group">
+          <!-- Main 466x466 Canvas Container -->
+          <div class="relative w-[320px] h-[320px] sm:w-[360px] sm:h-[360px] rounded-full overflow-hidden shadow-2xl ring-4 ring-neutral-700 bg-black flex items-center justify-center">
+            <canvas id="mainCanvas" width="466" height="466" class="w-full h-full cursor-crosshair"></canvas>
+          </div>
+          <!-- Bezel Overlay Ring Label -->
+          <div class="absolute bottom-2 right-2 bg-black/80 backdrop-blur text-[10px] text-neutral-400 px-2.5 py-1 rounded-md border border-neutral-700">
+            Hover to move 16× Loupe
+          </div>
+        </div>
+
+        <!-- 16x Sub-Pixel Loupe Container -->
+        <div class="w-full flex items-center justify-between bg-neutral-900 p-3.5 rounded-xl border border-neutral-700">
+          <div class="flex items-center gap-3">
+            <div class="relative w-20 h-20 rounded-lg overflow-hidden border border-neutral-700 bg-black shadow-inner shrink-0">
+              <canvas id="loupeCanvas" width="160" height="160" class="w-full h-full"></canvas>
+            </div>
+            <div>
+              <div class="text-xs font-semibold text-neutral-200">16× Sub-pixel Loupe</div>
+              <div class="text-[11px] text-neutral-400" id="loupeCoords">Center: (233, 233)</div>
+              <div class="text-[11px] text-neutral-500 mt-0.5">Physical sub-pixel boundaries & gaps</div>
+            </div>
+          </div>
+          <!-- Fill Factor Chip -->
+          <div class="text-right">
+            <div class="text-[10px] uppercase font-bold text-neutral-400">Fill Factor</div>
+            <div class="text-lg font-mono font-bold text-blue-400" id="statFillFactor">56.3%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Settings & Live Telemetry Tuning -->
+      <div class="md:col-span-6 space-y-4">
+        <!-- Palette Presets -->
+        <div class="bg-neutral-900 p-4 rounded-xl border border-neutral-700">
+          <label class="block text-xs font-semibold mb-2.5 text-neutral-200">LCD Substrate & Ink Palette</label>
+          <div class="grid grid-cols-2 gap-2" id="paletteGroup">
+            <button data-palette="olive" class="pal-btn p-2.5 rounded-lg border text-left text-xs font-medium transition-all border-emerald-500 bg-emerald-950/30 text-emerald-300">
+              <div class="font-bold flex items-center justify-between">Classic Olive STN <span class="w-3.5 h-3.5 rounded-full bg-[#8a9a5b] border border-[#1b2812]"></span></div>
+              <div class="text-[10px] opacity-75 mt-0.5">Game Boy / Nokia 5110</div>
+            </button>
+            <button data-palette="casio" class="pal-btn p-2.5 rounded-lg border text-left text-xs font-medium transition-all border-neutral-700 bg-neutral-800/40 text-neutral-300">
+              <div class="font-bold flex items-center justify-between">Casio Silver/Grey <span class="w-3.5 h-3.5 rounded-full bg-[#a0b0a2] border border-[#1a241b]"></span></div>
+              <div class="text-[10px] opacity-75 mt-0.5">Reflective Digital Watch</div>
+            </button>
+            <button data-palette="amber" class="pal-btn p-2.5 rounded-lg border text-left text-xs font-medium transition-all border-neutral-700 bg-neutral-800/40 text-neutral-300">
+              <div class="font-bold flex items-center justify-between">Industrial Amber <span class="w-3.5 h-3.5 rounded-full bg-[#ffaa00] border border-[#1c1100]"></span></div>
+              <div class="text-[10px] opacity-75 mt-0.5">High-contrast Automotive</div>
+            </button>
+            <button data-palette="cyan" class="pal-btn p-2.5 rounded-lg border text-left text-xs font-medium transition-all border-neutral-700 bg-neutral-800/40 text-neutral-300">
+              <div class="font-bold flex items-center justify-between">Nokia Cyan Backlight <span class="w-3.5 h-3.5 rounded-full bg-[#00f0ff] border border-[#092026]"></span></div>
+              <div class="text-[10px] opacity-75 mt-0.5">EL Backlit Panel</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Matrix Decimation Sliders -->
+        <div class="bg-neutral-900 p-4 rounded-xl border border-neutral-700 space-y-3.5">
+          <!-- Cell Size -->
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="font-semibold text-neutral-200">Cell Size (Dot Pitch)</span>
+              <span class="font-mono text-blue-400 font-bold" id="lblScale">4 px (116×116 dots)</span>
+            </div>
+            <input type="range" id="sliderScale" min="2" max="6" step="1" value="4" class="w-full h-1.5 bg-neutral-700 rounded-lg cursor-pointer">
+            <div class="flex justify-between text-[10px] text-neutral-400 mt-1">
+              <span>2px (High-res 233×233)</span>
+              <span>4px (Standard 116×116)</span>
+              <span>6px (Chunky 77×77)</span>
+            </div>
+          </div>
+
+          <!-- Gap Width -->
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="font-semibold text-neutral-200">Matrix Inactive Gap Width</span>
+              <span class="font-mono text-blue-400 font-bold" id="lblGap">1 px</span>
+            </div>
+            <input type="range" id="sliderGap" min="0" max="2" step="1" value="1" class="w-full h-1.5 bg-neutral-700 rounded-lg cursor-pointer">
+            <div class="flex justify-between text-[10px] text-neutral-400 mt-1">
+              <span>0px (No grid gap)</span>
+              <span>1px (Physical substrate gap)</span>
+              <span>2px (Wide matrix mesh)</span>
+            </div>
+          </div>
+
+          <!-- Binarization Threshold -->
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="font-semibold text-neutral-200">Monochrome Ink Threshold</span>
+              <span class="font-mono text-blue-400 font-bold" id="lblThreshold">135</span>
+            </div>
+            <input type="range" id="sliderThreshold" min="50" max="220" step="5" value="135" class="w-full h-1.5 bg-neutral-700 rounded-lg cursor-pointer">
+            <div class="flex justify-between text-[10px] text-neutral-400 mt-1">
+              <span>Low (Thinner strokes)</span>
+              <span>Mid (Balanced font legibility)</span>
+              <span>High (Bolder ink)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Metrics Panel -->
+        <div class="grid grid-cols-3 gap-2 bg-neutral-900 p-3.5 rounded-xl border border-neutral-700 text-center">
+          <div>
+            <div class="text-[10px] uppercase font-bold text-neutral-400">Matrix Grid</div>
+            <div class="text-xs font-mono font-bold text-neutral-200" id="statGrid">116 × 116</div>
+          </div>
+          <div>
+            <div class="text-[10px] uppercase font-bold text-neutral-400">Active Dots</div>
+            <div class="text-xs font-mono font-bold text-neutral-200" id="statActiveDots">2,140</div>
+          </div>
+          <div>
+            <div class="text-[10px] uppercase font-bold text-neutral-400">Dot Density</div>
+            <div class="text-xs font-mono font-bold text-neutral-200" id="statDpi">116 DPI</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const PALETTES = {
+      olive: { bg: '#8a9a5b', active: '#1b2812', inactive: '#7d8c50', gap: '#6f7e45' },
+      casio: { bg: '#a0b0a2', active: '#141d15', inactive: '#91a193', gap: '#7e8e80' },
+      amber: { bg: '#181002', active: '#ffaa00', inactive: '#362104', gap: '#0d0700' },
+      cyan: { bg: '#081d22', active: '#00f0ff', inactive: '#123942', gap: '#040f12' }
+    };
+
+    const state = {
+      isLcdMode: true,
+      scale: 4,
+      gapSize: 1,
+      threshold: 135,
+      paletteKey: 'olive',
+      loupeX: 233,
+      loupeY: 233,
+      rpm: 4350,
+      oilTemp: 98.5,
+      engineTemp: 92.0,
+      hpfp: 182.4
+    };
+
+    const RESOLUTION = 466;
+
+    const offscreenCanvas = document.createElement('canvas');
+    offscreenCanvas.width = RESOLUTION;
+    offscreenCanvas.height = RESOLUTION;
+    const offCtx = offscreenCanvas.getContext('2d');
+
+    const mainCanvas = document.getElementById('mainCanvas');
+    const mainCtx = mainCanvas.getContext('2d');
+    const loupeCanvas = document.getElementById('loupeCanvas');
+    const loupeCtx = loupeCanvas.getContext('2d');
+
+    function drawNativeGaugeVector() {
+      const ctx = offCtx;
+      const w = RESOLUTION;
+      const h = RESOLUTION;
+      const cx = w / 2;
+      const cy = h / 2;
+
+      ctx.save();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+
+      // Outer Ticks (RPM Scale: 0 to 7000 RPM)
+      ctx.strokeStyle = '#000000';
+      const numTicks = 36;
+      for (let i = 0; i <= numTicks; i++) {
+        const angle = Math.PI * 0.75 + (i / numTicks) * (Math.PI * 1.5);
+        const isMajor = i % 6 === 0;
+        const r1 = isMajor ? 204 : 214;
+        const r2 = 224;
+
+        ctx.lineWidth = isMajor ? 4 : 2;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(angle) * r1, cy + Math.sin(angle) * r1);
+        ctx.lineTo(cx + Math.cos(angle) * r2, cy + Math.sin(angle) * r2);
+        ctx.stroke();
+      }
+
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 192, Math.PI * 0.75, Math.PI * 2.25);
+      ctx.stroke();
+
+      const rpmFraction = Math.min(1.0, state.rpm / 7000);
+      ctx.lineWidth = 16;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 192, Math.PI * 0.75, Math.PI * 0.75 + rpmFraction * (Math.PI * 1.5));
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#000000';
+      ctx.font = 'bold 78px monospace';
+      ctx.fillText(state.rpm.toString(), cx, cy - 25);
+
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillText('RPM ×100', cx, cy + 28);
+
+      ctx.lineWidth = 3;
+      ctx.strokeRect(cx - 150, cy + 55, 95, 42);
+      ctx.font = 'bold 15px monospace';
+      ctx.fillText(state.oilTemp.toFixed(1) + '°C', cx - 102, cy + 73);
+      ctx.font = '10px sans-serif';
+      ctx.fillText('OIL TEMP', cx - 102, cy + 88);
+
+      ctx.strokeRect(cx - 45, cy + 55, 90, 42);
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillText('BMWP2000', cx, cy + 72);
+      ctx.font = 'bold 10px monospace';
+      ctx.fillText('RUNNING', cx, cy + 88);
+
+      ctx.strokeRect(cx + 55, cy + 55, 95, 42);
+      ctx.font = 'bold 15px monospace';
+      ctx.fillText(state.hpfp.toFixed(0) + ' Bar', cx + 102, cy + 73);
+      ctx.font = '10px sans-serif';
+      ctx.fillText('HPFP PRESS', cx + 102, cy + 88);
+
+      ctx.strokeRect(cx - 100, cy + 120, 200, 18);
+      ctx.fillRect(cx - 96, cy + 124, 192 * 0.65, 10);
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText('LOGGING: CAN0 ACTIVE', cx, cy + 155);
+
+      ctx.restore();
+    }
+
+    function renderDisplay() {
+      drawNativeGaugeVector();
+
+      if (!state.isLcdMode) {
+        mainCtx.drawImage(offscreenCanvas, 0, 0);
+        renderLoupeDirect();
+        updateMetrics(466, 466, 100, '-');
+        return;
+      }
+
+      const p = PALETTES[state.paletteKey] || PALETTES.olive;
+      const scale = state.scale;
+      const gap = state.gapSize;
+      const threshold = state.threshold;
+      const dotDrawSize = Math.max(1, scale - gap);
+
+      const srcImg = offCtx.getImageData(0, 0, RESOLUTION, RESOLUTION);
+      const srcPx = srcImg.data;
+
+      mainCtx.fillStyle = p.bg;
+      mainCtx.fillRect(0, 0, RESOLUTION, RESOLUTION);
+
+      mainCtx.save();
+      mainCtx.beginPath();
+      mainCtx.arc(RESOLUTION / 2, RESOLUTION / 2, RESOLUTION / 2 - 2, 0, Math.PI * 2);
+      mainCtx.clip();
+
+      const cols = Math.floor(RESOLUTION / scale);
+      const rows = Math.floor(RESOLUTION / scale);
+      let activeDots = 0;
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const sampleX = Math.floor(c * scale + scale / 2);
+          const sampleY = Math.floor(r * scale + scale / 2);
+
+          const dx = sampleX - RESOLUTION / 2;
+          const dy = sampleY - RESOLUTION / 2;
+          if (dx * dx + dy * dy > (RESOLUTION / 2 - 4) * (RESOLUTION / 2 - 4)) {
+            continue;
+          }
+
+          const idx = (sampleY * RESOLUTION + sampleX) * 4;
+          const lum = 0.299 * srcPx[idx] + 0.587 * srcPx[idx + 1] + 0.114 * srcPx[idx + 2];
+          const isActive = lum < threshold;
+
+          if (isActive) {
+            activeDots++;
+            mainCtx.fillStyle = p.active;
+          } else {
+            mainCtx.fillStyle = p.inactive;
+          }
+
+          mainCtx.fillRect(c * scale, r * scale, dotDrawSize, dotDrawSize);
+        }
+      }
+
+      if (gap > 0) {
+        mainCtx.fillStyle = p.gap;
+        for (let c = 1; c <= cols; c++) mainCtx.fillRect(c * scale - gap, 0, gap, RESOLUTION);
+        for (let r = 1; r <= rows; r++) mainCtx.fillRect(0, r * scale - gap, RESOLUTION, gap);
+      }
+
+      mainCtx.restore();
+
+      mainCtx.strokeStyle = 'rgba(0,0,0,0.85)';
+      mainCtx.lineWidth = 4;
+      mainCtx.beginPath();
+      mainCtx.arc(RESOLUTION / 2, RESOLUTION / 2, RESOLUTION / 2 - 2, 0, Math.PI * 2);
+      mainCtx.stroke();
+
+      mainCtx.save();
+      mainCtx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      mainCtx.lineWidth = 1.5;
+      mainCtx.strokeRect(state.loupeX - 16, state.loupeY - 16, 32, 32);
+      mainCtx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+      mainCtx.strokeRect(state.loupeX - 17, state.loupeY - 17, 34, 34);
+      mainCtx.restore();
+
+      renderLoupeLcd(p);
+      const fillFactor = (((scale - gap) / scale) * ((scale - gap) / scale) * 100).toFixed(1);
+      updateMetrics(cols, rows, fillFactor, activeDots);
+    }
+
+    function renderLoupeLcd(p) {
+      const zoomSize = 160;
+      loupeCanvas.width = zoomSize;
+      loupeCanvas.height = zoomSize;
+      loupeCtx.fillStyle = p.bg;
+      loupeCtx.fillRect(0, 0, zoomSize, zoomSize);
+
+      const span = 20;
+      const srcX = Math.max(0, Math.min(RESOLUTION - span, state.loupeX - span / 2));
+      const srcY = Math.max(0, Math.min(RESOLUTION - span, state.loupeY - span / 2));
+
+      loupeCtx.imageSmoothingEnabled = false;
+      loupeCtx.drawImage(mainCanvas, srcX, srcY, span, span, 0, 0, zoomSize, zoomSize);
+
+      loupeCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      loupeCtx.lineWidth = 1;
+      loupeCtx.strokeRect(0, 0, zoomSize, zoomSize);
+    }
+
+    function renderLoupeDirect() {
+      const zoomSize = 160;
+      loupeCanvas.width = zoomSize;
+      loupeCanvas.height = zoomSize;
+      loupeCtx.imageSmoothingEnabled = false;
+      const span = 20;
+      const srcX = Math.max(0, Math.min(RESOLUTION - span, state.loupeX - span / 2));
+      const srcY = Math.max(0, Math.min(RESOLUTION - span, state.loupeY - span / 2));
+      loupeCtx.drawImage(offscreenCanvas, srcX, srcY, span, span, 0, 0, zoomSize, zoomSize);
+    }
+
+    function updateMetrics(cols, rows, fill, active) {
+      document.getElementById('statGrid').textContent = `${cols} × ${rows}`;
+      document.getElementById('statFillFactor').textContent = `${fill}%`;
+      document.getElementById('statActiveDots').textContent = typeof active === 'number' ? active.toLocaleString() : active;
+      document.getElementById('statDpi').textContent = `${cols} Dot-DPI`;
+    }
+
+    function handlePointer(e) {
+      const rect = mainCanvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const x = Math.max(0, Math.min(RESOLUTION, (clientX - rect.left) * (RESOLUTION / rect.width)));
+      const y = Math.max(0, Math.min(RESOLUTION, (clientY - rect.top) * (RESOLUTION / rect.height)));
+      state.loupeX = Math.round(x);
+      state.loupeY = Math.round(y);
+      document.getElementById('loupeCoords').textContent = `Center: (${state.loupeX}, ${state.loupeY})`;
+      renderDisplay();
+    }
+
+    mainCanvas.addEventListener('mousemove', handlePointer);
+    mainCanvas.addEventListener('touchmove', handlePointer, { passive: true });
+
+    const btnOled = document.getElementById('btnModeOled');
+    const btnLcd = document.getElementById('btnModeLcd');
+
+    btnOled.addEventListener('click', () => {
+      state.isLcdMode = false;
+      btnOled.className = "px-3 py-1 text-xs font-semibold rounded-lg bg-neutral-800 text-white shadow-sm border border-neutral-600";
+      btnLcd.className = "px-3 py-1 text-xs font-medium rounded-lg text-neutral-400 hover:text-neutral-200 transition-all";
+      renderDisplay();
+    });
+
+    btnLcd.addEventListener('click', () => {
+      state.isLcdMode = true;
+      btnLcd.className = "px-3 py-1 text-xs font-semibold rounded-lg bg-neutral-800 text-white shadow-sm border border-neutral-600";
+      btnOled.className = "px-3 py-1 text-xs font-medium rounded-lg text-neutral-400 hover:text-neutral-200 transition-all";
+      renderDisplay();
+    });
+
+    document.querySelectorAll('.pal-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.pal-btn').forEach(b => {
+          b.className = "pal-btn p-2.5 rounded-lg border text-left text-xs font-medium transition-all border-neutral-700 bg-neutral-800/40 text-neutral-300";
+        });
+        btn.className = "pal-btn p-2.5 rounded-lg border text-left text-xs font-medium transition-all border-emerald-500 bg-emerald-950/30 text-emerald-300";
+        state.paletteKey = btn.dataset.palette;
+        renderDisplay();
+      });
+    });
+
+    document.getElementById('sliderScale').addEventListener('input', (e) => {
+      state.scale = parseInt(e.target.value, 10);
+      const dots = Math.floor(466 / state.scale);
+      document.getElementById('lblScale').textContent = `${state.scale} px (${dots}×${dots} dots)`;
+      renderDisplay();
+    });
+
+    document.getElementById('sliderGap').addEventListener('input', (e) => {
+      state.gapSize = parseInt(e.target.value, 10);
+      document.getElementById('lblGap').textContent = `${state.gapSize} px`;
+      renderDisplay();
+    });
+
+    document.getElementById('sliderThreshold').addEventListener('input', (e) => {
+      state.threshold = parseInt(e.target.value, 10);
+      document.getElementById('lblThreshold').textContent = state.threshold;
+      renderDisplay();
+    });
+
+    renderDisplay();
+  </script>
+</body>
+</html>

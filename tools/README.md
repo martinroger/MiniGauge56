@@ -2,9 +2,10 @@
 
 This directory contains standalone, zero-dependency tools for inspecting ISO-TP / KWP2000 exchanges and composing BMW FAST-over-CAN Local Identifier (LID) trains for Mini R56.
 
-The toolset consists of two web utilities:
+The toolset consists of:
 1. **BMWP2000 LID Composer (`lid_composer.py`)**: Web configuration workstation to compose and reorder Dynamically Defined Local Identifier (LID) trains, inspect ISO-TP payload framing (SF vs. FF+CF), compute CAN frame counts, and view/edit the master CID dictionary (`config/cids.json`).
 2. **BMWP2000 Diagnostic Exchange Viewer (`bmwp2000_viewer.py`)**: Interactive web inspector for ISO-TP reassembled exchanges, KWP2000 service dissection, dynamic LID tracking, CID scaling, Negative Response Codes (NRC), and unknown command alerts.
+3. **Retro LCD Flush Simulator (`lcd_simulator.html`)**: Standalone browser-based visual simulation tool for tuning screen-space pixel decimation, sub-pixel matrix gaps, and STN/TN monochrome palettes for the 466x466 AMOLED display.
 
 Both tools are written in pure Python 3 and have **zero external pip dependencies**.
 
