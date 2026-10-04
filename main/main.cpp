@@ -6,7 +6,6 @@
 #include "esp_log.h"
 #include "logging.h"
 #include "twai_daemon.h"
-#include "racebox_companion.h"
 // #include "binocan.h"
 #include "bmwp2000.h"
 #include "math.h"
@@ -16,9 +15,8 @@
  * @brief Application entry point and UI/hardware coordination for MiniGauge56.
  *
  * Coordinates AMOLED display management, touch events, SD card mounting,
- * modern TWAI CAN daemon lifecycle, RaceBox BLE Central connection,
- * BMWP2000 diagnostic telemetry daemon (BMW-FAST-over-CAN), GPS 3D fix system time
- * synchronization, and real-time telemetry display updates.
+ * modern TWAI CAN daemon lifecycle, BMWP2000 diagnostic telemetry daemon
+ * (BMW-FAST-over-CAN), and real-time telemetry display updates.
  */
 
 /** @brief Global LVGL display object pointer */
@@ -71,123 +69,7 @@ bool backlight_override = false;
 /** @brief Software timer handle for display inactivity sleep timeout */
 static TimerHandle_t sleepDisplayTimer = NULL;
 
-/** @brief Indicates whether a BLE connection with a RaceBox is currently established */
-static bool s_rbx_connected = false;
 
-/** @brief Latest GPS fix status reported by RaceBox PVT telemetry (0=None, 2=2D, 3=3D, etc.) */
-static uint8_t s_rbx_fix_status = 0;
-
-/** @brief Latest number of satellites used in GPS navigational solution */
-static uint8_t s_rbx_num_sv = 0;
-
-/**
- * @brief Converts UTC calendar time fields to Unix epoch seconds.
- *
- * @param[in] tm Pointer to struct tm with year, month, day, hour, min, sec.
- * @return time_t Seconds elapsed since Unix epoch (1970-01-01 00:00:00 UTC).
- */
-static time_t utc_tm_to_epoch(const struct tm *tm)
-{
-    int year = tm->tm_year + 1900;
-    int mon = tm->tm_mon + 1;
-    int day = tm->tm_mday;
-
-    int a = (14 - mon) / 12;
-    int y = year + 4800 - a;
-    int m = mon + 12 * a - 3;
-    long jdn = day + (153 * m + 2) / 5 + 365L * y + y / 4 - y / 100 + y / 400 - 32045;
-    long days = jdn - 2440588L; // JDN of 1970-01-01
-
-    return (time_t)(days * 86400L + tm->tm_hour * 3600L + tm->tm_min * 60L + tm->tm_sec);
-}
-
-/**
- * @brief Callback invoked whenever a 25 Hz RaceBox PVT telemetry frame is decoded.
- *
- * Updates current fix status and satellite count, and upon receiving the first
- * valid 3D GPS fix, updates the ESP32 internal POSIX RTC system clock via settimeofday()
- * so that SD file creation dates and log filenames reflect the accurate UTC time.
- *
- * @param[in] pvt Pointer to canonical decoded RaceBox PVT telemetry struct.
- * @param[in] user_data User context pointer passed during callback registration (unused).
- * @note Thread-safety: Called from the NimBLE client task context.
- */
-static void on_racebox_telemetry(const racebox_pvt_t *pvt, void *user_data)
-{
-    (void)user_data;
-    if (pvt == NULL)
-    {
-        return;
-    }
-
-    // Cache latest GPS fix status and satellite count for UI display
-    s_rbx_fix_status = pvt->fix_status;
-    s_rbx_num_sv = pvt->num_sv;
-
-    // Synchronize system clock upon acquiring the first valid 3D GPS fix
-    if (!is_gps_time_synced && pvt->valid_date && pvt->valid_time && pvt->valid_fix &&
-        pvt->fix_status >= RACEBOX_FIX_3D && pvt->num_sv >= 4)
-    {
-        struct tm tm_utc = {};
-        tm_utc.tm_sec = pvt->second;
-        tm_utc.tm_min = pvt->minute;
-        tm_utc.tm_hour = pvt->hour;
-        tm_utc.tm_mday = pvt->day;
-        tm_utc.tm_mon = pvt->month - 1;
-        tm_utc.tm_year = pvt->year - 1900;
-        tm_utc.tm_isdst = 0;
-
-        time_t epoch_sec = utc_tm_to_epoch(&tm_utc);
-        if (epoch_sec > 1700000000)
-        {
-            struct timeval tv = {
-                .tv_sec = epoch_sec,
-                .tv_usec = (suseconds_t)(pvt->nanoseconds > 0 ? pvt->nanoseconds / 1000 : 0)};
-            settimeofday(&tv, NULL);
-            logging_set_gps_synced(true);
-            ESP_LOGI("GPS_SYNC", "System time synchronized with RaceBox 3D fix: %04d-%02d-%02d %02d:%02d:%02d UTC (SVs: %d)",
-                     pvt->year, pvt->month, pvt->day, pvt->hour, pvt->minute, pvt->second, pvt->num_sv);
-        }
-    }
-}
-
-/**
- * @brief Callback invoked on RaceBox BLE connection lifecycle events.
- *
- * @param[in] event Lifecycle event type (e.g. scan started, discovered, connected, disconnected).
- * @param[in] data Event payload containing connection or discovery metadata.
- * @param[in] user_data User context pointer (unused).
- */
-static void on_racebox_ble_event(racebox_ble_event_t event, const racebox_ble_event_data_t *data, void *user_data)
-{
-    (void)user_data;
-    switch (event)
-    {
-    case RACEBOX_BLE_EVT_SCAN_STARTED:
-        s_rbx_connected = false;
-        ESP_LOGI("RaceBox_BLE", "Scanning for RaceBox peripherals...");
-        break;
-    case RACEBOX_BLE_EVT_DISCOVERED:
-        ESP_LOGI("RaceBox_BLE", "Discovered: '%s'", data ? data->discovered.device.name : "");
-        break;
-    case RACEBOX_BLE_EVT_CONNECTED:
-        s_rbx_connected = true;
-        ESP_LOGI("RaceBox_BLE", "Connected to RaceBox (conn_handle: %d)", data ? data->connected.conn_handle : 0);
-        break;
-    case RACEBOX_BLE_EVT_SUBSCRIBED:
-        s_rbx_connected = true;
-        ESP_LOGI("RaceBox_BLE", "Subscribed to NUS notifications — streaming telemetry and broadcasting to CAN");
-        break;
-    case RACEBOX_BLE_EVT_DISCONNECTED:
-        s_rbx_connected = false;
-        s_rbx_fix_status = 0;
-        s_rbx_num_sv = 0;
-        ESP_LOGW("RaceBox_BLE", "Disconnected (reason: %d). Central will auto-reconnect.", data ? data->disconnected.reason : 0);
-        break;
-    default:
-        break;
-    }
-}
 
 /**
  * @brief Top-level CAN frame router registered with twai_daemon.
@@ -361,26 +243,7 @@ void update_display(void *pvParameters)
             lv_obj_set_state(objects.start_stop_btn, LV_STATE_CHECKED, is_logging);
             lv_label_set_text_fmt(objects.status, "%s", is_logging ? "Logging" : "Paused");
 
-            if (objects.rbx_status != NULL)
-            {
-                if (!s_rbx_connected)
-                {
-                    lv_label_set_text(objects.rbx_status, "RBX: Scanning...");
-                }
-                else if (s_rbx_fix_status == 0)
-                {
-                    lv_label_set_text_fmt(objects.rbx_status, "RBX: Connected (No Fix, %d Sats)", s_rbx_num_sv);
-                }
-                else if (s_rbx_fix_status == 2)
-                {
-                    lv_label_set_text_fmt(objects.rbx_status, "RBX: 2D Fix (%d Sats)", s_rbx_num_sv);
-                }
-                else
-                {
-                    lv_label_set_text_fmt(objects.rbx_status, "RBX: 3D Fix (%d Sats)%s",
-                                          s_rbx_num_sv, is_gps_time_synced ? " [UTC]" : "");
-                }
-            }
+
 
             lv_label_set_text_fmt(objects.bmw_engine_temp, "%.1f", s_bmwp_cached_engine_temp);
             lv_label_set_text_fmt(objects.bmw_frames_count,"%lu",s_bmwp_frame_count);
@@ -455,30 +318,7 @@ extern "C" void app_main(void)
         ESP_LOGE(__func__, "Failed to initialize TWAI modern driver");
     }
 
-    // Initialize RaceBox Companion (BLE Central scanner & auto CAN broadcaster)
-    racebox_companion_config_t companion_cfg = {
-        .name_prefix = "RaceBox ",
-        .auto_can_forward = true,
-        .pvt_cb = on_racebox_telemetry,
-        .ble_evt_cb = on_racebox_ble_event,
-        .user_data = NULL};
 
-    // if (racebox_companion_init(&companion_cfg) == ESP_OK)
-    // {
-    //     ESP_LOGI(__func__, "RaceBox Companion initialized successfully");
-    //     if (racebox_companion_start() == ESP_OK)
-    //     {
-    //         ESP_LOGI(__func__, "RaceBox BLE scanning started");
-    //     }
-    //     else
-    //     {
-    //         ESP_LOGE(__func__, "Failed to start RaceBox BLE scanning");
-    //     }
-    // }
-    // else
-    // {
-    //     ESP_LOGE(__func__, "Failed to initialize RaceBox Companion");
-    // }
 
     // Initialize BMWP2000 Diagnostic Daemon (ISO 14230-3 / ISO 15765-2)
     if (bmwp2000_init() == ESP_OK)

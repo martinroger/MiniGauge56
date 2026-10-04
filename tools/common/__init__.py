@@ -1,7 +1,7 @@
-"""MiniGauge Decoder Common Library.
+"""MiniGauge Tools Common Library.
 
-Shared utilities for CAN binary parsing, DBC interpretation,
-calibration persistence, and zero-dependency HTTP server operations.
+Shared utilities for CAN binary parsing, ISO-TP / KWP2000 handling,
+multi-format log loading, and zero-dependency HTTP server operations.
 """
 
 from .can_core import (
@@ -13,25 +13,25 @@ from .can_core import (
     RECORD_STRUCT,
     RECORD_SIZE,
 )
-from .dbc import (
-    SignalDef,
-    MessageDef,
-    DbcSignal,
-    DbcMessage,
-    DbcDatabase,
-    get_dbc,
-)
-from .calibration import (
-    load_calibration,
-    save_calibration,
-    get_default_calibration,
-    DEFAULT_CALIBRATION_FILE,
-)
 from .http_server import (
     BaseAppHandler,
     find_available_port,
     start_server,
     MIME_TYPES,
+)
+from .log_loader import (
+    parse_candump_log,
+    parse_asc_log,
+    detect_log_format,
+    load_log_file,
+    find_all_log_files,
+)
+from .isotp_kwp import (
+    IsoTpReassembler,
+    BmwP2000Dissector,
+    LidDefinition,
+    LidEntry,
+    IsoTpMessage,
 )
 
 __all__ = [
@@ -42,18 +42,18 @@ __all__ = [
     "natural_sort_key",
     "RECORD_STRUCT",
     "RECORD_SIZE",
-    "SignalDef",
-    "MessageDef",
-    "DbcSignal",
-    "DbcMessage",
-    "DbcDatabase",
-    "get_dbc",
-    "load_calibration",
-    "save_calibration",
-    "get_default_calibration",
-    "DEFAULT_CALIBRATION_FILE",
     "BaseAppHandler",
     "find_available_port",
     "start_server",
     "MIME_TYPES",
+    "parse_candump_log",
+    "parse_asc_log",
+    "detect_log_format",
+    "load_log_file",
+    "find_all_log_files",
+    "IsoTpReassembler",
+    "BmwP2000Dissector",
+    "LidDefinition",
+    "LidEntry",
+    "IsoTpMessage",
 ]
