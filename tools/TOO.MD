@@ -281,6 +281,44 @@ sequenceDiagram
 
 ---
 
+### 4.6 BMWP2000 Diagnostic Exchange Viewer & Protocol Dissector
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as bmwp2000_viewer.js (Client)
+    participant Srv as BmwP2000ViewerHandler (Python HTTP)
+    participant Loader as log_loader.py
+    participant IsoTp as isotp_kwp.py (Reassembler)
+    participant Diss as isotp_kwp.py (Dissector)
+
+    UI->>Srv: GET /api/exchanges?file=candump-2024-02-24_015831.log&parse_dids=true
+    Srv->>Loader: load_log_file(target_path)
+    Loader-->>Srv: List[CanFrame] (Multi-format: .bin, candump, .asc)
+    loop Every CanFrame
+        Srv->>IsoTp: process_frame(frame)
+        alt Frame completes SF or multi-frame (FF + CFs)
+            IsoTp-->>Srv: IsoTpMessage
+            Srv->>Diss: dissect_message(msg, parse_dids=true)
+            alt Service 0x2C (DDLI Definition)
+                Diss->>Diss: Dynamically register local_id & DIDs map
+            else Service 0x21 (ReadDataByLocalId)
+                Diss->>Diss: Slices payload into DIDs & calculates ((raw*mul)/div)+add
+            else Service 0x7F (Negative Response)
+                Diss->>Diss: Decodes rejected SID & NRC description
+            else Unknown Service
+                Diss->>Diss: Flags is_implemented=False & dumps hex
+            end
+            Diss-->>Srv: Dissected transaction dict
+        end
+    end
+    Srv->>Srv: Correlate Request/Response pairs & compute delta_ms
+    Srv-->>UI: 200 OK JSON {stats, exchanges, active_ddlis, unknown_dids}
+    UI->>UI: Render color-coded timeline, badges, and detailed signal tables
+```
+
+---
+
 ## 5. Security & Operational Boundaries
 
 1. **Localhost Binding Invariant**: By default, all HTTP services bind strictly to loopback (`127.0.0.1`), ensuring services are never exposed to external networks without deliberate intent.
