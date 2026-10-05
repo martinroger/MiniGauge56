@@ -94,9 +94,15 @@ lcd_emulator_set_custom_render(my_custom_filter, NULL);
 // Change palette preset:
 lcd_emulator_set_preset(LCD_PRESET_AMBER);
 
+// Invert output polarity (Negative LCD mode):
+lcd_emulator_set_inverted(true);
+
+// Configure source UI theme (dark AMOLED vs light canvas):
+lcd_emulator_set_dark_theme(true);
+
 // Adjust dot pitch, gap width, and luminance threshold on the fly:
-// (cell_size = 4 px, gap_size = 1 px, threshold = 135)
-lcd_emulator_set_grid(4, 1, 135);
+// (cell_size = 4 px, gap_size = 1 px, threshold = 100)
+lcd_emulator_set_grid(4, 1, 100);
 ```
 
 ---
@@ -105,8 +111,10 @@ lcd_emulator_set_grid(4, 1, 135);
 
 | Kconfig Symbol | Type | Default | Range / Choices | Operational Effect |
 | :--- | :--- | :--- | :--- | :--- |
-| `CONFIG_LCD_EMULATOR_ENABLE_AT_BOOT` | `bool` | `y` | `y / n` | Output boots in retro LCD mode (`y`) or bypassed color mode (`n`). |
-| `CONFIG_LCD_EMULATOR_DEFAULT_CELL_SIZE` | `int` | `4` | `2 .. 8` | Physical dot pitch in OLED pixels (4 px yields 116×116 grid on 466×466 panel). |
-| `CONFIG_LCD_EMULATOR_DEFAULT_GAP_SIZE` | `int` | `1` | `0 .. 2` | Physical pixel width of inactive substrate separator lines between dots. |
-| `CONFIG_LCD_EMULATOR_DEFAULT_THRESHOLD` | `int` | `135` | `0 .. 255` | 8-bit luminance threshold detecting active dark LCD ink segments. |
+| `CONFIG_LCD_EMULATOR_BOOT_RENDER_MODE` | `choice` | `RETRO_MONOCHROME` | `PASSTHROUGH`, `RETRO_MONOCHROME`, `RETRO_INVERTED` | Initial rendering mode applied at boot. |
+| `CONFIG_LCD_EMULATOR_INVERT_OUTPUT` | `bool` | `n` | `y / n` | Invert dot matrix state (produces negative / inverted LCD). |
+| `CONFIG_LCD_EMULATOR_DARK_THEME_INPUT` | `bool` | `y` | `y / n` | Source UI is dark theme (black background with bright text/gauges). |
+| `CONFIG_LCD_EMULATOR_DEFAULT_CELL_SIZE` | `int` | `4` | `2 .. 8` | Physical dot pitch in OLED pixels (3 px yields 155×155 grid; 4 px yields 116×116). |
+| `CONFIG_LCD_EMULATOR_DEFAULT_GAP_SIZE` | `int` | `1` | `0 .. 3` | Physical pixel width of inactive substrate separator lines between dots. |
+| `CONFIG_LCD_EMULATOR_DEFAULT_THRESHOLD` | `int` | `100` | `0 .. 255` | 8-bit luminance threshold detecting active elements (90..120 recommended). |
 | `CONFIG_LCD_EMULATOR_DEFAULT_PALETTE` | `choice` | `OLIVE` | `OLIVE`, `CASIO`, `AMBER`, `CYAN` | Active substrate and ink color palette applied at initialization. |

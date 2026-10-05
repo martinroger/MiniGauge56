@@ -344,21 +344,20 @@ extern "C" void app_main(void)
     main_display = bsp_display_start();
     if (main_display)
     {
-        if (lcd_emulator_init(main_display) == ESP_OK)
+        if (bsp_display_lock(-1) == ESP_OK)
         {
-            ESP_LOGI(__func__, "Retro LCD flush decorator attached successfully");
+            if (lcd_emulator_init(main_display) == ESP_OK)
+            {
+                ESP_LOGI(__func__, "Retro LCD flush decorator attached successfully");
+            }
+            ui_init();
+            bsp_display_unlock();
         }
-    }
-
-    if (bsp_display_lock(-1) == ESP_OK)
-    {
-        ui_init();
-        bsp_display_unlock();
-    }
-    else
-    {
-        ESP_LOGE(__func__, "Could not catch mutex for LVGL, aborting");
-        return;
+        else
+        {
+            ESP_LOGE(__func__, "Could not catch mutex for LVGL, aborting");
+            return;
+        }
     }
     wakeDisplay();
 

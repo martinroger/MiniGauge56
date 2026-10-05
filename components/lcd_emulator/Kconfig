@@ -1,11 +1,37 @@
 menu "Retro Monochrome LCD Emulator"
 
-    config LCD_EMULATOR_ENABLE_AT_BOOT
-        bool "Enable retro LCD emulation at boot"
+    choice LCD_EMULATOR_BOOT_RENDER_MODE
+        prompt "Boot Render Mode"
+        default LCD_EMULATOR_MODE_RETRO_MONOCHROME
+        help
+            Select the display rendering mode applied at boot.
+            Can be toggled dynamically at runtime via lcd_emulator_set_render_mode().
+
+        config LCD_EMULATOR_MODE_PASSTHROUGH
+            bool "Passthrough (Modern Full-Color AMOLED)"
+
+        config LCD_EMULATOR_MODE_RETRO_MONOCHROME
+            bool "Retro Dot-Matrix LCD (Standard)"
+
+        config LCD_EMULATOR_MODE_RETRO_INVERTED
+            bool "Retro Dot-Matrix LCD (Inverted / Negative)"
+    endchoice
+
+    config LCD_EMULATOR_INVERT_OUTPUT
+        bool "Invert LCD dot output polarity (Negative display)"
+        default n
+        help
+            Invert the dot matrix state so that active elements become inactive and vice-versa.
+            This produces a negative LCD / inverted display appearance.
+
+    config LCD_EMULATOR_DARK_THEME_INPUT
+        bool "Source UI has dark theme (AMOLED / black background with bright text)"
         default y
         help
-            If enabled, display output starts in retro dot-matrix LCD mode.
-            Can be toggled dynamically at runtime via lcd_emulator_set_enabled().
+            Enable if the source UI is designed for dark theme / AMOLED (black background,
+            bright white/colored text and gauges). Bright elements become active LCD dots,
+            and the black background becomes the inactive substrate. Disable if source UI
+            has a white background with dark ink.
 
     config LCD_EMULATOR_DEFAULT_CELL_SIZE
         int "Default dot pitch (cell size in physical pixels)"
@@ -13,21 +39,24 @@ menu "Retro Monochrome LCD Emulator"
         range 2 8
         help
             Physical pixel width and height of each simulated LCD dot matrix element.
-            4 pixels on a 466x466 screen corresponds to a 116x116 LCD matrix.
+            For example:
+              - 3 pixels on a 466x466 screen corresponds to a 155x155 LCD matrix.
+              - 4 pixels on a 466x466 screen corresponds to a 116x116 LCD matrix.
 
     config LCD_EMULATOR_DEFAULT_GAP_SIZE
         int "Default inactive gap width (pixels)"
         default 1
-        range 0 2
+        range 0 3
         help
             Physical pixel gap between adjacent LCD dot elements simulating the inactive substrate grid.
 
     config LCD_EMULATOR_DEFAULT_THRESHOLD
         int "Default luminance threshold (0..255)"
-        default 135
+        default 100
         range 0 255
         help
-            Luminance threshold separating active dark LCD ink from the reflective substrate.
+            Luminance threshold separating active LCD ink from the substrate.
+            For anti-aliased fonts on AMOLED (dark theme), 90..120 gives crisp, legible strokes.
 
     choice LCD_EMULATOR_DEFAULT_PALETTE
         prompt "Default LCD Color Palette"
@@ -47,5 +76,11 @@ menu "Retro Monochrome LCD Emulator"
         config LCD_EMULATOR_PALETTE_CYAN
             bool "Nokia Cyan EL Backlit"
     endchoice
+
+    # Backward compatibility alias
+    config LCD_EMULATOR_ENABLE_AT_BOOT
+        bool
+        default y if !LCD_EMULATOR_MODE_PASSTHROUGH
+        default n if LCD_EMULATOR_MODE_PASSTHROUGH
 
 endmenu

@@ -100,6 +100,7 @@ typedef enum {
  */
 typedef struct {
     lcd_render_mode_t mode;              /**< Active render mode */
+    bool dark_theme;                     /**< True if input UI has dark background (AMOLED / black bg with bright text) */
     uint8_t cell_size;                   /**< Dot pitch in physical pixels (minimum 2) */
     uint8_t gap_size;                    /**< Inactive gap width in pixels (< cell_size) */
     uint8_t threshold;                   /**< Luminance binarization threshold (0..255) */
@@ -217,6 +218,35 @@ void lcd_emulator_set_palette(const lcd_palette_t *palette);
  * @param[in] threshold Binarization threshold for dark ink detection (0..255).
  */
 void lcd_emulator_set_grid(uint8_t cell_size, uint8_t gap_size, uint8_t threshold);
+
+/**
+ * @brief Configure source UI theme expectation (dark AMOLED vs light canvas).
+ *
+ * @param[in] dark_theme True if input UI has dark background with bright text (default for AMOLED).
+ */
+void lcd_emulator_set_dark_theme(bool dark_theme);
+
+/**
+ * @brief Check whether decorator expects a dark-themed source UI.
+ *
+ * @return True if dark theme mode is active.
+ */
+bool lcd_emulator_is_dark_theme(void);
+
+/**
+ * @brief Configure monochrome dot matrix inversion polarity.
+ *
+ * @param[in] inverted True for inverted / negative LCD (illuminated dots on dark substrate),
+ *                     false for standard monochrome LCD.
+ */
+void lcd_emulator_set_inverted(bool inverted);
+
+/**
+ * @brief Check whether output inversion is active.
+ *
+ * @return True if mode == LCD_RENDER_MODE_RETRO_INVERTED.
+ */
+bool lcd_emulator_is_inverted(void);
 
 /**
  * @brief Get legacy configuration pointer.

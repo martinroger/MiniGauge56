@@ -74,6 +74,21 @@
 
       <!-- Right Column: Settings & Live Telemetry Tuning -->
       <div class="md:col-span-6 space-y-4">
+        <!-- Render Options: Theme & Polarity -->
+        <div class="bg-neutral-900 p-4 rounded-xl border border-neutral-700">
+          <label class="block text-xs font-semibold mb-2.5 text-neutral-200">Rendering & Inversion Options</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="btnToggleTheme" class="p-2 rounded-lg border text-left text-xs font-medium transition-all border-blue-500 bg-blue-950/30 text-blue-300">
+              <div class="font-bold flex items-center justify-between">Source Theme: <span id="lblTheme">Dark (AMOLED)</span></div>
+              <div class="text-[10px] opacity-75 mt-0.5">Black background, bright text</div>
+            </button>
+            <button id="btnToggleInvert" class="p-2 rounded-lg border text-left text-xs font-medium transition-all border-neutral-700 bg-neutral-800/40 text-neutral-300">
+              <div class="font-bold flex items-center justify-between">Polarity: <span id="lblInvert">Standard</span></div>
+              <div class="text-[10px] opacity-75 mt-0.5">Toggle inverted / negative LCD</div>
+            </button>
+          </div>
+        </div>
+
         <!-- Palette Presets -->
         <div class="bg-neutral-900 p-4 rounded-xl border border-neutral-700">
           <label class="block text-xs font-semibold mb-2.5 text-neutral-200">LCD Substrate & Ink Palette</label>
@@ -171,9 +186,11 @@
 
     const state = {
       isLcdMode: true,
+      darkTheme: true,
+      inverted: false,
       scale: 4,
       gapSize: 1,
-      threshold: 135,
+      threshold: 100,
       paletteKey: 'olive',
       loupeX: 233,
       loupeY: 233,
@@ -201,13 +218,14 @@
       const h = RESOLUTION;
       const cx = w / 2;
       const cy = h / 2;
+      const isDark = state.darkTheme;
 
       ctx.save();
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = isDark ? '#000000' : '#ffffff';
       ctx.fillRect(0, 0, w, h);
 
       // Outer Ticks (RPM Scale: 0 to 7000 RPM)
-      ctx.strokeStyle = '#000000';
+      ctx.strokeStyle = isDark ? '#ffffff' : '#000000';
       const numTicks = 36;
       for (let i = 0; i <= numTicks; i++) {
         const angle = Math.PI * 0.75 + (i / numTicks) * (Math.PI * 1.5);
@@ -235,7 +253,7 @@
 
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = isDark ? '#ffffff' : '#000000';
       ctx.font = 'bold 78px monospace';
       ctx.fillText(state.rpm.toString(), cx, cy - 25);
 
@@ -302,20 +320,35 @@
 
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-          const sampleX = Math.floor(c * scale + scale / 2);
-          const sampleY = Math.floor(r * scale + scale / 2);
+          const x0 = c * scale;
+          const y0 = r * scale;
+          const x1 = Math.min(RESOLUTION - 1, x0 + dotDrawSize - 1);
+          const y1 = Math.min(RESOLUTION - 1, y0 + dotDrawSize - 1);
 
-          const dx = sampleX - RESOLUTION / 2;
-          const dy = sampleY - RESOLUTION / 2;
+          const midX = (x0 + x1) / 2;
+          const midY = (y0 + y1) / 2;
+          const dx = midX - RESOLUTION / 2;
+          const dy = midY - RESOLUTION / 2;
           if (dx * dx + dy * dy > (RESOLUTION / 2 - 4) * (RESOLUTION / 2 - 4)) {
             continue;
           }
 
-          const idx = (sampleY * RESOLUTION + sampleX) * 4;
-          const lum = 0.299 * srcPx[idx] + 0.587 * srcPx[idx + 1] + 0.114 * srcPx[idx + 2];
-          const isActive = lum < threshold;
+          // Box sampling across active cell area
+          let active = false;
+          for (let sy = y0; sy <= y1; sy++) {
+            for (let sx = x0; sx <= x1; sx++) {
+              const idx = (sy * RESOLUTION + sx) * 4;
+              const lum = 0.299 * srcPx[idx] + 0.587 * srcPx[idx + 1] + 0.114 * srcPx[idx + 2];
+              if (state.darkTheme ? (lum >= threshold) : (lum < threshold)) {
+                active = true;
+                break;
+              }
+            }
+            if (active) break;
+          }
 
-          if (isActive) {
+          const isCellActive = state.inverted ? !active : active;
+          if (isCellActive) {
             activeDots++;
             mainCtx.fillStyle = p.active;
           } else {
@@ -419,6 +452,28 @@
       state.isLcdMode = true;
       btnLcd.className = "px-3 py-1 text-xs font-semibold rounded-lg bg-neutral-800 text-white shadow-sm border border-neutral-600";
       btnOled.className = "px-3 py-1 text-xs font-medium rounded-lg text-neutral-400 hover:text-neutral-200 transition-all";
+      renderDisplay();
+    });
+
+    const btnTheme = document.getElementById('btnToggleTheme');
+    const lblTheme = document.getElementById('lblTheme');
+    btnTheme.addEventListener('click', () => {
+      state.darkTheme = !state.darkTheme;
+      lblTheme.textContent = state.darkTheme ? 'Dark (AMOLED)' : 'Light (Canvas)';
+      btnTheme.className = state.darkTheme
+        ? "p-2 rounded-lg border text-left text-xs font-medium transition-all border-blue-500 bg-blue-950/30 text-blue-300"
+        : "p-2 rounded-lg border text-left text-xs font-medium transition-all border-neutral-700 bg-neutral-800/40 text-neutral-300";
+      renderDisplay();
+    });
+
+    const btnInvert = document.getElementById('btnToggleInvert');
+    const lblInvert = document.getElementById('lblInvert');
+    btnInvert.addEventListener('click', () => {
+      state.inverted = !state.inverted;
+      lblInvert.textContent = state.inverted ? 'Inverted (Negative)' : 'Standard';
+      btnInvert.className = state.inverted
+        ? "p-2 rounded-lg border text-left text-xs font-medium transition-all border-amber-500 bg-amber-950/30 text-amber-300"
+        : "p-2 rounded-lg border text-left text-xs font-medium transition-all border-neutral-700 bg-neutral-800/40 text-neutral-300";
       renderDisplay();
     });
 

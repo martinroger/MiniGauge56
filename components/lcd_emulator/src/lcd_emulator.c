@@ -21,9 +21,25 @@ static const char *TAG = "lcd_emulator";
 #endif
 
 /* Kconfig Default Mappings */
-#if defined(CONFIG_LCD_EMULATOR_ENABLE_AT_BOOT) && (CONFIG_LCD_EMULATOR_ENABLE_AT_BOOT == 0)
+#if defined(CONFIG_LCD_EMULATOR_MODE_PASSTHROUGH)
 #define LCD_KCONFIG_RENDER_MODE   LCD_RENDER_MODE_PASSTHROUGH
 #define LCD_KCONFIG_ENABLED       false
+#elif defined(CONFIG_LCD_EMULATOR_MODE_RETRO_INVERTED)
+#define LCD_KCONFIG_RENDER_MODE   LCD_RENDER_MODE_RETRO_INVERTED
+#define LCD_KCONFIG_ENABLED       true
+#elif defined(CONFIG_LCD_EMULATOR_MODE_RETRO_MONOCHROME)
+#if defined(CONFIG_LCD_EMULATOR_INVERT_OUTPUT) && (CONFIG_LCD_EMULATOR_INVERT_OUTPUT == 1)
+#define LCD_KCONFIG_RENDER_MODE   LCD_RENDER_MODE_RETRO_INVERTED
+#else
+#define LCD_KCONFIG_RENDER_MODE   LCD_RENDER_MODE_RETRO_MONOCHROME
+#endif
+#define LCD_KCONFIG_ENABLED       true
+#elif defined(CONFIG_LCD_EMULATOR_ENABLE_AT_BOOT) && (CONFIG_LCD_EMULATOR_ENABLE_AT_BOOT == 0)
+#define LCD_KCONFIG_RENDER_MODE   LCD_RENDER_MODE_PASSTHROUGH
+#define LCD_KCONFIG_ENABLED       false
+#elif defined(CONFIG_LCD_EMULATOR_INVERT_OUTPUT) && (CONFIG_LCD_EMULATOR_INVERT_OUTPUT == 1)
+#define LCD_KCONFIG_RENDER_MODE   LCD_RENDER_MODE_RETRO_INVERTED
+#define LCD_KCONFIG_ENABLED       true
 #elif defined(CONFIG_LCD_EMULATOR_ENABLE_AT_BOOT) && (CONFIG_LCD_EMULATOR_ENABLE_AT_BOOT == 1)
 #define LCD_KCONFIG_RENDER_MODE   LCD_RENDER_MODE_RETRO_MONOCHROME
 #define LCD_KCONFIG_ENABLED       true
@@ -33,6 +49,12 @@ static const char *TAG = "lcd_emulator";
 #else
 #define LCD_KCONFIG_RENDER_MODE   LCD_RENDER_MODE_RETRO_MONOCHROME
 #define LCD_KCONFIG_ENABLED       true
+#endif
+
+#if defined(CONFIG_LCD_EMULATOR_DARK_THEME_INPUT) && (CONFIG_LCD_EMULATOR_DARK_THEME_INPUT == 0)
+#define LCD_KCONFIG_DARK_THEME    false
+#else
+#define LCD_KCONFIG_DARK_THEME    true
 #endif
 
 #ifdef CONFIG_LCD_EMULATOR_DEFAULT_CELL_SIZE
@@ -50,7 +72,7 @@ static const char *TAG = "lcd_emulator";
 #ifdef CONFIG_LCD_EMULATOR_DEFAULT_THRESHOLD
 #define LCD_KCONFIG_THRESHOLD     ((uint8_t)CONFIG_LCD_EMULATOR_DEFAULT_THRESHOLD)
 #else
-#define LCD_KCONFIG_THRESHOLD     ((uint8_t)135)
+#define LCD_KCONFIG_THRESHOLD     ((uint8_t)100)
 #endif
 
 #if defined(CONFIG_LCD_EMULATOR_PALETTE_CASIO)
@@ -96,6 +118,7 @@ static const lcd_palette_t s_palettes[LCD_PRESET_COUNT] = {
 /* Active Decorator State (initialized with Kconfig defaults) */
 static lcd_decorator_state_t s_state = {
     .mode             = LCD_KCONFIG_RENDER_MODE,
+    .dark_theme       = LCD_KCONFIG_DARK_THEME,
     .cell_size        = LCD_KCONFIG_CELL_SIZE,
     .gap_size         = LCD_KCONFIG_GAP_SIZE,
     .threshold        = LCD_KCONFIG_THRESHOLD,
@@ -215,6 +238,7 @@ esp_err_t lcd_emulator_init(lv_display_t *disp)
 
     state_lock();
     s_state.mode             = LCD_KCONFIG_RENDER_MODE;
+    s_state.dark_theme       = LCD_KCONFIG_DARK_THEME;
     s_state.cell_size        = LCD_KCONFIG_CELL_SIZE;
     s_state.gap_size         = LCD_KCONFIG_GAP_SIZE;
     s_state.threshold        = LCD_KCONFIG_THRESHOLD;
@@ -241,9 +265,10 @@ esp_err_t lcd_emulator_init(lv_display_t *disp)
     lv_display_set_flush_cb(disp, lcd_decorator_flush_cb);
     lv_unlock();
 
-    ESP_LOGI(TAG, "LCD decorator attached to display %p (orig_flush_cb=%p): mode=%d, cell=%u, gap=%u, threshold=%u, preset=%d",
-             disp, s_orig_flush_cb, (int)s_state.mode, (unsigned)s_state.cell_size,
-             (unsigned)s_state.gap_size, (unsigned)s_state.threshold, (int)LCD_KCONFIG_PRESET);
+    ESP_LOGI(TAG, "LCD decorator attached to display %p: mode=%d, cell=%u, gap=%u, threshold=%u, preset=%d, dark_theme=%d",
+             disp, (int)s_state.mode, (unsigned)s_state.cell_size,
+             (unsigned)s_state.gap_size, (unsigned)s_state.threshold, (int)LCD_KCONFIG_PRESET,
+             (int)s_state.dark_theme);
     return ESP_OK;
 #else
     (void)disp;
@@ -399,6 +424,33 @@ void lcd_emulator_set_grid(uint8_t cell_size, uint8_t gap_size, uint8_t threshol
     trigger_display_invalidation();
 }
 
+void lcd_emulator_set_dark_theme(bool dark_theme)
+{
+    state_lock();
+    s_state.dark_theme = dark_theme;
+    state_unlock();
+
+    trigger_display_invalidation();
+}
+
+bool lcd_emulator_is_dark_theme(void)
+{
+    state_lock();
+    bool dt = s_state.dark_theme;
+    state_unlock();
+    return dt;
+}
+
+void lcd_emulator_set_inverted(bool inverted)
+{
+    lcd_emulator_set_render_mode(inverted ? LCD_RENDER_MODE_RETRO_INVERTED : LCD_RENDER_MODE_RETRO_MONOCHROME);
+}
+
+bool lcd_emulator_is_inverted(void)
+{
+    return (lcd_emulator_get_render_mode() == LCD_RENDER_MODE_RETRO_INVERTED);
+}
+
 const lcd_emulator_cfg_t* lcd_emulator_get_config(void)
 {
     return &s_legacy_cfg;
@@ -443,40 +495,56 @@ void lcd_emulator_apply_filter_ex(const lv_area_t *area, uint16_t *pixels, const
         const int32_t band_y1 = (area->y1 > y_cell_start) ? area->y1 : y_cell_start;
         const int32_t band_y2 = (area->y2 < y_cell_end) ? area->y2 : y_cell_end;
 
-        /* Pick sample scanline inside this band */
-        int32_t sample_screen_y = y_cell_start + (cell_size - gap_size) / 2;
-        if (sample_screen_y < band_y1) {
-            sample_screen_y = band_y1;
-        } else if (sample_screen_y > band_y2) {
-            sample_screen_y = band_y2;
-        }
+        /* Calculate vertical active dot bounds inside this cell band */
+        const int32_t dot_y_end = y_cell_start + cell_size - gap_size - 1;
+        const int32_t sample_y_start = band_y1;
+        const int32_t sample_y_end = (band_y2 < dot_y_end) ? band_y2 : dot_y_end;
+        const bool has_dot_rows = (sample_y_start <= sample_y_end);
 
-        const int32_t sample_local_y = sample_screen_y - area->y1;
-        const uint16_t *sample_row = &pixels[sample_local_y * width];
-
-        /* Pass 1: Sample un-modified source pixels for every cell column in this band */
+        /* Pass 1: Multi-pixel box sampling across cell active area to preserve fine strokes */
         for (int32_t c = 0; c < num_cols; c++) {
-            const int32_t curr_cell_x = first_cell_x + c;
-            const int32_t x_cell_start = curr_cell_x * cell_size;
-            int32_t sample_screen_x = x_cell_start + (cell_size - gap_size) / 2;
-            if (sample_screen_x < area->x1) {
-                sample_screen_x = area->x1;
-            } else if (sample_screen_x > area->x2) {
-                sample_screen_x = area->x2;
+            if (!has_dot_rows) {
+                cell_active[c] = 0;
+                continue;
             }
 
-            const int32_t sample_local_x = sample_screen_x - area->x1;
-            const uint16_t px = sample_row[sample_local_x];
+            const int32_t curr_cell_x = first_cell_x + c;
+            const int32_t x_cell_start = curr_cell_x * cell_size;
+            const int32_t x_dot_end = x_cell_start + cell_size - gap_size - 1;
 
-            /* Fast integer luminance extraction (RGB565 -> 0..255 range) */
-            const uint8_t r = ((px >> 11) & 0x1F) << 3;
-            const uint8_t g = ((px >> 5) & 0x3F) << 2;
-            const uint8_t b = (px & 0x1F) << 3;
+            const int32_t sample_x_start = (x_cell_start > area->x1) ? x_cell_start : area->x1;
+            const int32_t sample_x_end = (x_dot_end < area->x2) ? x_dot_end : area->x2;
 
-            /* Fast approximation: Y = (77*R + 150*G + 29*B) >> 8 */
-            const uint16_t lum = (uint16_t)((77u * r + 150u * g + 29u * b) >> 8);
-            const bool is_active = inverted ? (lum >= threshold) : (lum < threshold);
-            cell_active[c] = is_active ? 1u : 0u;
+            if (sample_x_start > sample_x_end) {
+                cell_active[c] = 0;
+                continue;
+            }
+
+            bool active = false;
+            for (int32_t sy = sample_y_start; sy <= sample_y_end; sy++) {
+                const uint16_t *row = &pixels[(sy - area->y1) * width];
+                for (int32_t sx = sample_x_start; sx <= sample_x_end; sx++) {
+                    const uint16_t px = row[sx - area->x1];
+
+                    /* Fast integer luminance extraction (RGB565 -> 0..255 range) */
+                    const uint8_t r = ((px >> 11) & 0x1F) << 3;
+                    const uint8_t g = ((px >> 5) & 0x3F) << 2;
+                    const uint8_t b = (px & 0x1F) << 3;
+
+                    /* ITU-R BT.601 integer luminance: Y = (77*R + 150*G + 29*B) >> 8 */
+                    const uint16_t lum = (uint16_t)((77u * r + 150u * g + 29u * b) >> 8);
+
+                    if (state->dark_theme ? (lum >= threshold) : (lum < threshold)) {
+                        active = true;
+                        break;
+                    }
+                }
+                if (active) {
+                    break;
+                }
+            }
+
+            cell_active[c] = inverted ? (!active) : active;
         }
 
         /* Pass 2: Overwrite scanlines in this band with sub-pixel gaps and quantized dot colors */
@@ -505,6 +573,7 @@ void lcd_emulator_apply_filter(const lv_area_t *area, uint16_t *pixels, const lc
     if (!cfg) return;
     lcd_decorator_state_t temp_state = {
         .mode             = cfg->enabled ? LCD_RENDER_MODE_RETRO_MONOCHROME : LCD_RENDER_MODE_PASSTHROUGH,
+        .dark_theme       = false,
         .cell_size        = cfg->cell_size,
         .gap_size         = cfg->gap_size,
         .threshold        = cfg->threshold,

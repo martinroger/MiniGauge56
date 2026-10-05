@@ -191,6 +191,7 @@ static void test_decorator_state_safety()
     ASSERT_EQ(lcd_emulator_get_decorator_state(&st), ESP_OK);
     ASSERT_EQ(st.cell_size, 4);
     ASSERT_EQ(st.gap_size, 1);
+    ASSERT_TRUE(st.dark_theme);
 
     // Negative tests: NULL pointers
     ASSERT_EQ(lcd_emulator_get_decorator_state(NULL), ESP_ERR_INVALID_ARG);
@@ -221,6 +222,7 @@ static void test_decorator_state_safety()
     // Positive test: Valid state update
     lcd_decorator_state_t good_state = st;
     good_state.mode = LCD_RENDER_MODE_RETRO_MONOCHROME;
+    good_state.dark_theme = true;
     good_state.cell_size = 5;
     good_state.gap_size = 1;
     good_state.threshold = 145;
@@ -233,8 +235,20 @@ static void test_decorator_state_safety()
     ASSERT_EQ(read_back.cell_size, 5);
     ASSERT_EQ(read_back.gap_size, 1);
     ASSERT_EQ(read_back.threshold, 145);
+    ASSERT_TRUE(read_back.dark_theme);
     ASSERT_EQ(read_back.palette.color_active, s_palettes[LCD_PRESET_CYAN].color_active);
     ASSERT_EQ(read_back.mode, LCD_RENDER_MODE_RETRO_MONOCHROME);
+
+    // Test standalone dark theme & inverted setters
+    lcd_emulator_set_dark_theme(false);
+    ASSERT_TRUE(!lcd_emulator_is_dark_theme());
+    lcd_emulator_set_dark_theme(true);
+    ASSERT_TRUE(lcd_emulator_is_dark_theme());
+
+    lcd_emulator_set_inverted(true);
+    ASSERT_TRUE(lcd_emulator_is_inverted());
+    lcd_emulator_set_inverted(false);
+    ASSERT_TRUE(!lcd_emulator_is_inverted());
 
     printf("  -> State validation safety and round-trip assertions passed.\n");
 }
@@ -274,14 +288,22 @@ static void test_render_mode_switching()
     ASSERT_EQ(lcd_emulator_get_render_mode(), LCD_RENDER_MODE_RETRO_INVERTED);
     ASSERT_TRUE(lcd_emulator_is_enabled());
 
-    // Test Inverted logic: Bright pixel (lum > threshold) must be color_active
+    // Test Inverted logic on dark theme:
+    // In normal mode, white text is color_active. In inverted mode, white text is color_inactive
+    // and black background is color_active.
     lcd_decorator_state_t inv_state;
     lcd_emulator_get_decorator_state(&inv_state);
     inv_state.gap_size = 0; // disable gaps for pure test
-    std::vector<uint16_t> inv_buf(w * h, LCD_RGB565(255, 255, 255)); // Bright
-    lcd_emulator_apply_filter_ex(&area, inv_buf.data(), &inv_state, true);
+    std::vector<uint16_t> white_inv_buf(w * h, LCD_RGB565(255, 255, 255)); // Bright
+    lcd_emulator_apply_filter_ex(&area, white_inv_buf.data(), &inv_state, true);
     for (int i = 0; i < w * h; i++) {
-        ASSERT_EQ(inv_buf[i], inv_state.palette.color_active);
+        ASSERT_EQ(white_inv_buf[i], inv_state.palette.color_inactive);
+    }
+
+    std::vector<uint16_t> black_inv_buf(w * h, LCD_RGB565(0, 0, 0)); // Dark
+    lcd_emulator_apply_filter_ex(&area, black_inv_buf.data(), &inv_state, true);
+    for (int i = 0; i < w * h; i++) {
+        ASSERT_EQ(black_inv_buf[i], inv_state.palette.color_active);
     }
 
     // 3. Register Custom Render
@@ -300,7 +322,149 @@ static void test_render_mode_switching()
 }
 
 /**
- * @brief Test 6: High-Volume Stress, Endurance & Throughput Verification (50,000 passes).
+ * @brief Test 6: Cell Size Scaling & Thin 1px Stroke Preservation (Box Sampling).
+ */
+static void test_cell_size_scaling_and_thin_stroke_preservation()
+{
+    printf("[TEST 6] Verifying cell size scaling & thin 1px stroke box-sampling preservation...\n");
+
+    lcd_decorator_state_t state;
+    state.mode = LCD_RENDER_MODE_RETRO_MONOCHROME;
+    state.dark_theme = true; // AMOLED dark UI
+    state.palette = s_palettes[LCD_PRESET_AMBER];
+    state.threshold = 100;
+    state.custom_render_fn = NULL;
+    state.custom_user_ctx = NULL;
+
+    // Test 1: Cell Size 3 with 1px stroke at x=0 (cell spans [0..2], dot [0..1], gap [2])
+    // Even though the stroke is at x=0 (left edge), box sampling MUST capture it.
+    {
+        state.cell_size = 3;
+        state.gap_size = 1;
+        const int w = 12;
+        const int h = 12;
+        lv_area_t area = { .x1 = 0, .y1 = 0, .x2 = w - 1, .y2 = h - 1 };
+
+        // Test every possible pixel position [0..1] in the dot area of cell 0
+        for (int offset_x = 0; offset_x <= 1; offset_x++) {
+            for (int offset_y = 0; offset_y <= 1; offset_y++) {
+                std::vector<uint16_t> buf(w * h, 0x0000); // Black background
+                buf[offset_y * w + offset_x] = LCD_RGB565(0xFF, 0xFF, 0xFF); // Single 1px white dot
+
+                lcd_emulator_apply_filter_ex(&area, buf.data(), &state, false);
+
+                // Cell (0, 0) non-gap pixels must be color_active (amber)
+                ASSERT_EQ(buf[0 * w + 0], state.palette.color_active);
+                ASSERT_EQ(buf[0 * w + 1], state.palette.color_active);
+                ASSERT_EQ(buf[1 * w + 0], state.palette.color_active);
+                ASSERT_EQ(buf[1 * w + 1], state.palette.color_active);
+
+                // Gap pixels must be color_gap
+                ASSERT_EQ(buf[0 * w + 2], state.palette.color_gap);
+                ASSERT_EQ(buf[1 * w + 2], state.palette.color_gap);
+                ASSERT_EQ(buf[2 * w + 0], state.palette.color_gap);
+
+                // Neighboring cell (1, 0) must be inactive
+                ASSERT_EQ(buf[0 * w + 3], state.palette.color_inactive);
+            }
+        }
+    }
+
+    // Test 2: Cell Size 4 vs Cell Size 3 grid scaling assertion
+    {
+        const int w = 24;
+        const int h = 24;
+        lv_area_t area = { .x1 = 0, .y1 = 0, .x2 = w - 1, .y2 = h - 1 };
+
+        // For cell_size = 3, in 24 pixels we have 24 / 3 = 8 cells
+        // For cell_size = 4, in 24 pixels we have 24 / 4 = 6 cells
+        state.cell_size = 3;
+        state.gap_size = 1;
+        std::vector<uint16_t> buf3(w * h, LCD_RGB565(0xFF, 0xFF, 0xFF)); // All white
+        lcd_emulator_apply_filter_ex(&area, buf3.data(), &state, false);
+
+        int gap_count_3 = 0;
+        for (int x = 0; x < w; x++) {
+            if (buf3[0 * w + x] == state.palette.color_gap) gap_count_3++;
+        }
+        ASSERT_EQ(gap_count_3, 8); // 8 gap columns for cell size 3
+
+        state.cell_size = 4;
+        state.gap_size = 1;
+        std::vector<uint16_t> buf4(w * h, LCD_RGB565(0xFF, 0xFF, 0xFF)); // All white
+        lcd_emulator_apply_filter_ex(&area, buf4.data(), &state, false);
+
+        int gap_count_4 = 0;
+        for (int x = 0; x < w; x++) {
+            if (buf4[0 * w + x] == state.palette.color_gap) gap_count_4++;
+        }
+        ASSERT_EQ(gap_count_4, 6); // 6 gap columns for cell size 4
+    }
+
+    printf("  -> Box sampling and cell size resolution scaling verified.\n");
+}
+
+/**
+ * @brief Test 7: Dark Theme (AMOLED) vs Light Theme & Inversion Polarity.
+ */
+static void test_dark_theme_and_inverted_mode()
+{
+    printf("[TEST 7] Verifying dark theme (AMOLED) mapping and inverted polarity...\n");
+
+    lcd_decorator_state_t state;
+    state.mode = LCD_RENDER_MODE_RETRO_MONOCHROME;
+    state.cell_size = 4;
+    state.gap_size = 0; // zero gaps for pure state test
+    state.threshold = 100;
+    state.palette = s_palettes[LCD_PRESET_AMBER];
+    state.custom_render_fn = NULL;
+    state.custom_user_ctx = NULL;
+
+    const int w = 4;
+    const int h = 4;
+    lv_area_t area = { .x1 = 0, .y1 = 0, .x2 = w - 1, .y2 = h - 1 };
+
+    // Scenario A: AMOLED Dark Theme (black background with white text)
+    state.dark_theme = true;
+
+    // 1. Black background (lum = 0 < 100) -> color_inactive
+    std::vector<uint16_t> black_buf(w * h, LCD_RGB565(0, 0, 0));
+    lcd_emulator_apply_filter_ex(&area, black_buf.data(), &state, false);
+    ASSERT_EQ(black_buf[0], state.palette.color_inactive);
+
+    // 2. White text (lum = 255 >= 100) -> color_active
+    std::vector<uint16_t> white_buf(w * h, LCD_RGB565(0xFF, 0xFF, 0xFF));
+    lcd_emulator_apply_filter_ex(&area, white_buf.data(), &state, false);
+    ASSERT_EQ(white_buf[0], state.palette.color_active);
+
+    // 3. Inverted mode on AMOLED:
+    // White text becomes color_inactive, black background becomes color_active
+    black_buf = std::vector<uint16_t>(w * h, LCD_RGB565(0, 0, 0));
+    lcd_emulator_apply_filter_ex(&area, black_buf.data(), &state, true);
+    ASSERT_EQ(black_buf[0], state.palette.color_active);
+
+    white_buf = std::vector<uint16_t>(w * h, LCD_RGB565(0xFF, 0xFF, 0xFF));
+    lcd_emulator_apply_filter_ex(&area, white_buf.data(), &state, true);
+    ASSERT_EQ(white_buf[0], state.palette.color_inactive);
+
+    // Scenario B: Classic Light Theme (white background with black text)
+    state.dark_theme = false;
+
+    // 1. Black ink (lum = 0 < 100) -> color_active
+    black_buf = std::vector<uint16_t>(w * h, LCD_RGB565(0, 0, 0));
+    lcd_emulator_apply_filter_ex(&area, black_buf.data(), &state, false);
+    ASSERT_EQ(black_buf[0], state.palette.color_active);
+
+    // 2. White background (lum = 255 >= 100) -> color_inactive
+    white_buf = std::vector<uint16_t>(w * h, LCD_RGB565(0xFF, 0xFF, 0xFF));
+    lcd_emulator_apply_filter_ex(&area, white_buf.data(), &state, false);
+    ASSERT_EQ(white_buf[0], state.palette.color_inactive);
+
+    printf("  -> AMOLED dark theme and inversion polarity verified.\n");
+}
+
+/**
+ * @brief Test 8: High-Volume Stress, Endurance & Throughput Verification (50,000 passes).
  */
 static void test_high_volume_stress_endurance()
 {
@@ -368,10 +532,12 @@ int main(int argc, char **argv)
     test_screen_space_modulo_continuity();
     test_decorator_state_safety();
     test_render_mode_switching();
+    test_cell_size_scaling_and_thin_stroke_preservation();
+    test_dark_theme_and_inverted_mode();
     test_high_volume_stress_endurance();
 
     printf("====================================================\n");
-    printf("  ALL 6 TEST SUITES PASSED CLEANLY (Zero Errors)\n");
+    printf("  ALL 8 TEST SUITES PASSED CLEANLY (Zero Errors)\n");
     printf("====================================================\n");
     return 0;
 }

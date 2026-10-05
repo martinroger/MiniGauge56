@@ -57,19 +57,27 @@ To guarantee bit-exact spatial continuity across arbitrary tile boundaries:
 
 ---
 
-## 4. In-Place Band Processing (Zero Allocation & Read-Corruption Elimination)
+## 4. In-Place Band Processing (Multi-Pixel Box Sampling & Stroke Preservation)
 
-When transforming a tile in-place, reading an anchor pixel from an earlier scanline that was already overwritten would cause state corruption.
+When transforming a tile in-place, reading an anchor pixel from an earlier scanline that was already overwritten would cause state corruption. Furthermore, sampling only a single center pixel per cell causes thin 1px font strokes or needle vectors to be skipped (aliasing dropout).
 
-To eliminate this with zero dynamic allocation:
-1. The dirty tile is partitioned into horizontal bands of height $\le \text{cell\_size}$.
-2. For each band, a representative sample line $y_{\text{sample}}$ is clamped within the valid tile bounds.
-3. **Pass 1 (Read-Only)**: The un-modified source pixels along $y_{\text{sample}}$ are sampled for every cell column in the band. Their 8-bit luminance is computed using fast integer math:
-   $$Y = (77 R + 150 G + 29 B) \gg 8$$
-   The resulting binary states ($1 = \text{active dark ink}$, $0 = \text{inactive background}$) are cached into a 256-byte stack array `cell_active[]`.
-4. **Pass 2 (Write-Only)**: All scanlines in the band are overwritten with `palette.color_gap`, `palette.color_active`, or `palette.color_inactive`.
+To eliminate read corruption and preserve fine vector strokes with zero dynamic memory allocation:
+1. The dirty tile is partitioned into horizontal cell bands of height $\le \text{cell\_size}$.
+2. **Pass 1 (Read-Only Multi-Pixel Box Sampling)**:
+   For every cell column $c$ in the band, the algorithm samples across the active non-gap pixels of the cell:
+   - For dark-theme UIs (AMOLED `#000000` background with bright text):
+     If ANY pixel within the cell has luminance $Y \ge \text{threshold}$, the cell is marked active ($1$), and scanning early-exits for that cell.
+   - For light-theme UIs (white canvas with dark ink):
+     If ANY pixel within the cell has luminance $Y < \text{threshold}$, the cell is marked active ($1$).
+   - Luminance is computed using ITU-R BT.601 integer arithmetic:
+     $$Y = (77 R + 150 G + 29 B) \gg 8$$
+   - Inverted mode polarity inverts the active flag ($1 \leftrightarrow 0$).
+   - The resulting states are cached in a statically allocated 256-byte stack array `cell_active[]`.
+3. **Pass 2 (Write-Only Overwrite)**:
+   All scanlines in the cell band are overwritten with `palette.color_gap`, `palette.color_active`, or `palette.color_inactive`.
 
 This guarantees:
 - Zero dynamic memory allocation (`malloc`/`free`) in the hot rendering path.
 - Zero read-after-write hazards.
+- Complete geometric preservation of fine 1px font stems, needles, and borders.
 - Bit-exact visual reproduction across any buffer tile height.
