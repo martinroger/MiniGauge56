@@ -5,7 +5,9 @@
 
 #include "lcd_emulator.h"
 
-#if defined(__has_include) && __has_include("esp_log.h")
+#if defined(ESP_PLATFORM)
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "esp_log.h"
 static const char *TAG = "lcd_emulator";
 #else
@@ -44,8 +46,23 @@ static const lcd_palette_t s_palettes[LCD_PRESET_COUNT] = {
     },
 };
 
-/* Active Emulator Configuration (Zero dynamic allocation) */
-static lcd_emulator_cfg_t s_cfg = {
+/* Active Decorator State */
+static lcd_decorator_state_t s_state = {
+    .mode             = LCD_RENDER_MODE_RETRO_MONOCHROME,
+    .cell_size        = 4,
+    .gap_size         = 1,
+    .threshold        = 135,
+    .palette          = {
+        .color_bg       = LCD_RGB565(0x8A, 0x9A, 0x5B),
+        .color_active   = LCD_RGB565(0x1B, 0x28, 0x12),
+        .color_inactive = LCD_RGB565(0x7D, 0x8C, 0x50),
+        .color_gap      = LCD_RGB565(0x6F, 0x7E, 0x45),
+    },
+    .custom_render_fn = NULL,
+    .custom_user_ctx  = NULL,
+};
+
+static lcd_emulator_cfg_t s_legacy_cfg = {
     .enabled    = true,
     .cell_size  = 4,
     .gap_size   = 1,
@@ -58,6 +75,27 @@ static lcd_emulator_cfg_t s_cfg = {
     },
 };
 
+#if defined(ESP_PLATFORM)
+static SemaphoreHandle_t s_state_mutex = NULL;
+
+static inline void state_lock(void)
+{
+    if (s_state_mutex) {
+        xSemaphoreTakeRecursive(s_state_mutex, portMAX_DELAY);
+    }
+}
+
+static inline void state_unlock(void)
+{
+    if (s_state_mutex) {
+        xSemaphoreGiveRecursive(s_state_mutex);
+    }
+}
+#else
+static inline void state_lock(void) {}
+static inline void state_unlock(void) {}
+#endif
+
 #if defined(LVGL_H) || (defined(__has_include) && __has_include("lvgl.h"))
 #if defined(__has_include) && __has_include("display/lv_display_private.h")
 #include "display/lv_display_private.h"
@@ -68,10 +106,43 @@ static lcd_emulator_cfg_t s_cfg = {
 static lv_display_t *s_target_disp = NULL;
 static lv_display_flush_cb_t s_orig_flush_cb = NULL;
 
+static void trigger_display_invalidation(void)
+{
+    if (s_target_disp) {
+        lv_lock();
+        lv_obj_t *act_screen = lv_display_get_screen_active(s_target_disp);
+        if (act_screen) {
+            lv_obj_invalidate(act_screen);
+        }
+        lv_unlock();
+    }
+}
+
 static void lcd_decorator_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 {
-    if (s_cfg.enabled && area && px_map) {
-        lcd_emulator_apply_filter(area, (uint16_t *)px_map, &s_cfg);
+    lcd_decorator_state_t snap;
+    state_lock();
+    snap = s_state;
+    state_unlock();
+
+    if (area && px_map) {
+        switch (snap.mode) {
+        case LCD_RENDER_MODE_RETRO_MONOCHROME:
+            lcd_emulator_apply_filter_ex(area, (uint16_t *)px_map, &snap, false);
+            break;
+        case LCD_RENDER_MODE_RETRO_INVERTED:
+            lcd_emulator_apply_filter_ex(area, (uint16_t *)px_map, &snap, true);
+            break;
+        case LCD_RENDER_MODE_CUSTOM:
+            if (snap.custom_render_fn) {
+                snap.custom_render_fn(area, (uint16_t *)px_map, snap.custom_user_ctx);
+            }
+            break;
+        case LCD_RENDER_MODE_PASSTHROUGH:
+        default:
+            // Zero-overhead passthrough
+            break;
+        }
     }
 
     if (s_orig_flush_cb) {
@@ -80,10 +151,21 @@ static void lcd_decorator_flush_cb(lv_display_t *disp, const lv_area_t *area, ui
         lv_display_flush_ready(disp);
     }
 }
+#else
+static void trigger_display_invalidation(void) {}
 #endif
 
 esp_err_t lcd_emulator_init(lv_display_t *disp)
 {
+#if defined(ESP_PLATFORM)
+    if (!s_state_mutex) {
+        s_state_mutex = xSemaphoreCreateRecursiveMutex();
+        if (!s_state_mutex) {
+            return ESP_FAIL;
+        }
+    }
+#endif
+
 #if defined(LVGL_H) || (defined(__has_include) && __has_include("lvgl.h"))
     if (!disp) {
         ESP_LOGE(TAG, "Invalid display handle");
@@ -101,25 +183,105 @@ esp_err_t lcd_emulator_init(lv_display_t *disp)
 #endif
 }
 
+esp_err_t lcd_emulator_set_decorator_state(const lcd_decorator_state_t *state)
+{
+    if (!state) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (state->mode >= LCD_RENDER_MODE_COUNT) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (state->cell_size < 2) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (state->gap_size >= state->cell_size) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (state->mode == LCD_RENDER_MODE_CUSTOM && !state->custom_render_fn) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    state_lock();
+    s_state = *state;
+
+    // Synchronize legacy configuration mirror
+    s_legacy_cfg.enabled   = (s_state.mode != LCD_RENDER_MODE_PASSTHROUGH);
+    s_legacy_cfg.cell_size = s_state.cell_size;
+    s_legacy_cfg.gap_size  = s_state.gap_size;
+    s_legacy_cfg.threshold = s_state.threshold;
+    s_legacy_cfg.palette   = s_state.palette;
+    state_unlock();
+
+    trigger_display_invalidation();
+    return ESP_OK;
+}
+
+esp_err_t lcd_emulator_get_decorator_state(lcd_decorator_state_t *out_state)
+{
+    if (!out_state) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    state_lock();
+    *out_state = s_state;
+    state_unlock();
+    return ESP_OK;
+}
+
+esp_err_t lcd_emulator_set_render_mode(lcd_render_mode_t mode)
+{
+    if (mode >= LCD_RENDER_MODE_COUNT) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    state_lock();
+    if (mode == LCD_RENDER_MODE_CUSTOM && !s_state.custom_render_fn) {
+        state_unlock();
+        return ESP_ERR_INVALID_ARG;
+    }
+    s_state.mode = mode;
+    s_legacy_cfg.enabled = (mode != LCD_RENDER_MODE_PASSTHROUGH);
+    state_unlock();
+
+    trigger_display_invalidation();
+    return ESP_OK;
+}
+
+lcd_render_mode_t lcd_emulator_get_render_mode(void)
+{
+    state_lock();
+    lcd_render_mode_t mode = s_state.mode;
+    state_unlock();
+    return mode;
+}
+
+esp_err_t lcd_emulator_set_custom_render(lcd_render_fn_t render_fn, void *user_ctx)
+{
+    if (!render_fn) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    state_lock();
+    s_state.custom_render_fn = render_fn;
+    s_state.custom_user_ctx  = user_ctx;
+    s_state.mode             = LCD_RENDER_MODE_CUSTOM;
+    s_legacy_cfg.enabled     = true;
+    state_unlock();
+
+    trigger_display_invalidation();
+    return ESP_OK;
+}
+
 void lcd_emulator_set_enabled(bool enabled)
 {
-    s_cfg.enabled = enabled;
-    ESP_LOGI(TAG, "Retro LCD emulation %s", enabled ? "ENABLED" : "BYPASSED");
-#if defined(LVGL_H) || (defined(__has_include) && __has_include("lvgl.h"))
-    if (s_target_disp) {
-        lv_obj_invalidate(lv_display_get_screen_active(s_target_disp));
-    }
-#endif
+    lcd_emulator_set_render_mode(enabled ? LCD_RENDER_MODE_RETRO_MONOCHROME : LCD_RENDER_MODE_PASSTHROUGH);
 }
 
 bool lcd_emulator_is_enabled(void)
 {
-    return s_cfg.enabled;
+    return (lcd_emulator_get_render_mode() != LCD_RENDER_MODE_PASSTHROUGH);
 }
 
 void lcd_emulator_toggle(void)
 {
-    lcd_emulator_set_enabled(!s_cfg.enabled);
+    lcd_emulator_set_enabled(!lcd_emulator_is_enabled());
 }
 
 void lcd_emulator_set_preset(lcd_preset_t preset)
@@ -127,24 +289,25 @@ void lcd_emulator_set_preset(lcd_preset_t preset)
     if (preset >= LCD_PRESET_COUNT) {
         return;
     }
-    s_cfg.palette = s_palettes[preset];
-#if defined(LVGL_H) || (defined(__has_include) && __has_include("lvgl.h"))
-    if (s_target_disp && s_cfg.enabled) {
-        lv_obj_invalidate(lv_display_get_screen_active(s_target_disp));
-    }
-#endif
+    state_lock();
+    s_state.palette = s_palettes[preset];
+    s_legacy_cfg.palette = s_palettes[preset];
+    state_unlock();
+
+    trigger_display_invalidation();
 }
 
 void lcd_emulator_set_palette(const lcd_palette_t *palette)
 {
-    if (palette) {
-        s_cfg.palette = *palette;
-#if defined(LVGL_H) || (defined(__has_include) && __has_include("lvgl.h"))
-        if (s_target_disp && s_cfg.enabled) {
-            lv_obj_invalidate(lv_display_get_screen_active(s_target_disp));
-        }
-#endif
+    if (!palette) {
+        return;
     }
+    state_lock();
+    s_state.palette = *palette;
+    s_legacy_cfg.palette = *palette;
+    state_unlock();
+
+    trigger_display_invalidation();
 }
 
 void lcd_emulator_set_grid(uint8_t cell_size, uint8_t gap_size, uint8_t threshold)
@@ -155,25 +318,27 @@ void lcd_emulator_set_grid(uint8_t cell_size, uint8_t gap_size, uint8_t threshol
     if (gap_size >= cell_size) {
         gap_size = cell_size - 1;
     }
-    s_cfg.cell_size = cell_size;
-    s_cfg.gap_size = gap_size;
-    s_cfg.threshold = threshold;
+    state_lock();
+    s_state.cell_size = cell_size;
+    s_state.gap_size  = gap_size;
+    s_state.threshold = threshold;
 
-#if defined(LVGL_H) || (defined(__has_include) && __has_include("lvgl.h"))
-    if (s_target_disp && s_cfg.enabled) {
-        lv_obj_invalidate(lv_display_get_screen_active(s_target_disp));
-    }
-#endif
+    s_legacy_cfg.cell_size = cell_size;
+    s_legacy_cfg.gap_size  = gap_size;
+    s_legacy_cfg.threshold = threshold;
+    state_unlock();
+
+    trigger_display_invalidation();
 }
 
 const lcd_emulator_cfg_t* lcd_emulator_get_config(void)
 {
-    return &s_cfg;
+    return &s_legacy_cfg;
 }
 
-void lcd_emulator_apply_filter(const lv_area_t *area, uint16_t *pixels, const lcd_emulator_cfg_t *cfg)
+void lcd_emulator_apply_filter_ex(const lv_area_t *area, uint16_t *pixels, const lcd_decorator_state_t *state, bool inverted)
 {
-    if (!area || !pixels || !cfg) {
+    if (!area || !pixels || !state) {
         return;
     }
 
@@ -183,12 +348,12 @@ void lcd_emulator_apply_filter(const lv_area_t *area, uint16_t *pixels, const lc
         return;
     }
 
-    const uint8_t cell_size = (cfg->cell_size >= 2) ? cfg->cell_size : 4;
-    const uint8_t gap_size = (cfg->gap_size < cell_size) ? cfg->gap_size : 1;
-    const uint8_t threshold = cfg->threshold;
-    const uint16_t col_gap = cfg->palette.color_gap;
-    const uint16_t col_active = cfg->palette.color_active;
-    const uint16_t col_inactive = cfg->palette.color_inactive;
+    const uint8_t cell_size = (state->cell_size >= 2) ? state->cell_size : 4;
+    const uint8_t gap_size = (state->gap_size < cell_size) ? state->gap_size : 1;
+    const uint8_t threshold = state->threshold;
+    const uint16_t col_gap = state->palette.color_gap;
+    const uint16_t col_active = state->palette.color_active;
+    const uint16_t col_inactive = state->palette.color_inactive;
 
     const int32_t first_cell_x = area->x1 / cell_size;
     const int32_t last_cell_x = area->x2 / cell_size;
@@ -242,7 +407,8 @@ void lcd_emulator_apply_filter(const lv_area_t *area, uint16_t *pixels, const lc
 
             /* Fast approximation: Y = (77*R + 150*G + 29*B) >> 8 */
             const uint16_t lum = (uint16_t)((77u * r + 150u * g + 29u * b) >> 8);
-            cell_active[c] = (lum < threshold) ? 1u : 0u;
+            const bool is_active = inverted ? (lum >= threshold) : (lum < threshold);
+            cell_active[c] = is_active ? 1u : 0u;
         }
 
         /* Pass 2: Overwrite scanlines in this band with sub-pixel gaps and quantized dot colors */
@@ -264,4 +430,19 @@ void lcd_emulator_apply_filter(const lv_area_t *area, uint16_t *pixels, const lc
             }
         }
     }
+}
+
+void lcd_emulator_apply_filter(const lv_area_t *area, uint16_t *pixels, const lcd_emulator_cfg_t *cfg)
+{
+    if (!cfg) return;
+    lcd_decorator_state_t temp_state = {
+        .mode             = cfg->enabled ? LCD_RENDER_MODE_RETRO_MONOCHROME : LCD_RENDER_MODE_PASSTHROUGH,
+        .cell_size        = cfg->cell_size,
+        .gap_size         = cfg->gap_size,
+        .threshold        = cfg->threshold,
+        .palette          = cfg->palette,
+        .custom_render_fn = NULL,
+        .custom_user_ctx  = NULL,
+    };
+    lcd_emulator_apply_filter_ex(area, pixels, &temp_state, false);
 }

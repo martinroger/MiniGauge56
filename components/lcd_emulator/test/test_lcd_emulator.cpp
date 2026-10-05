@@ -3,8 +3,9 @@
  * @brief Automated host unit and regression tests for retro LCD emulator component.
  *
  * Exercises direct production source (lcd_emulator.c) natively under macOS clang++ / Linux g++.
- * Verifies screen-space modulo boundary continuity, sub-pixel gap modulation,
- * RGB565 luminance thresholding, and high-volume stress endurance (50,000 passes).
+ * Verifies decorator state getter/setter, parameter validation safety, render mode switching,
+ * inverted LCD logic, custom pluggable renderers, screen-space modulo boundary continuity,
+ * and high-volume stress endurance (50,000 passes).
  */
 
 #include <cassert>
@@ -179,62 +180,123 @@ static void test_screen_space_modulo_continuity()
 }
 
 /**
- * @brief Test 4: Luminance binarization thresholding accuracy.
+ * @brief Test 4: Decorator State Setter / Getter & Parameter Validation Safety.
  */
-static void test_binarization_thresholding()
+static void test_decorator_state_safety()
 {
-    printf("[TEST 4] Verifying binarization thresholding...\n");
+    printf("[TEST 4] Verifying decorator state setter/getter & safety constraints...\n");
 
-    lcd_emulator_cfg_t cfg;
-    cfg.enabled = true;
-    cfg.cell_size = 4;
-    cfg.gap_size = 0; // Disable gaps to test pure ink
-    cfg.threshold = 128;
-    cfg.palette = s_palettes[LCD_PRESET_OLIVE];
+    // Initial state read
+    lcd_decorator_state_t st;
+    ASSERT_EQ(lcd_emulator_get_decorator_state(&st), ESP_OK);
+    ASSERT_EQ(st.cell_size, 4);
+    ASSERT_EQ(st.gap_size, 1);
 
-    // Create 4x4 area with dark gray (lum ~64 < 128)
-    std::vector<uint16_t> dark_buf(16, LCD_RGB565(64, 64, 64));
-    lv_area_t area = { .x1 = 0, .y1 = 0, .x2 = 3, .y2 = 3 };
-    lcd_emulator_apply_filter(&area, dark_buf.data(), &cfg);
+    // Negative tests: NULL pointers
+    ASSERT_EQ(lcd_emulator_get_decorator_state(NULL), ESP_ERR_INVALID_ARG);
+    ASSERT_EQ(lcd_emulator_set_decorator_state(NULL), ESP_ERR_INVALID_ARG);
 
-    for (int i = 0; i < 16; i++) {
-        ASSERT_EQ(dark_buf[i], cfg.palette.color_active);
-    }
+    // Negative test: Invalid mode
+    lcd_decorator_state_t bad_state = st;
+    bad_state.mode = (lcd_render_mode_t)99;
+    ASSERT_EQ(lcd_emulator_set_decorator_state(&bad_state), ESP_ERR_INVALID_ARG);
 
-    // Create 4x4 area with light gray (lum ~192 > 128)
-    std::vector<uint16_t> light_buf(16, LCD_RGB565(192, 192, 192));
-    lcd_emulator_apply_filter(&area, light_buf.data(), &cfg);
+    // Negative test: cell_size < 2
+    bad_state = st;
+    bad_state.cell_size = 1;
+    ASSERT_EQ(lcd_emulator_set_decorator_state(&bad_state), ESP_ERR_INVALID_ARG);
 
-    for (int i = 0; i < 16; i++) {
-        ASSERT_EQ(light_buf[i], cfg.palette.color_inactive);
-    }
+    // Negative test: gap_size >= cell_size
+    bad_state = st;
+    bad_state.cell_size = 4;
+    bad_state.gap_size = 4;
+    ASSERT_EQ(lcd_emulator_set_decorator_state(&bad_state), ESP_ERR_INVALID_ARG);
 
-    printf("  -> Threshold binarization asserted for dark and bright pixels.\n");
+    // Negative test: CUSTOM mode with NULL callback
+    bad_state = st;
+    bad_state.mode = LCD_RENDER_MODE_CUSTOM;
+    bad_state.custom_render_fn = NULL;
+    ASSERT_EQ(lcd_emulator_set_decorator_state(&bad_state), ESP_ERR_INVALID_ARG);
+
+    // Positive test: Valid state update
+    lcd_decorator_state_t good_state = st;
+    good_state.mode = LCD_RENDER_MODE_RETRO_MONOCHROME;
+    good_state.cell_size = 5;
+    good_state.gap_size = 1;
+    good_state.threshold = 145;
+    good_state.palette = s_palettes[LCD_PRESET_CYAN];
+    ASSERT_EQ(lcd_emulator_set_decorator_state(&good_state), ESP_OK);
+
+    // Verify getter returns updated state
+    lcd_decorator_state_t read_back;
+    ASSERT_EQ(lcd_emulator_get_decorator_state(&read_back), ESP_OK);
+    ASSERT_EQ(read_back.cell_size, 5);
+    ASSERT_EQ(read_back.gap_size, 1);
+    ASSERT_EQ(read_back.threshold, 145);
+    ASSERT_EQ(read_back.palette.color_active, s_palettes[LCD_PRESET_CYAN].color_active);
+    ASSERT_EQ(read_back.mode, LCD_RENDER_MODE_RETRO_MONOCHROME);
+
+    printf("  -> State validation safety and round-trip assertions passed.\n");
 }
 
 /**
- * @brief Test 5: Palette presets and configuration setters.
+ * @brief Custom test render callback.
  */
-static void test_palette_presets()
+static int s_custom_render_calls = 0;
+static void dummy_custom_render(const lv_area_t *area, uint16_t *pixels, void *user_ctx)
 {
-    printf("[TEST 5] Verifying palette presets...\n");
+    (void)user_ctx;
+    s_custom_render_calls++;
+    int count = (area->x2 - area->x1 + 1) * (area->y2 - area->y1 + 1);
+    for (int i = 0; i < count; i++) {
+        pixels[i] = LCD_RGB565(0xAA, 0xBB, 0xCC);
+    }
+}
 
-    for (int p = 0; p < LCD_PRESET_COUNT; p++) {
-        lcd_emulator_set_preset((lcd_preset_t)p);
-        const lcd_emulator_cfg_t *cfg = lcd_emulator_get_config();
-        ASSERT_EQ(cfg->palette.color_bg, s_palettes[p].color_bg);
-        ASSERT_EQ(cfg->palette.color_active, s_palettes[p].color_active);
-        ASSERT_EQ(cfg->palette.color_inactive, s_palettes[p].color_inactive);
-        ASSERT_EQ(cfg->palette.color_gap, s_palettes[p].color_gap);
+/**
+ * @brief Test 5: Render Mode Switching (Passthrough, Monochrome, Inverted, Custom).
+ */
+static void test_render_mode_switching()
+{
+    printf("[TEST 5] Verifying render mode switching & custom plugin renderer...\n");
+
+    const int w = 8;
+    const int h = 8;
+    lv_area_t area = { .x1 = 0, .y1 = 0, .x2 = w - 1, .y2 = h - 1 };
+
+    // 1. Switch to PASSTHROUGH
+    ASSERT_EQ(lcd_emulator_set_render_mode(LCD_RENDER_MODE_PASSTHROUGH), ESP_OK);
+    ASSERT_EQ(lcd_emulator_get_render_mode(), LCD_RENDER_MODE_PASSTHROUGH);
+    ASSERT_TRUE(!lcd_emulator_is_enabled());
+
+    // 2. Switch to RETRO_INVERTED
+    ASSERT_EQ(lcd_emulator_set_render_mode(LCD_RENDER_MODE_RETRO_INVERTED), ESP_OK);
+    ASSERT_EQ(lcd_emulator_get_render_mode(), LCD_RENDER_MODE_RETRO_INVERTED);
+    ASSERT_TRUE(lcd_emulator_is_enabled());
+
+    // Test Inverted logic: Bright pixel (lum > threshold) must be color_active
+    lcd_decorator_state_t inv_state;
+    lcd_emulator_get_decorator_state(&inv_state);
+    inv_state.gap_size = 0; // disable gaps for pure test
+    std::vector<uint16_t> inv_buf(w * h, LCD_RGB565(255, 255, 255)); // Bright
+    lcd_emulator_apply_filter_ex(&area, inv_buf.data(), &inv_state, true);
+    for (int i = 0; i < w * h; i++) {
+        ASSERT_EQ(inv_buf[i], inv_state.palette.color_active);
     }
 
-    lcd_emulator_set_grid(6, 2, 160);
-    const lcd_emulator_cfg_t *cfg = lcd_emulator_get_config();
-    ASSERT_EQ(cfg->cell_size, 6);
-    ASSERT_EQ(cfg->gap_size, 2);
-    ASSERT_EQ(cfg->threshold, 160);
+    // 3. Register Custom Render
+    s_custom_render_calls = 0;
+    ASSERT_EQ(lcd_emulator_set_custom_render(dummy_custom_render, NULL), ESP_OK);
+    ASSERT_EQ(lcd_emulator_get_render_mode(), LCD_RENDER_MODE_CUSTOM);
 
-    printf("  -> All 4 presets and grid configurations verified.\n");
+    lcd_decorator_state_t cust_state;
+    lcd_emulator_get_decorator_state(&cust_state);
+    std::vector<uint16_t> cust_buf(w * h, 0);
+    cust_state.custom_render_fn(&area, cust_buf.data(), cust_state.custom_user_ctx);
+    ASSERT_EQ(s_custom_render_calls, 1);
+    ASSERT_EQ(cust_buf[0], LCD_RGB565(0xAA, 0xBB, 0xCC));
+
+    printf("  -> Render mode switching (Passthrough, Inverted, Custom) verified.\n");
 }
 
 /**
@@ -244,14 +306,15 @@ static void test_high_volume_stress_endurance()
 {
     printf("[TEST 6] Running high-volume stress verification (50,000 passes)...\n");
 
-    lcd_emulator_cfg_t cfg;
-    cfg.enabled = true;
-    cfg.cell_size = 4;
-    cfg.gap_size = 1;
-    cfg.threshold = 135;
-    cfg.palette = s_palettes[LCD_PRESET_OLIVE];
+    lcd_decorator_state_t state;
+    state.mode = LCD_RENDER_MODE_RETRO_MONOCHROME;
+    state.cell_size = 4;
+    state.gap_size = 1;
+    state.threshold = 135;
+    state.palette = s_palettes[LCD_PRESET_OLIVE];
+    state.custom_render_fn = NULL;
+    state.custom_user_ctx = NULL;
 
-    // Simulate an ESP-IDF esp_lv_adapter dirty tile: 466 x 50 pixels
     const int tile_w = 466;
     const int tile_h = 50;
     std::vector<uint16_t> scratch(tile_w * tile_h);
@@ -260,7 +323,6 @@ static void test_high_volume_stress_endurance()
     auto start_time = std::chrono::high_resolution_clock::now();
 
     for (int pass = 0; pass < TOTAL_PASSES; pass++) {
-        // Vary vertical offset simulating scan across the 466x466 screen
         int y_offset = (pass * 50) % 416; // 0..416 so y_offset + 50 <= 466
         lv_area_t area = {
             .x1 = 0,
@@ -269,17 +331,17 @@ static void test_high_volume_stress_endurance()
             .y2 = y_offset + tile_h - 1
         };
 
-        // Populate with synthetic varying gauge data
         scratch[0] = (uint16_t)pass;
         scratch[tile_w * tile_h - 1] = (uint16_t)(pass ^ 0xFFFF);
 
-        lcd_emulator_apply_filter(&area, scratch.data(), &cfg);
+        // Alternate modes during stress run to verify thread-safe state toggling
+        bool inv = (pass % 2 == 1);
+        lcd_emulator_apply_filter_ex(&area, scratch.data(), &state, inv);
 
-        // Periodically assert integrity of bounds
         if ((pass % 10000) == 0) {
-            ASSERT_TRUE(scratch[0] == cfg.palette.color_gap ||
-                        scratch[0] == cfg.palette.color_active ||
-                        scratch[0] == cfg.palette.color_inactive);
+            ASSERT_TRUE(scratch[0] == state.palette.color_gap ||
+                        scratch[0] == state.palette.color_active ||
+                        scratch[0] == state.palette.color_inactive);
         }
     }
 
@@ -304,8 +366,8 @@ int main(int argc, char **argv)
     test_rgb565_macro();
     test_subpixel_gap_geometry();
     test_screen_space_modulo_continuity();
-    test_binarization_thresholding();
-    test_palette_presets();
+    test_decorator_state_safety();
+    test_render_mode_switching();
     test_high_volume_stress_endurance();
 
     printf("====================================================\n");

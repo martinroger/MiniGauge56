@@ -72,6 +72,25 @@ lcd_emulator_toggle();
 // Or explicitly enable / disable:
 lcd_emulator_set_enabled(true);
 
+// Switch render mode directly (Passthrough, Retro Monochrome, Inverted, Custom):
+lcd_emulator_set_render_mode(LCD_RENDER_MODE_RETRO_INVERTED);
+
+// Thread-safe state getter and setter:
+lcd_decorator_state_t state;
+if (lcd_emulator_get_decorator_state(&state) == ESP_OK) {
+    state.mode = LCD_RENDER_MODE_RETRO_MONOCHROME;
+    state.cell_size = 5;
+    state.gap_size = 1;
+    state.threshold = 140;
+    lcd_emulator_set_decorator_state(&state); // Atomically updates and safely invalidates display
+}
+
+// Register a custom pluggable renderer callback:
+void my_custom_filter(const lv_area_t *area, uint16_t *pixels, void *user_ctx) {
+    // Custom post-processing shader / DDA scanline / color tinting
+}
+lcd_emulator_set_custom_render(my_custom_filter, NULL);
+
 // Change palette preset:
 lcd_emulator_set_preset(LCD_PRESET_AMBER);
 

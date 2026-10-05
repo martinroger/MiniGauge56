@@ -5,6 +5,7 @@
  * Implements real-time screen-space pixel decimation, sub-pixel matrix gap modulation,
  * and classic STN/TN reflective palettes (Olive, Casio Grey, Amber, Cyan).
  *
+ * Supports thread-safe decorator state getters/setters and pluggable render switching.
  * Designed for circular or rectangular OLED/LCD panels (e.g. 466x466 AMOLED) running LVGL 9.x.
  */
 
@@ -75,14 +76,47 @@ typedef enum {
 } lcd_preset_t;
 
 /**
- * @brief Runtime configuration parameters for retro LCD emulation.
+ * @brief Pluggable render function callback type for custom post-processing.
+ *
+ * @param[in] area Coordinates of the redraw buffer relative to the physical screen.
+ * @param[in,out] pixels Pointer to RGB565 pixel buffer (length: width * height).
+ * @param[in] user_ctx Optional user context pointer registered with the callback.
+ */
+typedef void (*lcd_render_fn_t)(const lv_area_t *area, uint16_t *pixels, void *user_ctx);
+
+/**
+ * @brief Available rendering modes supported by the flush decorator.
+ */
+typedef enum {
+    LCD_RENDER_MODE_PASSTHROUGH = 0,     /**< Direct full-color AMOLED rendering (decorator bypassed) */
+    LCD_RENDER_MODE_RETRO_MONOCHROME,    /**< Classic dot-matrix monochrome LCD (dark ink on substrate) */
+    LCD_RENDER_MODE_RETRO_INVERTED,      /**< Inverted dot-matrix monochrome LCD (illuminated ink on dark substrate) */
+    LCD_RENDER_MODE_CUSTOM,              /**< Custom user-provided render callback function */
+    LCD_RENDER_MODE_COUNT
+} lcd_render_mode_t;
+
+/**
+ * @brief Comprehensive decorator state representation.
  */
 typedef struct {
-    bool enabled;            /**< Whether retro LCD emulation is active */
-    uint8_t cell_size;       /**< Dot pitch in physical pixels (e.g. 2..8, default: 4) */
-    uint8_t gap_size;        /**< Inactive gap width in pixels (e.g. 0..2, default: 1) */
-    uint8_t threshold;       /**< Luminance binarization threshold (0..255, default: 135) */
-    lcd_palette_t palette;   /**< Active RGB565 color palette */
+    lcd_render_mode_t mode;              /**< Active render mode */
+    uint8_t cell_size;                   /**< Dot pitch in physical pixels (minimum 2) */
+    uint8_t gap_size;                    /**< Inactive gap width in pixels (< cell_size) */
+    uint8_t threshold;                   /**< Luminance binarization threshold (0..255) */
+    lcd_palette_t palette;               /**< Active RGB565 palette */
+    lcd_render_fn_t custom_render_fn;    /**< Custom render callback (used when mode == LCD_RENDER_MODE_CUSTOM) */
+    void *custom_user_ctx;               /**< User context passed to custom_render_fn */
+} lcd_decorator_state_t;
+
+/**
+ * @brief Legacy configuration alias for backward compatibility.
+ */
+typedef struct {
+    bool enabled;
+    uint8_t cell_size;
+    uint8_t gap_size;
+    uint8_t threshold;
+    lcd_palette_t palette;
 } lcd_emulator_cfg_t;
 
 /**
@@ -96,9 +130,54 @@ typedef struct {
 esp_err_t lcd_emulator_init(lv_display_t *disp);
 
 /**
- * @brief Enable or disable retro LCD emulation dynamically at runtime.
+ * @brief Set the complete decorator state with thread-safety and display invalidation.
  *
- * When disabled, the decorator acts as a zero-overhead passthrough to the vendor flush callback.
+ * Validates all parameters, takes internal recursive mutex lock, updates active state,
+ * and safely triggers a full display redraw under the LVGL display lock.
+ *
+ * @param[in] state Pointer to new decorator state.
+ * @return ESP_OK on success, ESP_ERR_INVALID_ARG on NULL or out-of-range parameters.
+ */
+esp_err_t lcd_emulator_set_decorator_state(const lcd_decorator_state_t *state);
+
+/**
+ * @brief Get an atomic copy of the current decorator state.
+ *
+ * Thread-safe; captures an atomic snapshot of active parameters under internal lock.
+ *
+ * @param[out] out_state Pointer to buffer receiving current decorator state.
+ * @return ESP_OK on success, ESP_ERR_INVALID_ARG on NULL pointer.
+ */
+esp_err_t lcd_emulator_get_decorator_state(lcd_decorator_state_t *out_state);
+
+/**
+ * @brief Switch the active render mode with thread-safety.
+ *
+ * @param[in] mode Desired render mode (e.g. LCD_RENDER_MODE_PASSTHROUGH, LCD_RENDER_MODE_RETRO_MONOCHROME).
+ * @return ESP_OK on success, ESP_ERR_INVALID_ARG if mode is out of range.
+ */
+esp_err_t lcd_emulator_set_render_mode(lcd_render_mode_t mode);
+
+/**
+ * @brief Retrieve the current active render mode.
+ *
+ * @return Active lcd_render_mode_t.
+ */
+lcd_render_mode_t lcd_emulator_get_render_mode(void);
+
+/**
+ * @brief Register a custom render callback and switch decorator to LCD_RENDER_MODE_CUSTOM.
+ *
+ * @param[in] render_fn Custom render callback function.
+ * @param[in] user_ctx Optional user context pointer.
+ * @return ESP_OK on success, ESP_ERR_INVALID_ARG if render_fn is NULL.
+ */
+esp_err_t lcd_emulator_set_custom_render(lcd_render_fn_t render_fn, void *user_ctx);
+
+/**
+ * @brief Enable or disable retro LCD emulation dynamically at runtime (legacy wrapper).
+ *
+ * Maps to LCD_RENDER_MODE_RETRO_MONOCHROME (true) or LCD_RENDER_MODE_PASSTHROUGH (false).
  *
  * @param[in] enabled True to enable retro LCD emulation, false for modern full-color AMOLED mode.
  */
@@ -107,12 +186,12 @@ void lcd_emulator_set_enabled(bool enabled);
 /**
  * @brief Check whether retro LCD emulation is currently active.
  *
- * @return true if enabled, false if bypassed.
+ * @return true if mode != LCD_RENDER_MODE_PASSTHROUGH, false if bypassed.
  */
 bool lcd_emulator_is_enabled(void);
 
 /**
- * @brief Toggle retro LCD emulation on/off.
+ * @brief Toggle between full-color passthrough and retro monochrome LCD mode.
  */
 void lcd_emulator_toggle(void);
 
@@ -140,7 +219,7 @@ void lcd_emulator_set_palette(const lcd_palette_t *palette);
 void lcd_emulator_set_grid(uint8_t cell_size, uint8_t gap_size, uint8_t threshold);
 
 /**
- * @brief Get read-only pointer to the current active emulator configuration.
+ * @brief Get legacy configuration pointer.
  *
  * @return Pointer to const configuration struct.
  */
@@ -154,7 +233,13 @@ const lcd_emulator_cfg_t* lcd_emulator_get_config(void);
  *
  * @param[in] area Coordinates of the redraw buffer relative to the physical screen.
  * @param[in,out] pixels Pointer to RGB565 pixel buffer (length: width * height).
- * @param[in] cfg Configuration parameters containing grid sizing, threshold, and palette.
+ * @param[in] state Decorator state parameters containing grid sizing, threshold, and palette.
+ * @param[in] inverted If true, inverts ink logic (illuminated dots on dark substrate).
+ */
+void lcd_emulator_apply_filter_ex(const lv_area_t *area, uint16_t *pixels, const lcd_decorator_state_t *state, bool inverted);
+
+/**
+ * @brief Legacy filter wrapper.
  */
 void lcd_emulator_apply_filter(const lv_area_t *area, uint16_t *pixels, const lcd_emulator_cfg_t *cfg);
 
