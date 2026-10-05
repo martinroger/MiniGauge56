@@ -24,46 +24,5 @@
       "engineTemp",
       "iat"
     ]
-  },
-  {
-    "local_id": "0xF1",
-    "name": "boostAir",
-    "transmission_mode": "single",
-    "cids": [
-      "targetBoost",
-      "throttlePressure",
-      "manifoldPressure",
-      "wastegatePwm",
-      "ambientPressure",
-      "intakeAirTempPreThrottle"
-    ]
-  },
-  {
-    "local_id": "0xF2",
-    "name": "combustionKnock",
-    "transmission_mode": "single",
-    "cids": [
-      "knockVoltageCyl1",
-      "knockVoltageCyl2",
-      "knockVoltageCyl3",
-      "knockVoltageCyl4",
-      "ignitionTimingCyl1",
-      "lambdaActual",
-      "misfireCounterCyl1"
-    ]
-  },
-  {
-    "local_id": "0xF3",
-    "name": "valvetrain",
-    "transmission_mode": "single",
-    "cids": [
-      "vanosPositionIntake",
-      "vanosPositionExhaust",
-      "vanosTargetIntake",
-      "vanosTargetExhaust",
-      "vvtExcentricAngle",
-      "vvtTargetAngle",
-      "vvtMotorCurrent"
-    ]
   }
 ]
