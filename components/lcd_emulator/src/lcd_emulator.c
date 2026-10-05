@@ -3,6 +3,10 @@
  * @brief Implementation of retro dot-matrix monochrome LCD flush decorator and decimation filter.
  */
 
+#if defined(__has_include) && __has_include("sdkconfig.h")
+#include "sdkconfig.h"
+#endif
+
 #include "lcd_emulator.h"
 
 #if defined(ESP_PLATFORM)
@@ -14,6 +18,49 @@ static const char *TAG = "lcd_emulator";
 #define ESP_LOGI(tag, fmt, ...)
 #define ESP_LOGW(tag, fmt, ...)
 #define ESP_LOGE(tag, fmt, ...)
+#endif
+
+/* Kconfig Default Mappings */
+#if defined(CONFIG_LCD_EMULATOR_ENABLE_AT_BOOT) && (CONFIG_LCD_EMULATOR_ENABLE_AT_BOOT == 0)
+#define LCD_KCONFIG_RENDER_MODE   LCD_RENDER_MODE_PASSTHROUGH
+#define LCD_KCONFIG_ENABLED       false
+#elif defined(CONFIG_LCD_EMULATOR_ENABLE_AT_BOOT) && (CONFIG_LCD_EMULATOR_ENABLE_AT_BOOT == 1)
+#define LCD_KCONFIG_RENDER_MODE   LCD_RENDER_MODE_RETRO_MONOCHROME
+#define LCD_KCONFIG_ENABLED       true
+#elif !defined(CONFIG_LCD_EMULATOR_ENABLE_AT_BOOT) && defined(CONFIG_IDF_TARGET)
+#define LCD_KCONFIG_RENDER_MODE   LCD_RENDER_MODE_PASSTHROUGH
+#define LCD_KCONFIG_ENABLED       false
+#else
+#define LCD_KCONFIG_RENDER_MODE   LCD_RENDER_MODE_RETRO_MONOCHROME
+#define LCD_KCONFIG_ENABLED       true
+#endif
+
+#ifdef CONFIG_LCD_EMULATOR_DEFAULT_CELL_SIZE
+#define LCD_KCONFIG_CELL_SIZE     ((uint8_t)CONFIG_LCD_EMULATOR_DEFAULT_CELL_SIZE)
+#else
+#define LCD_KCONFIG_CELL_SIZE     ((uint8_t)4)
+#endif
+
+#ifdef CONFIG_LCD_EMULATOR_DEFAULT_GAP_SIZE
+#define LCD_KCONFIG_GAP_SIZE      ((uint8_t)CONFIG_LCD_EMULATOR_DEFAULT_GAP_SIZE)
+#else
+#define LCD_KCONFIG_GAP_SIZE      ((uint8_t)1)
+#endif
+
+#ifdef CONFIG_LCD_EMULATOR_DEFAULT_THRESHOLD
+#define LCD_KCONFIG_THRESHOLD     ((uint8_t)CONFIG_LCD_EMULATOR_DEFAULT_THRESHOLD)
+#else
+#define LCD_KCONFIG_THRESHOLD     ((uint8_t)135)
+#endif
+
+#if defined(CONFIG_LCD_EMULATOR_PALETTE_CASIO)
+#define LCD_KCONFIG_PRESET        LCD_PRESET_CASIO_GREY
+#elif defined(CONFIG_LCD_EMULATOR_PALETTE_AMBER)
+#define LCD_KCONFIG_PRESET        LCD_PRESET_AMBER
+#elif defined(CONFIG_LCD_EMULATOR_PALETTE_CYAN)
+#define LCD_KCONFIG_PRESET        LCD_PRESET_CYAN
+#else
+#define LCD_KCONFIG_PRESET        LCD_PRESET_OLIVE
 #endif
 
 #define LCD_MAX_CELL_COLS 256
@@ -46,12 +93,12 @@ static const lcd_palette_t s_palettes[LCD_PRESET_COUNT] = {
     },
 };
 
-/* Active Decorator State */
+/* Active Decorator State (initialized with Kconfig defaults) */
 static lcd_decorator_state_t s_state = {
-    .mode             = LCD_RENDER_MODE_RETRO_MONOCHROME,
-    .cell_size        = 4,
-    .gap_size         = 1,
-    .threshold        = 135,
+    .mode             = LCD_KCONFIG_RENDER_MODE,
+    .cell_size        = LCD_KCONFIG_CELL_SIZE,
+    .gap_size         = LCD_KCONFIG_GAP_SIZE,
+    .threshold        = LCD_KCONFIG_THRESHOLD,
     .palette          = {
         .color_bg       = LCD_RGB565(0x8A, 0x9A, 0x5B),
         .color_active   = LCD_RGB565(0x1B, 0x28, 0x12),
@@ -63,10 +110,10 @@ static lcd_decorator_state_t s_state = {
 };
 
 static lcd_emulator_cfg_t s_legacy_cfg = {
-    .enabled    = true,
-    .cell_size  = 4,
-    .gap_size   = 1,
-    .threshold  = 135,
+    .enabled    = LCD_KCONFIG_ENABLED,
+    .cell_size  = LCD_KCONFIG_CELL_SIZE,
+    .gap_size   = LCD_KCONFIG_GAP_SIZE,
+    .threshold  = LCD_KCONFIG_THRESHOLD,
     .palette    = {
         .color_bg       = LCD_RGB565(0x8A, 0x9A, 0x5B),
         .color_active   = LCD_RGB565(0x1B, 0x28, 0x12),
@@ -166,16 +213,37 @@ esp_err_t lcd_emulator_init(lv_display_t *disp)
     }
 #endif
 
+    state_lock();
+    s_state.mode             = LCD_KCONFIG_RENDER_MODE;
+    s_state.cell_size        = LCD_KCONFIG_CELL_SIZE;
+    s_state.gap_size         = LCD_KCONFIG_GAP_SIZE;
+    s_state.threshold        = LCD_KCONFIG_THRESHOLD;
+    s_state.palette          = s_palettes[LCD_KCONFIG_PRESET];
+    s_state.custom_render_fn = NULL;
+    s_state.custom_user_ctx  = NULL;
+
+    s_legacy_cfg.enabled     = LCD_KCONFIG_ENABLED;
+    s_legacy_cfg.cell_size   = LCD_KCONFIG_CELL_SIZE;
+    s_legacy_cfg.gap_size    = LCD_KCONFIG_GAP_SIZE;
+    s_legacy_cfg.threshold   = LCD_KCONFIG_THRESHOLD;
+    s_legacy_cfg.palette     = s_palettes[LCD_KCONFIG_PRESET];
+    state_unlock();
+
 #if defined(LVGL_H) || (defined(__has_include) && __has_include("lvgl.h"))
     if (!disp) {
         ESP_LOGE(TAG, "Invalid display handle");
         return ESP_ERR_INVALID_ARG;
     }
 
+    lv_lock();
     s_target_disp = disp;
     s_orig_flush_cb = disp->flush_cb;
     lv_display_set_flush_cb(disp, lcd_decorator_flush_cb);
-    ESP_LOGI(TAG, "LCD decorator attached to display %p (orig_flush_cb=%p)", disp, s_orig_flush_cb);
+    lv_unlock();
+
+    ESP_LOGI(TAG, "LCD decorator attached to display %p (orig_flush_cb=%p): mode=%d, cell=%u, gap=%u, threshold=%u, preset=%d",
+             disp, s_orig_flush_cb, (int)s_state.mode, (unsigned)s_state.cell_size,
+             (unsigned)s_state.gap_size, (unsigned)s_state.threshold, (int)LCD_KCONFIG_PRESET);
     return ESP_OK;
 #else
     (void)disp;
