@@ -30,6 +30,10 @@ typedef int esp_err_t;
 #endif
 #endif
 
+#if defined(__has_include) && __has_include("sdkconfig.h")
+#include "sdkconfig.h"
+#endif
+
 #if defined(__has_include) && __has_include("lvgl.h")
 #include "lvgl.h"
 #else
@@ -44,6 +48,36 @@ typedef struct _lv_display_t lv_display_t;
 #endif
 #endif
 
+#ifndef LV_COLOR_DEPTH
+  #if defined(CONFIG_LV_COLOR_DEPTH)
+    #define LV_COLOR_DEPTH CONFIG_LV_COLOR_DEPTH
+  #else
+    #define LV_COLOR_DEPTH 16
+  #endif
+#endif
+
+#if LV_COLOR_DEPTH == 8
+typedef uint8_t lcd_color_t;
+#define LCD_COLOR_DEPTH_BYTES 1
+
+/**
+ * @brief Fast 8-bit luminance color pack macro (ITU-R BT.601 integer luminance: 0..255).
+ */
+#define LCD_COLOR_MAKE(r, g, b) \
+    ((lcd_color_t)(((uint16_t)(77u * (r) + 150u * (g) + 29u * (b))) >> 8))
+
+#else
+typedef uint16_t lcd_color_t;
+#define LCD_COLOR_DEPTH_BYTES 2
+
+/**
+ * @brief Fast 16-bit RGB565 pack macro (R: 5 bits, G: 6 bits, B: 5 bits).
+ */
+#define LCD_COLOR_MAKE(r, g, b) \
+    ((lcd_color_t)((((uint16_t)(r) & 0xF8) << 8) | (((uint16_t)(g) & 0xFC) << 3) | (((uint16_t)(b) & 0xF8) >> 3)))
+
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -55,13 +89,13 @@ extern "C" {
     ((uint16_t)((((uint16_t)(r) & 0xF8) << 8) | (((uint16_t)(g) & 0xFC) << 3) | (((uint16_t)(b) & 0xF8) >> 3)))
 
 /**
- * @brief Retro LCD color palette configuration in RGB565 format.
+ * @brief Retro LCD color palette configuration in native display color format (RGB565 or 8-bit L8).
  */
 typedef struct {
-    uint16_t color_bg;       /**< Substrate background color (RGB565) */
-    uint16_t color_active;   /**< Active segment / dark ink (RGB565) */
-    uint16_t color_inactive; /**< Unenergized segment / faint substrate (RGB565) */
-    uint16_t color_gap;      /**< Inactive physical gap line between dots (RGB565) */
+    lcd_color_t color_bg;       /**< Substrate background color */
+    lcd_color_t color_active;   /**< Active segment / dark ink */
+    lcd_color_t color_inactive; /**< Unenergized segment / faint substrate */
+    lcd_color_t color_gap;      /**< Inactive physical gap line between dots */
 } lcd_palette_t;
 
 /**
@@ -79,10 +113,10 @@ typedef enum {
  * @brief Pluggable render function callback type for custom post-processing.
  *
  * @param[in] area Coordinates of the redraw buffer relative to the physical screen.
- * @param[in,out] pixels Pointer to RGB565 pixel buffer (length: width * height).
+ * @param[in,out] pixels Pointer to pixel buffer (length: width * height, element size: sizeof(lcd_color_t)).
  * @param[in] user_ctx Optional user context pointer registered with the callback.
  */
-typedef void (*lcd_render_fn_t)(const lv_area_t *area, uint16_t *pixels, void *user_ctx);
+typedef void (*lcd_render_fn_t)(const lv_area_t *area, lcd_color_t *pixels, void *user_ctx);
 
 /**
  * @brief Available rendering modes supported by the flush decorator.
@@ -91,15 +125,27 @@ typedef enum {
     LCD_RENDER_MODE_PASSTHROUGH = 0,     /**< Direct full-color AMOLED rendering (decorator bypassed) */
     LCD_RENDER_MODE_RETRO_MONOCHROME,    /**< Classic dot-matrix monochrome LCD (dark ink on substrate) */
     LCD_RENDER_MODE_RETRO_INVERTED,      /**< Inverted dot-matrix monochrome LCD (illuminated ink on dark substrate) */
+    LCD_RENDER_MODE_GRAYSCALE_4BIT,      /**< 4-bit grayscale dot-matrix LCD (16 discrete levels) */
+    LCD_RENDER_MODE_GRAYSCALE_8BIT,      /**< 8-bit grayscale dot-matrix LCD (256 continuous levels) */
     LCD_RENDER_MODE_CUSTOM,              /**< Custom user-provided render callback function */
     LCD_RENDER_MODE_COUNT
 } lcd_render_mode_t;
+
+/**
+ * @brief Grayscale shading style configuration.
+ */
+typedef enum {
+    LCD_SHADING_PALETTE_TINTED = 0,      /**< Linearly interpolate between color_inactive and color_active */
+    LCD_SHADING_NEUTRAL_GRAY,            /**< True neutral monochrome gray (R = G = B) */
+    LCD_SHADING_COUNT
+} lcd_shading_mode_t;
 
 /**
  * @brief Comprehensive decorator state representation.
  */
 typedef struct {
     lcd_render_mode_t mode;              /**< Active render mode */
+    lcd_shading_mode_t shading_mode;     /**< Grayscale shading style (palette-tinted vs neutral gray) */
     bool dark_theme;                     /**< True if input UI has dark background (AMOLED / black bg with bright text) */
     uint8_t cell_size;                   /**< Dot pitch in physical pixels (minimum 2) */
     uint8_t gap_size;                    /**< Inactive gap width in pixels (< cell_size) */
@@ -165,6 +211,21 @@ esp_err_t lcd_emulator_set_render_mode(lcd_render_mode_t mode);
  * @return Active lcd_render_mode_t.
  */
 lcd_render_mode_t lcd_emulator_get_render_mode(void);
+
+/**
+ * @brief Configure grayscale shading style (palette-tinted vs neutral monochrome gray).
+ *
+ * @param[in] shading_mode Shading mode enum (e.g. LCD_SHADING_PALETTE_TINTED, LCD_SHADING_NEUTRAL_GRAY).
+ * @return ESP_OK on success, ESP_ERR_INVALID_ARG if out of range.
+ */
+esp_err_t lcd_emulator_set_shading_mode(lcd_shading_mode_t shading_mode);
+
+/**
+ * @brief Retrieve the current active grayscale shading style.
+ *
+ * @return Active lcd_shading_mode_t.
+ */
+lcd_shading_mode_t lcd_emulator_get_shading_mode(void);
 
 /**
  * @brief Register a custom render callback and switch decorator to LCD_RENDER_MODE_CUSTOM.
@@ -258,20 +319,20 @@ const lcd_emulator_cfg_t* lcd_emulator_get_config(void);
 /**
  * @brief Pure C in-place pixel decimation filter.
  *
- * Transforms an arbitrary dirty rectangle of RGB565 pixels in-place according to
+ * Transforms an arbitrary dirty rectangle of display pixels in-place according to
  * screen-space dot matrix coordinates. Safe to call on partial redraw buffers.
  *
  * @param[in] area Coordinates of the redraw buffer relative to the physical screen.
- * @param[in,out] pixels Pointer to RGB565 pixel buffer (length: width * height).
+ * @param[in,out] pixels Pointer to pixel buffer (length: width * height, element size: sizeof(lcd_color_t)).
  * @param[in] state Decorator state parameters containing grid sizing, threshold, and palette.
  * @param[in] inverted If true, inverts ink logic (illuminated dots on dark substrate).
  */
-void lcd_emulator_apply_filter_ex(const lv_area_t *area, uint16_t *pixels, const lcd_decorator_state_t *state, bool inverted);
+void lcd_emulator_apply_filter_ex(const lv_area_t *area, lcd_color_t *pixels, const lcd_decorator_state_t *state, bool inverted);
 
 /**
  * @brief Legacy filter wrapper.
  */
-void lcd_emulator_apply_filter(const lv_area_t *area, uint16_t *pixels, const lcd_emulator_cfg_t *cfg);
+void lcd_emulator_apply_filter(const lv_area_t *area, lcd_color_t *pixels, const lcd_emulator_cfg_t *cfg);
 
 #ifdef __cplusplus
 }

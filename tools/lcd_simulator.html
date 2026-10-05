@@ -7,12 +7,14 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     canvas {
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: crisp-edges;
       image-rendering: pixelated;
     }
   </style>
 </head>
 <body class="bg-neutral-900 text-neutral-100 antialiased p-4 min-h-screen flex items-center justify-center">
-  <div class="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-2xl p-6 shadow-2xl max-w-5xl w-full">
+  <div class="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-2xl p-6 shadow-2xl max-w-6xl w-full">
     <!-- Header -->
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-700 pb-4 mb-4">
       <div>
@@ -27,12 +29,21 @@
       </div>
 
       <!-- Mode Toggle Switch -->
-      <div class="flex items-center gap-2 bg-neutral-900 p-1.5 rounded-xl border border-neutral-700">
-        <button id="btnModeOled" class="px-3 py-1 text-xs font-medium rounded-lg text-neutral-400 hover:text-neutral-200 transition-all">
-          Modern AMOLED
+      <div class="flex flex-wrap items-center gap-1.5 bg-neutral-900 p-1.5 rounded-xl border border-neutral-700" id="renderModeGroup">
+        <button data-mode="oled" class="mode-btn px-2.5 py-1 text-xs font-medium rounded-lg text-neutral-400 hover:text-neutral-200 transition-all">
+          AMOLED
         </button>
-        <button id="btnModeLcd" class="px-3 py-1 text-xs font-semibold rounded-lg bg-neutral-800 text-white shadow-sm border border-neutral-600">
-          Retro Dot-Matrix LCD
+        <button data-mode="mono" class="mode-btn px-2.5 py-1 text-xs font-semibold rounded-lg bg-neutral-800 text-white shadow-sm border border-neutral-600">
+          Retro Mono
+        </button>
+        <button data-mode="invert" class="mode-btn px-2.5 py-1 text-xs font-medium rounded-lg text-neutral-400 hover:text-neutral-200 transition-all">
+          Inverted
+        </button>
+        <button data-mode="gray4" class="mode-btn px-2.5 py-1 text-xs font-medium rounded-lg text-neutral-400 hover:text-neutral-200 transition-all">
+          4-Bit Gray
+        </button>
+        <button data-mode="gray8" class="mode-btn px-2.5 py-1 text-xs font-medium rounded-lg text-neutral-400 hover:text-neutral-200 transition-all">
+          8-Bit Gray
         </button>
       </div>
     </div>
@@ -40,15 +51,62 @@
     <!-- Main Grid: Visualizer + Controls -->
     <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
       <!-- Left Column: Display Screen & Sub-pixel Loupe -->
-      <div class="md:col-span-6 flex flex-col items-center gap-4">
-        <div class="relative group">
-          <!-- Main 466x466 Canvas Container -->
-          <div class="relative w-[320px] h-[320px] sm:w-[360px] sm:h-[360px] rounded-full overflow-hidden shadow-2xl ring-4 ring-neutral-700 bg-black flex items-center justify-center">
-            <canvas id="mainCanvas" width="466" height="466" class="w-full h-full cursor-crosshair"></canvas>
+      <div class="md:col-span-6 flex flex-col items-center gap-3">
+        <!-- Display Scaling & Physical Pixel Alignment Toolbar -->
+        <div class="flex flex-wrap items-center justify-between gap-2 bg-neutral-900/90 px-3 py-2 rounded-xl border border-neutral-700 w-full text-xs">
+          <div class="flex items-center gap-1.5">
+            <span class="text-[10px] uppercase font-bold text-neutral-400">Display:</span>
+            <div class="inline-flex rounded-lg bg-neutral-800 p-0.5 border border-neutral-700" id="scaleGroup">
+              <button data-scale="1to1_phys" class="scale-btn px-2.5 py-1 text-xs font-semibold rounded-md bg-blue-600 text-white shadow-sm transition-all" title="Map exactly 1 canvas pixel to 1 physical screen pixel (466 / DPR CSS px)">
+                1:1 Physical (466 px)
+              </button>
+              <button data-scale="1to1_css" class="scale-btn px-2.5 py-1 text-xs font-medium rounded-md text-neutral-400 hover:text-neutral-200 transition-all" title="466 CSS pixels (integer 2× physical on Retina DPR=2)">
+                1:1 CSS (466 CSS px)
+              </button>
+              <button data-scale="2x_phys" class="scale-btn px-2.5 py-1 text-xs font-medium rounded-md text-neutral-400 hover:text-neutral-200 transition-all" title="Integer 2× physical screen pixels (932 px)">
+                2× Physical (932 px)
+              </button>
+            </div>
           </div>
-          <!-- Bezel Overlay Ring Label -->
-          <div class="absolute bottom-2 right-2 bg-black/80 backdrop-blur text-[10px] text-neutral-400 px-2.5 py-1 rounded-md border border-neutral-700">
-            Hover to move 16× Loupe
+          <div class="flex items-center gap-1.5 text-[11px] text-neutral-400 font-mono">
+            <span id="dprBadge" class="bg-neutral-800 px-2 py-0.5 rounded border border-neutral-700 text-blue-300">DPR: 2.0</span>
+            <span id="physPixelsBadge" class="bg-neutral-800 px-2 py-0.5 rounded border border-neutral-700 text-emerald-300">466 × 466 Physical</span>
+          </div>
+        </div>
+
+        <!-- Image / Gauge Source Toolbar -->
+        <div class="flex flex-wrap items-center justify-between gap-2 bg-neutral-900/90 px-3 py-2 rounded-xl border border-neutral-700 w-full text-xs">
+          <div class="flex items-center gap-1.5">
+            <span class="text-[10px] uppercase font-bold text-neutral-400">Source:</span>
+            <div class="inline-flex rounded-lg bg-neutral-800 p-0.5 border border-neutral-700" id="sourceGroup">
+              <button data-source="gauge" id="btnSourceGauge" class="source-btn px-2.5 py-1 text-xs font-semibold rounded-md bg-blue-600 text-white shadow-sm transition-all">
+                🏎️ Live Gauge
+              </button>
+              <button data-source="image" id="btnSourceImage" class="source-btn px-2.5 py-1 text-xs font-medium rounded-md text-neutral-400 hover:text-neutral-200 transition-all">
+                🖼️ Custom Image
+              </button>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <input type="file" id="imageFileInput" accept="image/*" class="hidden">
+            <button id="btnUploadImage" class="px-2.5 py-1 text-xs font-medium rounded-md bg-neutral-800 hover:bg-neutral-700 border border-neutral-600 text-neutral-200 transition-all flex items-center gap-1 cursor-pointer" title="Upload image from computer">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+              Upload
+            </button>
+            <button id="btnCenterImage" class="px-2.5 py-1 text-xs font-medium rounded-md bg-neutral-800 hover:bg-neutral-700 border border-neutral-600 text-neutral-300 transition-all hidden cursor-pointer" title="Center image in circular bezel">
+              🎯 Center
+            </button>
+          </div>
+        </div>
+
+        <div class="relative group flex flex-col items-center">
+          <!-- Main 466x466 Canvas Container (dimensions set by JS to guarantee pixel-perfect physical mapping) -->
+          <div id="canvasBezel" class="relative rounded-full overflow-hidden shadow-2xl ring-4 ring-neutral-700 bg-black flex items-center justify-center transition-all select-none">
+            <canvas id="mainCanvas" width="466" height="466" class="cursor-crosshair block"></canvas>
+          </div>
+          <!-- Bezel Overlay Status & Drag Instructions -->
+          <div id="bezelStatus" class="mt-2 text-[11px] text-neutral-300 bg-neutral-900/90 px-3 py-1.5 rounded-lg border border-neutral-800 text-center max-w-md flex flex-wrap items-center justify-center gap-1.5">
+            <span>Hover display to move 16× Loupe • Paste (<kbd class="px-1 py-0.5 bg-neutral-800 rounded border border-neutral-700 font-mono text-[10px]">Cmd/Ctrl+V</kbd>) or drag file</span>
           </div>
         </div>
 
@@ -74,17 +132,21 @@
 
       <!-- Right Column: Settings & Live Telemetry Tuning -->
       <div class="md:col-span-6 space-y-4">
-        <!-- Render Options: Theme & Polarity -->
+        <!-- Render Options: Theme & Polarity & Shading Style -->
         <div class="bg-neutral-900 p-4 rounded-xl border border-neutral-700">
-          <label class="block text-xs font-semibold mb-2.5 text-neutral-200">Rendering & Inversion Options</label>
-          <div class="grid grid-cols-2 gap-2">
+          <label class="block text-xs font-semibold mb-2.5 text-neutral-200">Rendering & Shading Options</label>
+          <div class="grid grid-cols-3 gap-2">
             <button id="btnToggleTheme" class="p-2 rounded-lg border text-left text-xs font-medium transition-all border-blue-500 bg-blue-950/30 text-blue-300">
-              <div class="font-bold flex items-center justify-between">Source Theme: <span id="lblTheme">Dark (AMOLED)</span></div>
-              <div class="text-[10px] opacity-75 mt-0.5">Black background, bright text</div>
+              <div class="font-bold flex items-center justify-between">Theme: <span id="lblTheme">Dark</span></div>
+              <div class="text-[10px] opacity-75 mt-0.5">AMOLED bg</div>
             </button>
             <button id="btnToggleInvert" class="p-2 rounded-lg border text-left text-xs font-medium transition-all border-neutral-700 bg-neutral-800/40 text-neutral-300">
-              <div class="font-bold flex items-center justify-between">Polarity: <span id="lblInvert">Standard</span></div>
-              <div class="text-[10px] opacity-75 mt-0.5">Toggle inverted / negative LCD</div>
+              <div class="font-bold flex items-center justify-between">Polarity: <span id="lblInvert">Normal</span></div>
+              <div class="text-[10px] opacity-75 mt-0.5">Invert dots</div>
+            </button>
+            <button id="btnToggleShading" class="p-2 rounded-lg border text-left text-xs font-medium transition-all border-neutral-700 bg-neutral-800/40 text-neutral-300">
+              <div class="font-bold flex items-center justify-between">Shading: <span id="lblShading">Palette</span></div>
+              <div class="text-[10px] opacity-75 mt-0.5">Tinted / Gray</div>
             </button>
           </div>
         </div>
@@ -184,8 +246,20 @@
       cyan: { bg: '#081d22', active: '#00f0ff', inactive: '#123942', gap: '#040f12' }
     };
 
+    function hexToRgb(hex) {
+      const bigint = parseInt(hex.slice(1), 16);
+      return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
+    }
+
     const state = {
-      isLcdMode: true,
+      renderMode: 'mono',
+      scaleMode: '1to1_phys', // '1to1_phys' (466 physical screen pixels), '1to1_css' (466 CSS px), '2x_phys' (932 physical px)
+      sourceMode: 'gauge', // 'gauge' or 'image'
+      customImage: null,
+      customImageUrl: null,
+      imgOffsetX: 0,
+      imgOffsetY: 0,
+      shadingMode: 'palette',
       darkTheme: true,
       inverted: false,
       scale: 4,
@@ -205,7 +279,7 @@
     const offscreenCanvas = document.createElement('canvas');
     offscreenCanvas.width = RESOLUTION;
     offscreenCanvas.height = RESOLUTION;
-    const offCtx = offscreenCanvas.getContext('2d');
+    const offCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
 
     const mainCanvas = document.getElementById('mainCanvas');
     const mainCtx = mainCanvas.getContext('2d');
@@ -287,11 +361,30 @@
       ctx.restore();
     }
 
-    function renderDisplay() {
-      drawNativeGaugeVector();
+    function drawSource() {
+      if (state.sourceMode === 'image' && state.customImage) {
+        offCtx.save();
+        offCtx.fillStyle = state.darkTheme ? '#000000' : '#ffffff';
+        offCtx.fillRect(0, 0, RESOLUTION, RESOLUTION);
+        offCtx.drawImage(state.customImage, state.imgOffsetX, state.imgOffsetY);
+        offCtx.restore();
+      } else {
+        drawNativeGaugeVector();
+      }
+    }
 
-      if (!state.isLcdMode) {
+    function renderDisplay() {
+      drawSource();
+
+      if (state.renderMode === 'oled') {
         mainCtx.drawImage(offscreenCanvas, 0, 0);
+        mainCtx.save();
+        mainCtx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+        mainCtx.lineWidth = 1.5;
+        mainCtx.strokeRect(state.loupeX - 16, state.loupeY - 16, 32, 32);
+        mainCtx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+        mainCtx.strokeRect(state.loupeX - 17, state.loupeY - 17, 34, 34);
+        mainCtx.restore();
         renderLoupeDirect();
         updateMetrics(466, 466, 100, '-');
         return;
@@ -303,10 +396,13 @@
       const threshold = state.threshold;
       const dotDrawSize = Math.max(1, scale - gap);
 
+      const isGrayscale = (state.renderMode === 'gray4' || state.renderMode === 'gray8');
+      const isEffectiveInverted = (state.renderMode === 'invert') ? !state.inverted : state.inverted;
+
       const srcImg = offCtx.getImageData(0, 0, RESOLUTION, RESOLUTION);
       const srcPx = srcImg.data;
 
-      mainCtx.fillStyle = p.bg;
+      mainCtx.fillStyle = (isGrayscale && state.shadingMode === 'neutral') ? '#101010' : p.bg;
       mainCtx.fillRect(0, 0, RESOLUTION, RESOLUTION);
 
       mainCtx.save();
@@ -333,26 +429,63 @@
             continue;
           }
 
-          // Box sampling across active cell area
-          let active = false;
-          for (let sy = y0; sy <= y1; sy++) {
-            for (let sx = x0; sx <= x1; sx++) {
-              const idx = (sy * RESOLUTION + sx) * 4;
-              const lum = 0.299 * srcPx[idx] + 0.587 * srcPx[idx + 1] + 0.114 * srcPx[idx + 2];
-              if (state.darkTheme ? (lum >= threshold) : (lum < threshold)) {
-                active = true;
-                break;
+          if (!isGrayscale) {
+            let active = false;
+            for (let sy = y0; sy <= y1; sy++) {
+              for (let sx = x0; sx <= x1; sx++) {
+                const idx = (sy * RESOLUTION + sx) * 4;
+                const lum = 0.299 * srcPx[idx] + 0.587 * srcPx[idx + 1] + 0.114 * srcPx[idx + 2];
+                if (state.darkTheme ? (lum >= threshold) : (lum < threshold)) {
+                  active = true;
+                  break;
+                }
+              }
+              if (active) break;
+            }
+
+            const isCellActive = isEffectiveInverted ? !active : active;
+            if (isCellActive) {
+              activeDots++;
+              mainCtx.fillStyle = p.active;
+            } else {
+              mainCtx.fillStyle = p.inactive;
+            }
+          } else {
+            let sumLum = 0;
+            let count = 0;
+            for (let sy = y0; sy <= y1; sy++) {
+              for (let sx = x0; sx <= x1; sx++) {
+                const idx = (sy * RESOLUTION + sx) * 4;
+                sumLum += 0.299 * srcPx[idx] + 0.587 * srcPx[idx + 1] + 0.114 * srcPx[idx + 2];
+                count++;
               }
             }
-            if (active) break;
-          }
+            const cellLum = count > 0 ? (sumLum / count) : 0;
+            let intensity = state.darkTheme ? cellLum : (255 - cellLum);
+            if (isEffectiveInverted) {
+              intensity = 255 - intensity;
+            }
 
-          const isCellActive = state.inverted ? !active : active;
-          if (isCellActive) {
-            activeDots++;
-            mainCtx.fillStyle = p.active;
-          } else {
-            mainCtx.fillStyle = p.inactive;
+            let q;
+            if (state.renderMode === 'gray4') {
+              const level = Math.min(15, Math.max(0, Math.round(intensity / 17)));
+              q = level * 17;
+            } else {
+              q = Math.min(255, Math.max(0, Math.round(intensity)));
+            }
+
+            if (q > 30) activeDots++;
+
+            if (state.shadingMode === 'neutral') {
+              mainCtx.fillStyle = `rgb(${q}, ${q}, ${q})`;
+            } else {
+              const [r0, g0, b0] = hexToRgb(p.inactive);
+              const [r1, g1, b1] = hexToRgb(p.active);
+              const cr = Math.round(r0 + ((r1 - r0) * q) / 255);
+              const cg = Math.round(g0 + ((g1 - g0) * q) / 255);
+              const cb = Math.round(b0 + ((b1 - b0) * q) / 255);
+              mainCtx.fillStyle = `rgb(${cr}, ${cg}, ${cb})`;
+            }
           }
 
           mainCtx.fillRect(c * scale, r * scale, dotDrawSize, dotDrawSize);
@@ -360,7 +493,13 @@
       }
 
       if (gap > 0) {
-        mainCtx.fillStyle = p.gap;
+        if (isGrayscale && state.shadingMode === 'neutral') {
+          const [gr, gg, gb] = hexToRgb(p.gap);
+          const glum = Math.round(0.299 * gr + 0.587 * gg + 0.114 * gb);
+          mainCtx.fillStyle = `rgb(${glum}, ${glum}, ${glum})`;
+        } else {
+          mainCtx.fillStyle = p.gap;
+        }
         for (let c = 1; c <= cols; c++) mainCtx.fillRect(c * scale - gap, 0, gap, RESOLUTION);
         for (let r = 1; r <= rows; r++) mainCtx.fillRect(0, r * scale - gap, RESOLUTION, gap);
       }
@@ -390,7 +529,8 @@
       const zoomSize = 160;
       loupeCanvas.width = zoomSize;
       loupeCanvas.height = zoomSize;
-      loupeCtx.fillStyle = p.bg;
+      const isGrayscale = (state.renderMode === 'gray4' || state.renderMode === 'gray8');
+      loupeCtx.fillStyle = (isGrayscale && state.shadingMode === 'neutral') ? '#101010' : p.bg;
       loupeCtx.fillRect(0, 0, zoomSize, zoomSize);
 
       const span = 20;
@@ -423,7 +563,90 @@
       document.getElementById('statDpi').textContent = `${cols} Dot-DPI`;
     }
 
+    let isRightDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let dragStartOffsetX = 0;
+    let dragStartOffsetY = 0;
+
+    function updateCanvasCursor() {
+      if (isRightDragging) {
+        mainCanvas.style.cursor = 'grabbing';
+        return;
+      }
+      if (state.sourceMode === 'image' && state.customImage) {
+        const isOversized = (state.customImage.naturalWidth > RESOLUTION || state.customImage.naturalHeight > RESOLUTION);
+        if (isOversized) {
+          mainCanvas.style.cursor = 'grab';
+          return;
+        }
+      }
+      mainCanvas.style.cursor = 'crosshair';
+    }
+
+    function updateImageStatus() {
+      const bezelStatus = document.getElementById('bezelStatus');
+      if (!bezelStatus) return;
+      if (state.sourceMode === 'gauge') {
+        bezelStatus.innerHTML = `<span>Hover display to move 16× Loupe • Paste (<kbd class="px-1 py-0.5 bg-neutral-800 rounded border border-neutral-700 font-mono text-[10px]">Cmd/Ctrl+V</kbd>) or drag file</span>`;
+        return;
+      }
+      if (!state.customImage) {
+        bezelStatus.innerHTML = `<span class="text-amber-400 font-semibold">No image loaded.</span> <span class="text-neutral-400">Click <b>Upload</b>, drop image here, or press <kbd class="px-1 py-0.5 bg-neutral-800 rounded border border-neutral-700 font-mono text-[10px]">Cmd/Ctrl+V</kbd>.</span>`;
+        return;
+      }
+      const w = state.customImage.naturalWidth;
+      const h = state.customImage.naturalHeight;
+      const isOversized = (w > RESOLUTION || h > RESOLUTION);
+      if (isOversized) {
+        bezelStatus.innerHTML = `<span class="text-emerald-400 font-semibold">${w}×${h}px</span> <span class="text-neutral-400">Pan: (${state.imgOffsetX}, ${state.imgOffsetY})</span> • <span class="text-amber-300 font-medium">Right-Click + Hold & Drag to pan</span> • <span class="text-neutral-400">Hover for 16× Loupe</span>`;
+      } else {
+        bezelStatus.innerHTML = `<span class="text-emerald-400 font-semibold">${w}×${h}px</span> <span class="text-neutral-400">Pan: (${state.imgOffsetX}, ${state.imgOffsetY})</span> • <span class="text-blue-300">Right-Click + Drag to position</span> • <span class="text-neutral-400">Hover for 16× Loupe</span>`;
+      }
+    }
+
+    function updateSourceUi() {
+      const btnGauge = document.getElementById('btnSourceGauge');
+      const btnImage = document.getElementById('btnSourceImage');
+      const btnCenter = document.getElementById('btnCenterImage');
+
+      if (state.sourceMode === 'gauge') {
+        btnGauge.className = "source-btn px-2.5 py-1 text-xs font-semibold rounded-md bg-blue-600 text-white shadow-sm transition-all";
+        btnImage.className = "source-btn px-2.5 py-1 text-xs font-medium rounded-md text-neutral-400 hover:text-neutral-200 transition-all";
+        if (btnCenter) btnCenter.classList.add('hidden');
+      } else {
+        btnGauge.className = "source-btn px-2.5 py-1 text-xs font-medium rounded-md text-neutral-400 hover:text-neutral-200 transition-all";
+        btnImage.className = "source-btn px-2.5 py-1 text-xs font-semibold rounded-md bg-blue-600 text-white shadow-sm transition-all";
+        if (btnCenter) {
+          if (state.customImage) btnCenter.classList.remove('hidden');
+          else btnCenter.classList.add('hidden');
+        }
+      }
+      updateCanvasCursor();
+      updateImageStatus();
+    }
+
+    function loadImageFromFile(file) {
+      if (!file || !file.type.startsWith('image/')) return;
+      if (state.customImageUrl) {
+        URL.revokeObjectURL(state.customImageUrl);
+      }
+      const url = URL.createObjectURL(file);
+      state.customImageUrl = url;
+      const img = new Image();
+      img.onload = () => {
+        state.customImage = img;
+        state.sourceMode = 'image';
+        state.imgOffsetX = Math.round((RESOLUTION - img.naturalWidth) / 2);
+        state.imgOffsetY = Math.round((RESOLUTION - img.naturalHeight) / 2);
+        updateSourceUi();
+        renderDisplay();
+      };
+      img.src = url;
+    }
+
     function handlePointer(e) {
+      if (isRightDragging) return;
       const rect = mainCanvas.getBoundingClientRect();
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -438,28 +661,172 @@
     mainCanvas.addEventListener('mousemove', handlePointer);
     mainCanvas.addEventListener('touchmove', handlePointer, { passive: true });
 
-    const btnOled = document.getElementById('btnModeOled');
-    const btnLcd = document.getElementById('btnModeLcd');
+    // Suppress native context menu inside canvas and bezel
+    mainCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    const canvasBezel = document.getElementById('canvasBezel');
+    if (canvasBezel) canvasBezel.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    btnOled.addEventListener('click', () => {
-      state.isLcdMode = false;
-      btnOled.className = "px-3 py-1 text-xs font-semibold rounded-lg bg-neutral-800 text-white shadow-sm border border-neutral-600";
-      btnLcd.className = "px-3 py-1 text-xs font-medium rounded-lg text-neutral-400 hover:text-neutral-200 transition-all";
+    // Right-click drag mousedown on mainCanvas
+    mainCanvas.addEventListener('mousedown', (e) => {
+      // Right click button is 2, or Ctrl+Click on macOS
+      const isRightClick = (e.button === 2) || (e.button === 0 && e.ctrlKey);
+      if (isRightClick) {
+        e.preventDefault();
+        if (state.sourceMode === 'image' && state.customImage) {
+          isRightDragging = true;
+          dragStartX = e.clientX;
+          dragStartY = e.clientY;
+          dragStartOffsetX = state.imgOffsetX;
+          dragStartOffsetY = state.imgOffsetY;
+          document.body.style.cursor = 'grabbing';
+          mainCanvas.style.cursor = 'grabbing';
+        }
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isRightDragging) {
+        e.preventDefault();
+        const rect = mainCanvas.getBoundingClientRect();
+        const scaleFactor = RESOLUTION / rect.width;
+        const dx = (e.clientX - dragStartX) * scaleFactor;
+        const dy = (e.clientY - dragStartY) * scaleFactor;
+        state.imgOffsetX = Math.round(dragStartOffsetX + dx);
+        state.imgOffsetY = Math.round(dragStartOffsetY + dy);
+        updateImageStatus();
+        renderDisplay();
+      }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (isRightDragging) {
+        isRightDragging = false;
+        document.body.style.cursor = '';
+        updateCanvasCursor();
+      }
+    });
+
+    // Trackpad two-finger scroll panning as progressive enhancement
+    mainCanvas.addEventListener('wheel', (e) => {
+      if (state.sourceMode === 'image' && state.customImage) {
+        const isOversized = (state.customImage.naturalWidth > RESOLUTION || state.customImage.naturalHeight > RESOLUTION);
+        if (isOversized) {
+          e.preventDefault();
+          const rect = mainCanvas.getBoundingClientRect();
+          const scaleFactor = RESOLUTION / rect.width;
+          state.imgOffsetX -= Math.round(e.deltaX * scaleFactor);
+          state.imgOffsetY -= Math.round(e.deltaY * scaleFactor);
+          updateImageStatus();
+          renderDisplay();
+        }
+      }
+    }, { passive: false });
+
+    // Clipboard Paste Ingestion
+    window.addEventListener('paste', (e) => {
+      const clipboardData = e.clipboardData || window.clipboardData;
+      if (!clipboardData) return;
+      const items = clipboardData.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.startsWith('image/')) {
+          const file = items[i].getAsFile();
+          if (file) {
+            e.preventDefault();
+            loadImageFromFile(file);
+            break;
+          }
+        }
+      }
+    });
+
+    // Drag-and-drop file onto canvasBezel
+    if (canvasBezel) {
+      canvasBezel.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        canvasBezel.classList.add('ring-cyan-500', 'ring-8');
+      });
+      canvasBezel.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        canvasBezel.classList.remove('ring-cyan-500', 'ring-8');
+      });
+      canvasBezel.addEventListener('drop', (e) => {
+        e.preventDefault();
+        canvasBezel.classList.remove('ring-cyan-500', 'ring-8');
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+          loadImageFromFile(e.dataTransfer.files[0]);
+        }
+      });
+    }
+
+    // Window drag-and-drop fallback
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('drop', (e) => {
+      if (e.target !== canvasBezel && !(canvasBezel && canvasBezel.contains(e.target))) {
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+          const file = e.dataTransfer.files[0];
+          if (file.type && file.type.startsWith('image/')) {
+            e.preventDefault();
+            loadImageFromFile(file);
+          }
+        }
+      }
+    });
+
+    // File input & Source toolbar wire-up
+    const fileInput = document.getElementById('imageFileInput');
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        loadImageFromFile(e.target.files[0]);
+        e.target.value = '';
+      }
+    });
+
+    document.getElementById('btnUploadImage').addEventListener('click', () => {
+      fileInput.click();
+    });
+
+    document.getElementById('btnCenterImage').addEventListener('click', () => {
+      if (state.customImage) {
+        state.imgOffsetX = Math.round((RESOLUTION - state.customImage.naturalWidth) / 2);
+        state.imgOffsetY = Math.round((RESOLUTION - state.customImage.naturalHeight) / 2);
+        updateImageStatus();
+        renderDisplay();
+      }
+    });
+
+    document.getElementById('btnSourceGauge').addEventListener('click', () => {
+      state.sourceMode = 'gauge';
+      updateSourceUi();
       renderDisplay();
     });
 
-    btnLcd.addEventListener('click', () => {
-      state.isLcdMode = true;
-      btnLcd.className = "px-3 py-1 text-xs font-semibold rounded-lg bg-neutral-800 text-white shadow-sm border border-neutral-600";
-      btnOled.className = "px-3 py-1 text-xs font-medium rounded-lg text-neutral-400 hover:text-neutral-200 transition-all";
-      renderDisplay();
+    document.getElementById('btnSourceImage').addEventListener('click', () => {
+      state.sourceMode = 'image';
+      updateSourceUi();
+      if (!state.customImage) {
+        fileInput.click();
+      } else {
+        renderDisplay();
+      }
+    });
+
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.mode-btn').forEach(b => {
+          b.className = "mode-btn px-2.5 py-1 text-xs font-medium rounded-lg text-neutral-400 hover:text-neutral-200 transition-all";
+        });
+        btn.className = "mode-btn px-2.5 py-1 text-xs font-semibold rounded-lg bg-neutral-800 text-white shadow-sm border border-neutral-600";
+        state.renderMode = btn.dataset.mode;
+        renderDisplay();
+      });
     });
 
     const btnTheme = document.getElementById('btnToggleTheme');
     const lblTheme = document.getElementById('lblTheme');
     btnTheme.addEventListener('click', () => {
       state.darkTheme = !state.darkTheme;
-      lblTheme.textContent = state.darkTheme ? 'Dark (AMOLED)' : 'Light (Canvas)';
+      lblTheme.textContent = state.darkTheme ? 'Dark' : 'Light';
       btnTheme.className = state.darkTheme
         ? "p-2 rounded-lg border text-left text-xs font-medium transition-all border-blue-500 bg-blue-950/30 text-blue-300"
         : "p-2 rounded-lg border text-left text-xs font-medium transition-all border-neutral-700 bg-neutral-800/40 text-neutral-300";
@@ -470,9 +837,20 @@
     const lblInvert = document.getElementById('lblInvert');
     btnInvert.addEventListener('click', () => {
       state.inverted = !state.inverted;
-      lblInvert.textContent = state.inverted ? 'Inverted (Negative)' : 'Standard';
+      lblInvert.textContent = state.inverted ? 'Invert' : 'Normal';
       btnInvert.className = state.inverted
         ? "p-2 rounded-lg border text-left text-xs font-medium transition-all border-amber-500 bg-amber-950/30 text-amber-300"
+        : "p-2 rounded-lg border text-left text-xs font-medium transition-all border-neutral-700 bg-neutral-800/40 text-neutral-300";
+      renderDisplay();
+    });
+
+    const btnShading = document.getElementById('btnToggleShading');
+    const lblShading = document.getElementById('lblShading');
+    btnShading.addEventListener('click', () => {
+      state.shadingMode = (state.shadingMode === 'palette') ? 'neutral' : 'palette';
+      lblShading.textContent = (state.shadingMode === 'palette') ? 'Palette' : 'Neutral';
+      btnShading.className = (state.shadingMode === 'neutral')
+        ? "p-2 rounded-lg border text-left text-xs font-medium transition-all border-purple-500 bg-purple-950/30 text-purple-300"
         : "p-2 rounded-lg border text-left text-xs font-medium transition-all border-neutral-700 bg-neutral-800/40 text-neutral-300";
       renderDisplay();
     });
@@ -507,6 +885,69 @@
       renderDisplay();
     });
 
+    function updateCanvasScale() {
+      const dpr = window.devicePixelRatio || 1;
+      const canvasBezel = document.getElementById('canvasBezel');
+      const dprBadge = document.getElementById('dprBadge');
+      const physPixelsBadge = document.getElementById('physPixelsBadge');
+
+      if (dprBadge) dprBadge.textContent = `DPR: ${dpr.toFixed(2)}`;
+
+      let cssSize;
+      let physSize;
+      let label;
+
+      if (state.scaleMode === '1to1_phys') {
+        // True 1:1 hardware pixel representation:
+        // Set CSS dimension to exactly 466 / dpr so the browser's compositor maps
+        // 1 canvas pixel to EXACTLY 1 physical device pixel on screen.
+        physSize = 466;
+        cssSize = Math.round((466 / dpr) * 100) / 100;
+        label = `466 × 466 Physical (${cssSize} CSS px)`;
+      } else if (state.scaleMode === '1to1_css') {
+        // 466 CSS pixels: on Retina (DPR=2), this is 932 physical pixels (exact 2x integer scale)
+        cssSize = 466;
+        physSize = Math.round(466 * dpr);
+        label = `${physSize} × ${physSize} Physical (466 CSS px)`;
+      } else if (state.scaleMode === '2x_phys') {
+        // Exact 2x physical integer scale: 932 physical pixels
+        physSize = 932;
+        cssSize = Math.round((932 / dpr) * 100) / 100;
+        label = `932 × 932 Physical (${cssSize} CSS px)`;
+      }
+
+      mainCanvas.style.width = `${cssSize}px`;
+      mainCanvas.style.height = `${cssSize}px`;
+      if (canvasBezel) {
+        canvasBezel.style.width = `${cssSize}px`;
+        canvasBezel.style.height = `${cssSize}px`;
+      }
+
+      if (physPixelsBadge) physPixelsBadge.textContent = label;
+    }
+
+    function listenForDprChange() {
+      const mediaQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      mediaQuery.addEventListener('change', () => {
+        updateCanvasScale();
+        listenForDprChange();
+      }, { once: true });
+    }
+
+    document.querySelectorAll('.scale-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.scale-btn').forEach(b => {
+          b.className = "scale-btn px-2.5 py-1 text-xs font-medium rounded-md text-neutral-400 hover:text-neutral-200 transition-all";
+        });
+        btn.className = "scale-btn px-2.5 py-1 text-xs font-semibold rounded-md bg-blue-600 text-white shadow-sm transition-all";
+        state.scaleMode = btn.dataset.scale;
+        updateCanvasScale();
+      });
+    });
+
+    window.addEventListener('resize', updateCanvasScale);
+    listenForDprChange();
+    updateCanvasScale();
     renderDisplay();
   </script>
 </body>

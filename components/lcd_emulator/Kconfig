@@ -15,6 +15,26 @@ menu "Retro Monochrome LCD Emulator"
 
         config LCD_EMULATOR_MODE_RETRO_INVERTED
             bool "Retro Dot-Matrix LCD (Inverted / Negative)"
+
+        config LCD_EMULATOR_MODE_GRAYSCALE_4BIT
+            bool "Retro Dot-Matrix LCD (4-bit Grayscale / 16 shades)"
+
+        config LCD_EMULATOR_MODE_GRAYSCALE_8BIT
+            bool "Retro Dot-Matrix LCD (8-bit Grayscale / 256 shades)"
+    endchoice
+
+    choice LCD_EMULATOR_GRAYSCALE_SHADING_STYLE
+        prompt "Default Grayscale Shading Style"
+        default LCD_EMULATOR_SHADING_PALETTE_TINTED
+        help
+            Select whether grayscale shading is tinted by the active palette (interpolating
+            from inactive to active dot color) or renders as neutral monochrome gray.
+
+        config LCD_EMULATOR_SHADING_PALETTE_TINTED
+            bool "Palette-Tinted (Interpolates between inactive and active dot colors)"
+
+        config LCD_EMULATOR_SHADING_NEUTRAL_GRAY
+            bool "Neutral Gray (True monochrome R=G=B)"
     endchoice
 
     config LCD_EMULATOR_INVERT_OUTPUT
@@ -76,6 +96,16 @@ menu "Retro Monochrome LCD Emulator"
         config LCD_EMULATOR_PALETTE_CYAN
             bool "Nokia Cyan EL Backlit"
     endchoice
+
+    config LCD_EMULATOR_EXPAND_TO_RGB565
+        bool "Expand 8-bit framebuffer to 16-bit RGB565 for display hardware"
+        default y if LV_COLOR_DEPTH_8
+        default n
+        help
+            When LV_COLOR_DEPTH is 8 (L8 grayscale), LVGL renders in an 8-bit draw buffer.
+            If the physical display controller (e.g. CO5300 AMOLED) requires 16-bit RGB565,
+            enable this option to expand the 8-bit buffer to RGB565 before forwarding
+            to the original display flush callback.
 
     # Backward compatibility alias
     config LCD_EMULATOR_ENABLE_AT_BOOT
