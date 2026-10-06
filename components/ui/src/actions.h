@@ -11,6 +11,7 @@ extern void action_start_stop_clicked(lv_event_t * e);
 extern void action_global_pressed(lv_event_t * e);
 extern void action_backlight_sw_checked(lv_event_t * e);
 extern void action_backlight_sw_unchecked(lv_event_t * e);
+extern void action_filter_sw_actuated(lv_event_t * e);
 
 #ifdef __cplusplus
 }

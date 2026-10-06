@@ -732,6 +732,75 @@ static void test_color_depth_configuration()
     printf("  -> Color depth types, sizes, and packing verified.\n");
 }
 
+/**
+ * @brief Test 11: Single-Pass 8-to-16 bit streaming decimator, wire-swap, LUTs, and enabled restoration.
+ */
+static void test_single_pass_8to16_and_lut()
+{
+    printf("[TEST 11] Verifying single-pass 8-to-16 bit stream, wire-swap, and mode restoration...\n");
+
+    // 1. Verify single-pass 8to16 filter with Amber palette
+    lcd_decorator_state_t state;
+    lcd_emulator_get_decorator_state(&state);
+    state.mode = LCD_RENDER_MODE_RETRO_MONOCHROME;
+    state.dark_theme = true;
+    state.cell_size = 4;
+    state.gap_size = 1;
+    state.threshold = 100;
+    state.palette = s_palettes[LCD_PRESET_AMBER];
+
+    lv_area_t cell_area = { .x1 = 0, .y1 = 0, .x2 = 3, .y2 = 3 };
+    uint8_t dark_in[16] = {0};
+    uint16_t out_dark[16] = {0};
+
+    // Run single pass with wire swap
+    lcd_emulator_apply_filter_8to16(&cell_area, dark_in, out_dark, &state, false, true);
+
+    uint16_t expected_inact_wire = LCD_RGB565_SWAP(state.palette.color_inactive_rgb565);
+    uint16_t expected_gap_wire = LCD_RGB565_SWAP(state.palette.color_gap_rgb565);
+    uint16_t expected_act_wire = LCD_RGB565_SWAP(state.palette.color_active_rgb565);
+
+    // Active dot area (0,0) should be inactive amber
+    ASSERT_EQ(out_dark[0], expected_inact_wire);
+    // Gap area at (3,3) should be gap amber
+    ASSERT_EQ(out_dark[15], expected_gap_wire);
+
+    // Feed bright input (255) -> active amber
+    uint8_t bright_in[16];
+    memset(bright_in, 255, sizeof(bright_in));
+    uint16_t out_bright[16] = {0};
+    lcd_emulator_apply_filter_8to16(&cell_area, bright_in, out_bright, &state, false, true);
+    ASSERT_EQ(out_bright[0], expected_act_wire);
+    ASSERT_EQ(out_bright[15], expected_gap_wire);
+
+    // 2. Verify RGB232 toggle API and LUT recomputation
+    ASSERT_TRUE(!lcd_emulator_is_8bit_input_rgb232());
+    lcd_emulator_set_8bit_input_rgb232(true);
+    ASSERT_TRUE(lcd_emulator_is_8bit_input_rgb232());
+    // Pure green in RGB232: bits [4:2] = 0x07 -> 0x1C = 28
+    ASSERT_TRUE(s_lum_lut[0x1C] > 100);
+    lcd_emulator_set_8bit_input_rgb232(false);
+    ASSERT_TRUE(!lcd_emulator_is_8bit_input_rgb232());
+    ASSERT_EQ(s_lum_lut[0x1C], 0x1C);
+
+    // 3. Verify enabled toggle restores active emulation mode
+    lcd_emulator_set_render_mode(LCD_RENDER_MODE_GRAYSCALE_8BIT);
+    ASSERT_EQ(lcd_emulator_get_render_mode(), LCD_RENDER_MODE_GRAYSCALE_8BIT);
+    ASSERT_TRUE(lcd_emulator_is_enabled());
+
+    // Disable emulation -> Passthrough
+    lcd_emulator_set_enabled(false);
+    ASSERT_EQ(lcd_emulator_get_render_mode(), LCD_RENDER_MODE_PASSTHROUGH);
+    ASSERT_TRUE(!lcd_emulator_is_enabled());
+
+    // Enable emulation -> should restore GRAYSCALE_8BIT
+    lcd_emulator_set_enabled(true);
+    ASSERT_EQ(lcd_emulator_get_render_mode(), LCD_RENDER_MODE_GRAYSCALE_8BIT);
+    ASSERT_TRUE(lcd_emulator_is_enabled());
+
+    printf("  -> Single-pass 8to16 stream, wire-swap, LUT, and mode restoration verified.\n");
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -751,9 +820,10 @@ int main(int argc, char **argv)
     test_grayscale_emulation();
     test_high_volume_stress_endurance();
     test_color_depth_configuration();
+    test_single_pass_8to16_and_lut();
 
     printf("====================================================\n");
-    printf("  ALL 10 TEST SUITES PASSED CLEANLY (Zero Errors)\n");
+    printf("  ALL 11 TEST SUITES PASSED CLEANLY (Zero Errors)\n");
     printf("====================================================\n");
     return 0;
 }

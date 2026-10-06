@@ -225,6 +225,20 @@ extern "C" void action_backlight_sw_unchecked(lv_event_t *e)
     wakeDisplay(); // For good measure to restart the sleep timer
 }
 
+extern "C" void action_filter_sw_actuated(lv_event_t * e)
+{
+    if(lv_obj_has_state(objects.filter_sw,LV_STATE_CHECKED))
+    {
+        // Turn off emulation
+        lcd_emulator_set_enabled(false);
+    }
+    else
+    {
+        // Turn on emulation
+        lcd_emulator_set_enabled(true);
+    }
+}
+
 /**
  * @brief FreeRTOS UI update task that refreshes LVGL telemetry labels periodically.
  *
@@ -351,6 +365,17 @@ extern "C" void app_main(void)
                 ESP_LOGI(__func__, "Retro LCD flush decorator attached successfully");
             }
             ui_init();
+            if (objects.filter_sw)
+            {
+                if (lcd_emulator_is_enabled())
+                {
+                    lv_obj_remove_state(objects.filter_sw, LV_STATE_CHECKED);
+                }
+                else
+                {
+                    lv_obj_add_state(objects.filter_sw, LV_STATE_CHECKED);
+                }
+            }
             bsp_display_unlock();
         }
         else

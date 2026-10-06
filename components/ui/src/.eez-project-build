@@ -11,6 +11,7 @@
     "styles.h",
     "ui.c",
     "ui.h",
+    "ui_font_w_rabbit_128.c",
     "vars.h"
   ]
 }

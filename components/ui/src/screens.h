@@ -31,6 +31,8 @@ typedef struct _objects_t {
     lv_obj_t *start_stop_lbl;
     lv_obj_t *rbx_status;
     lv_obj_t *backlight_switch;
+    lv_obj_t *obj0;
+    lv_obj_t *filter_sw;
 } objects_t;
 
 extern objects_t objects;

@@ -81,3 +81,46 @@ This guarantees:
 - Zero read-after-write hazards.
 - Complete geometric preservation of fine 1px font stems, needles, and borders.
 - Bit-exact visual reproduction across any buffer tile height.
+
+---
+
+## 5. Single-Pass 8-to-16 Streaming Decimator & Wire Endianness
+
+When compiling with `LV_COLOR_DEPTH == 8` and `CONFIG_LCD_EMULATOR_EXPAND_TO_RGB565` enabled, the pipeline previously required two sequential buffer passes:
+1. In-place 8-bit decimation (`lcd_emulator_apply_filter`) modifying the LVGL draw buffer.
+2. Naive 8-to-16 bit expansion copying into a secondary panel buffer (`s_rgb565_buf`).
+
+### Single-Pass Architecture (`lcd_emulator_apply_filter_8to16`)
+The engine replaces this two-pass pipeline with a single-pass streaming kernel:
+- **Zero In-Place Mutation**: The 8-bit LVGL draw buffer (`pixels_8`) is treated as read-only.
+- **Direct Scanline Streaming**: The kernel performs box-sampling across the 8-bit input tile and directly writes 16-bit RGB565 output pixels into `s_rgb565_buf`.
+- **Wire-Endianness Pre-Swapping**: Hardware controllers such as the CO5300 AMOLED on QSPI/SPI DMA expect big-endian byte order (high byte followed by low byte). When LVGL operates in 8-bit mode (`LV_COLOR_FORMAT_L8`), driver bridges (such as `esp_lv_adapter`) bypass `lv_draw_sw_rgb565_swap()`. To prevent color bit translocation (which previously caused black backgrounds to display bright green and bright text to display purple), the streaming kernel applies `LCD_RGB565_SWAP()` at pixel emission time:
+  $$\text{wire\_pixel} = ((\text{pixel} \gg 8) \ \& \ 0\text{x}00\text{FF}) \mid ((\text{pixel} \ll 8) \ \& \ 0\text{xFF}00)$$
+- **Full 16-Bit Palette Fidelity**: Active, inactive, and gap colors retain their unquantized 16-bit RGB565 definitions (`color_active_rgb565`, `color_inactive_rgb565`, `color_gap_rgb565`), ensuring authentic Amber, Olive, Cyan, and Casio hues without 8-bit color quantization artifacts.
+
+```mermaid
+flowchart LR
+    LVGL["8-bit LVGL Draw Buffer (L8 / RGB232)"] --> Decimator["lcd_emulator_apply_filter_8to16()<br/>Single-Pass Box Sampling & Decimation"]
+    LUT["s_lum_lut[256]<br/>Luminance Weight Table"] -.-> Decimator
+    Decimator --> WireSwap["LCD_RGB565_SWAP()<br/>SPI Wire Endianness Byte Swap"]
+    WireSwap --> PanelBuf["16-bit RGB565 Panel Buffer (s_rgb565_buf)"]
+    PanelBuf --> DMA["CO5300 AMOLED Panel (SPI/QSPI DMA)"]
+```
+
+---
+
+## 6. Dual 8-Bit Color Encoding & Precomputed Lookup Tables
+
+LVGL 9 native 8-bit color depth uses `LV_COLOR_FORMAT_L8` (pure 8-bit luminance), whereas LVGL 8 historically utilized `RGB232`. To ensure seamless compatibility with both workflows without runtime branching in inner loops:
+
+1. **Luminance LUT (`s_lum_lut[256]`)**:
+   - In L8 mode: Identity mapping ($Y = i$).
+   - In RGB232 mode: Precomputed ITU-R BT.601 integer luminance:
+     $$Y = (77 \cdot R_8 + 150 \cdot G_8 + 29 \cdot B_8) \gg 8$$
+     where $R_8 = (i \gg 5) \cdot 255 / 7$, $G_8 = ((i \gg 2) \& 7) \cdot 255 / 7$, and $B_8 = (i \& 3) \cdot 255 / 3$.
+
+2. **Passthrough LUT (`s_passthrough_lut[256]`)**:
+   - In passthrough mode (retro emulation disabled), the 8-bit buffer is mapped into 16-bit wire-swapped RGB565 via a 256-word lookup table in a single memory pass.
+   - In L8 mode: Expands grayscale intensity $Y$ to $R=Y, G=Y, B=Y$ in swapped RGB565.
+   - In RGB232 mode: Expands 8-bit color directly to full 16-bit swapped RGB565.
+

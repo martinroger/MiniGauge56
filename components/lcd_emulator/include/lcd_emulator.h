@@ -89,6 +89,12 @@ extern "C" {
     ((uint16_t)((((uint16_t)(r) & 0xF8) << 8) | (((uint16_t)(g) & 0xFC) << 3) | (((uint16_t)(b) & 0xF8) >> 3)))
 
 /**
+ * @brief Endianness swap macro for 16-bit RGB565 pixels to match SPI/QSPI DMA panel wire-order (big-endian).
+ */
+#define LCD_RGB565_SWAP(val) \
+    ((uint16_t)((((uint16_t)(val) >> 8) & 0x00FF) | (((uint16_t)(val) << 8) & 0xFF00)))
+
+/**
  * @brief Retro LCD color palette configuration in native display color format (RGB565 or 8-bit L8).
  */
 typedef struct {
@@ -96,6 +102,10 @@ typedef struct {
     lcd_color_t color_active;   /**< Active segment / dark ink */
     lcd_color_t color_inactive; /**< Unenergized segment / faint substrate */
     lcd_color_t color_gap;      /**< Inactive physical gap line between dots */
+    uint16_t color_bg_rgb565;       /**< Full-fidelity 16-bit RGB565 substrate background */
+    uint16_t color_active_rgb565;   /**< Full-fidelity 16-bit RGB565 active segment / ink */
+    uint16_t color_inactive_rgb565; /**< Full-fidelity 16-bit RGB565 unenergized segment */
+    uint16_t color_gap_rgb565;      /**< Full-fidelity 16-bit RGB565 gap line */
 } lcd_palette_t;
 
 /**
@@ -333,6 +343,37 @@ void lcd_emulator_apply_filter_ex(const lv_area_t *area, lcd_color_t *pixels, co
  * @brief Legacy filter wrapper.
  */
 void lcd_emulator_apply_filter(const lv_area_t *area, lcd_color_t *pixels, const lcd_emulator_cfg_t *cfg);
+
+/**
+ * @brief Configure whether 8-bit input buffers are decoded as RGB232 (true) or L8 luminance (false).
+ *
+ * @param[in] is_rgb232 True for RGB232 (LVGL 8 style), false for L8 luminance (LVGL 9 default).
+ */
+void lcd_emulator_set_8bit_input_rgb232(bool is_rgb232);
+
+/**
+ * @brief Check whether 8-bit input buffers are currently treated as RGB232.
+ *
+ * @return True if RGB232, false if L8 luminance.
+ */
+bool lcd_emulator_is_8bit_input_rgb232(void);
+
+/**
+ * @brief Single-pass streaming decimation filter from 8-bit input to 16-bit RGB565 output.
+ *
+ * Directly box-samples 8-bit pixels from the LVGL draw buffer and emits byte-swapped
+ * 16-bit RGB565 pixels into out_rgb565 with zero buffer re-reading or intermediate passes.
+ *
+ * @param[in] area Coordinates of the redraw buffer relative to the physical screen.
+ * @param[in] pixels_8 Pointer to read-only 8-bit pixel buffer.
+ * @param[out] out_rgb565 Pointer to destination 16-bit RGB565 buffer.
+ * @param[in] state Decorator state parameters containing grid sizing, threshold, and palette.
+ * @param[in] inverted If true, inverts ink logic.
+ * @param[in] wire_swap If true, swaps byte endianness (big-endian) for direct SPI/QSPI DMA transmission.
+ */
+void lcd_emulator_apply_filter_8to16(const lv_area_t *area, const uint8_t *pixels_8,
+                                    uint16_t *out_rgb565, const lcd_decorator_state_t *state,
+                                    bool inverted, bool wire_swap);
 
 #ifdef __cplusplus
 }

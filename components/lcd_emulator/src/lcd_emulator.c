@@ -107,6 +107,43 @@ static uint16_t *s_rgb565_buf = NULL;
 static size_t s_rgb565_buf_pixels = 0;
 #endif
 
+static uint8_t s_lum_lut[256];
+static uint16_t s_passthrough_lut[256];
+static bool s_8bit_is_rgb232 = false;
+static bool s_luts_inited = false;
+static lcd_render_mode_t s_last_emulation_mode = LCD_KCONFIG_RENDER_MODE;
+
+static void recompute_luts(void)
+{
+    for (int i = 0; i < 256; i++) {
+        uint8_t r8, g8, b8;
+        if (s_8bit_is_rgb232) {
+            uint8_t r = (uint8_t)((i >> 5) & 0x03);
+            uint8_t g = (uint8_t)((i >> 2) & 0x07);
+            uint8_t b = (uint8_t)(i & 0x03);
+            r8 = (uint8_t)((r * 255) / 3);
+            g8 = (uint8_t)((g * 255) / 7);
+            b8 = (uint8_t)((b * 255) / 3);
+            s_lum_lut[i] = (uint8_t)((77u * r8 + 150u * g8 + 29u * b8) >> 8);
+        } else {
+            r8 = (uint8_t)i;
+            g8 = (uint8_t)i;
+            b8 = (uint8_t)i;
+            s_lum_lut[i] = (uint8_t)i;
+        }
+        uint16_t rgb = LCD_RGB565(r8, g8, b8);
+        s_passthrough_lut[i] = LCD_RGB565_SWAP(rgb);
+    }
+    s_luts_inited = true;
+}
+
+static inline void ensure_luts_inited(void)
+{
+    if (!s_luts_inited) {
+        recompute_luts();
+    }
+}
+
 /* Preset Palette Definitions */
 static const lcd_palette_t s_palettes[LCD_PRESET_COUNT] = {
     [LCD_PRESET_OLIVE] = {
@@ -114,24 +151,40 @@ static const lcd_palette_t s_palettes[LCD_PRESET_COUNT] = {
         .color_active   = LCD_COLOR_MAKE(0x1B, 0x28, 0x12),
         .color_inactive = LCD_COLOR_MAKE(0x7D, 0x8C, 0x50),
         .color_gap      = LCD_COLOR_MAKE(0x6F, 0x7E, 0x45),
+        .color_bg_rgb565       = LCD_RGB565(0x8A, 0x9A, 0x5B),
+        .color_active_rgb565   = LCD_RGB565(0x1B, 0x28, 0x12),
+        .color_inactive_rgb565 = LCD_RGB565(0x7D, 0x8C, 0x50),
+        .color_gap_rgb565      = LCD_RGB565(0x6F, 0x7E, 0x45),
     },
     [LCD_PRESET_CASIO_GREY] = {
         .color_bg       = LCD_COLOR_MAKE(0xA0, 0xB0, 0xA2),
         .color_active   = LCD_COLOR_MAKE(0x14, 0x1D, 0x15),
         .color_inactive = LCD_COLOR_MAKE(0x91, 0xA1, 0x93),
         .color_gap      = LCD_COLOR_MAKE(0x7E, 0x8E, 0x80),
+        .color_bg_rgb565       = LCD_RGB565(0xA0, 0xB0, 0xA2),
+        .color_active_rgb565   = LCD_RGB565(0x14, 0x1D, 0x15),
+        .color_inactive_rgb565 = LCD_RGB565(0x91, 0xA1, 0x93),
+        .color_gap_rgb565      = LCD_RGB565(0x7E, 0x8E, 0x80),
     },
     [LCD_PRESET_AMBER] = {
         .color_bg       = LCD_COLOR_MAKE(0x18, 0x10, 0x02),
         .color_active   = LCD_COLOR_MAKE(0xFF, 0xAA, 0x00),
         .color_inactive = LCD_COLOR_MAKE(0x36, 0x21, 0x04),
         .color_gap      = LCD_COLOR_MAKE(0x0D, 0x07, 0x00),
+        .color_bg_rgb565       = LCD_RGB565(0x18, 0x10, 0x02),
+        .color_active_rgb565   = LCD_RGB565(0xFF, 0xAA, 0x00),
+        .color_inactive_rgb565 = LCD_RGB565(0x36, 0x21, 0x04),
+        .color_gap_rgb565      = LCD_RGB565(0x0D, 0x07, 0x00),
     },
     [LCD_PRESET_CYAN] = {
         .color_bg       = LCD_COLOR_MAKE(0x08, 0x1D, 0x22),
         .color_active   = LCD_COLOR_MAKE(0x00, 0xF0, 0xFF),
         .color_inactive = LCD_COLOR_MAKE(0x12, 0x39, 0x42),
         .color_gap      = LCD_COLOR_MAKE(0x04, 0x0F, 0x12),
+        .color_bg_rgb565       = LCD_RGB565(0x08, 0x1D, 0x22),
+        .color_active_rgb565   = LCD_RGB565(0x00, 0xF0, 0xFF),
+        .color_inactive_rgb565 = LCD_RGB565(0x12, 0x39, 0x42),
+        .color_gap_rgb565      = LCD_RGB565(0x04, 0x0F, 0x12),
     },
 };
 
@@ -144,10 +197,14 @@ static lcd_decorator_state_t s_state = {
     .gap_size         = LCD_KCONFIG_GAP_SIZE,
     .threshold        = LCD_KCONFIG_THRESHOLD,
     .palette          = {
-        .color_bg       = LCD_COLOR_MAKE(0x8A, 0x9A, 0x5B),
-        .color_active   = LCD_COLOR_MAKE(0x1B, 0x28, 0x12),
-        .color_inactive = LCD_COLOR_MAKE(0x7D, 0x8C, 0x50),
-        .color_gap      = LCD_COLOR_MAKE(0x6F, 0x7E, 0x45),
+        .color_bg              = LCD_COLOR_MAKE(0x8A, 0x9A, 0x5B),
+        .color_active          = LCD_COLOR_MAKE(0x1B, 0x28, 0x12),
+        .color_inactive        = LCD_COLOR_MAKE(0x7D, 0x8C, 0x50),
+        .color_gap             = LCD_COLOR_MAKE(0x6F, 0x7E, 0x45),
+        .color_bg_rgb565       = LCD_RGB565(0x8A, 0x9A, 0x5B),
+        .color_active_rgb565   = LCD_RGB565(0x1B, 0x28, 0x12),
+        .color_inactive_rgb565 = LCD_RGB565(0x7D, 0x8C, 0x50),
+        .color_gap_rgb565      = LCD_RGB565(0x6F, 0x7E, 0x45),
     },
     .custom_render_fn = NULL,
     .custom_user_ctx  = NULL,
@@ -159,10 +216,14 @@ static lcd_emulator_cfg_t s_legacy_cfg = {
     .gap_size   = LCD_KCONFIG_GAP_SIZE,
     .threshold  = LCD_KCONFIG_THRESHOLD,
     .palette    = {
-        .color_bg       = LCD_COLOR_MAKE(0x8A, 0x9A, 0x5B),
-        .color_active   = LCD_COLOR_MAKE(0x1B, 0x28, 0x12),
-        .color_inactive = LCD_COLOR_MAKE(0x7D, 0x8C, 0x50),
-        .color_gap      = LCD_COLOR_MAKE(0x6F, 0x7E, 0x45),
+        .color_bg              = LCD_COLOR_MAKE(0x8A, 0x9A, 0x5B),
+        .color_active          = LCD_COLOR_MAKE(0x1B, 0x28, 0x12),
+        .color_inactive        = LCD_COLOR_MAKE(0x7D, 0x8C, 0x50),
+        .color_gap             = LCD_COLOR_MAKE(0x6F, 0x7E, 0x45),
+        .color_bg_rgb565       = LCD_RGB565(0x8A, 0x9A, 0x5B),
+        .color_active_rgb565   = LCD_RGB565(0x1B, 0x28, 0x12),
+        .color_inactive_rgb565 = LCD_RGB565(0x7D, 0x8C, 0x50),
+        .color_gap_rgb565      = LCD_RGB565(0x6F, 0x7E, 0x45),
     },
 };
 
@@ -217,6 +278,42 @@ static void lcd_decorator_flush_cb(lv_display_t *disp, const lv_area_t *area, ui
     state_unlock();
 
     if (area && px_map) {
+#if LV_COLOR_DEPTH == 8
+#if defined(CONFIG_LCD_EMULATOR_EXPAND_TO_RGB565) || !defined(ESP_PLATFORM)
+        const int32_t width = area->x2 - area->x1 + 1;
+        const int32_t height = area->y2 - area->y1 + 1;
+        const size_t area_pixels = (size_t)(width * height);
+        if (s_rgb565_buf && area_pixels <= s_rgb565_buf_pixels) {
+            if (snap.mode == LCD_RENDER_MODE_PASSTHROUGH) {
+                // High-speed LUT expansion for passthrough mode (with wire byte-swap)
+                const uint8_t *src8 = (const uint8_t *)px_map;
+                for (size_t i = 0; i < area_pixels; i++) {
+                    s_rgb565_buf[i] = s_passthrough_lut[src8[i]];
+                }
+            } else if (snap.mode == LCD_RENDER_MODE_CUSTOM) {
+                if (snap.custom_render_fn) {
+                    snap.custom_render_fn(area, (lcd_color_t *)px_map, snap.custom_user_ctx);
+                }
+                const uint8_t *src8 = (const uint8_t *)px_map;
+                for (size_t i = 0; i < area_pixels; i++) {
+                    s_rgb565_buf[i] = s_passthrough_lut[src8[i]];
+                }
+            } else {
+                // Direct single-pass stream into 16-bit RGB565 buffer (wire-swapped, full palette colors)
+                const bool inv = (snap.mode == LCD_RENDER_MODE_RETRO_INVERTED);
+                lcd_emulator_apply_filter_8to16(area, (const uint8_t *)px_map, s_rgb565_buf, &snap, inv, true);
+            }
+
+            if (s_orig_flush_cb) {
+                s_orig_flush_cb(disp, area, (uint8_t *)s_rgb565_buf);
+            } else {
+                lv_display_flush_ready(disp);
+            }
+            return;
+        }
+#endif
+#else
+        // 16-bit native LVGL depth: direct in-place filtering on px_map
         lcd_color_t *color_buf = (lcd_color_t *)px_map;
         switch (snap.mode) {
         case LCD_RENDER_MODE_RETRO_MONOCHROME:
@@ -239,29 +336,6 @@ static void lcd_decorator_flush_cb(lv_display_t *disp, const lv_area_t *area, ui
             // Zero-overhead passthrough
             break;
         }
-
-#if LV_COLOR_DEPTH == 8
-#if defined(CONFIG_LCD_EMULATOR_EXPAND_TO_RGB565) || !defined(ESP_PLATFORM)
-        const int32_t width = area->x2 - area->x1 + 1;
-        const int32_t height = area->y2 - area->y1 + 1;
-        const size_t area_pixels = (size_t)(width * height);
-        if (s_rgb565_buf && area_pixels <= s_rgb565_buf_pixels) {
-            const uint8_t *src8 = (const uint8_t *)px_map;
-            for (size_t i = 0; i < area_pixels; i++) {
-                const uint8_t v = src8[i];
-                const uint16_t r5 = (uint16_t)((v >> 3) & 0x1F);
-                const uint16_t g6 = (uint16_t)((v >> 2) & 0x3F);
-                const uint16_t b5 = (uint16_t)((v >> 3) & 0x1F);
-                s_rgb565_buf[i] = (uint16_t)((r5 << 11) | (g6 << 5) | b5);
-            }
-            if (s_orig_flush_cb) {
-                s_orig_flush_cb(disp, area, (uint8_t *)s_rgb565_buf);
-            } else {
-                lv_display_flush_ready(disp);
-            }
-            return;
-        }
-#endif
 #endif
     }
 
@@ -287,7 +361,9 @@ esp_err_t lcd_emulator_init(lv_display_t *disp)
 #endif
 
     state_lock();
+    recompute_luts();
     s_state.mode             = LCD_KCONFIG_RENDER_MODE;
+    s_last_emulation_mode    = (LCD_KCONFIG_RENDER_MODE != LCD_RENDER_MODE_PASSTHROUGH) ? LCD_KCONFIG_RENDER_MODE : LCD_RENDER_MODE_RETRO_MONOCHROME;
     s_state.shading_mode     = LCD_KCONFIG_SHADING_MODE;
     s_state.dark_theme       = LCD_KCONFIG_DARK_THEME;
     s_state.cell_size        = LCD_KCONFIG_CELL_SIZE;
@@ -425,6 +501,9 @@ esp_err_t lcd_emulator_set_render_mode(lcd_render_mode_t mode)
         return ESP_ERR_INVALID_ARG;
     }
     s_state.mode = mode;
+    if (mode != LCD_RENDER_MODE_PASSTHROUGH) {
+        s_last_emulation_mode = mode;
+    }
     s_legacy_cfg.enabled = (mode != LCD_RENDER_MODE_PASSTHROUGH);
     state_unlock();
 
@@ -479,7 +558,15 @@ esp_err_t lcd_emulator_set_custom_render(lcd_render_fn_t render_fn, void *user_c
 
 void lcd_emulator_set_enabled(bool enabled)
 {
-    lcd_emulator_set_render_mode(enabled ? LCD_RENDER_MODE_RETRO_MONOCHROME : LCD_RENDER_MODE_PASSTHROUGH);
+    if (enabled) {
+        lcd_render_mode_t target = s_last_emulation_mode;
+        if (target == LCD_RENDER_MODE_PASSTHROUGH) {
+            target = LCD_RENDER_MODE_RETRO_MONOCHROME;
+        }
+        lcd_emulator_set_render_mode(target);
+    } else {
+        lcd_emulator_set_render_mode(LCD_RENDER_MODE_PASSTHROUGH);
+    }
 }
 
 bool lcd_emulator_is_enabled(void)
@@ -512,10 +599,45 @@ void lcd_emulator_set_palette(const lcd_palette_t *palette)
     }
     state_lock();
     s_state.palette = *palette;
-    s_legacy_cfg.palette = *palette;
+    if (s_state.palette.color_bg_rgb565 == 0 && s_state.palette.color_active_rgb565 == 0) {
+#if LV_COLOR_DEPTH == 8
+        uint8_t bg = s_state.palette.color_bg;
+        uint8_t act = s_state.palette.color_active;
+        uint8_t inact = s_state.palette.color_inactive;
+        uint8_t gap = s_state.palette.color_gap;
+        s_state.palette.color_bg_rgb565 = LCD_RGB565(bg, bg, bg);
+        s_state.palette.color_active_rgb565 = LCD_RGB565(act, act, act);
+        s_state.palette.color_inactive_rgb565 = LCD_RGB565(inact, inact, inact);
+        s_state.palette.color_gap_rgb565 = LCD_RGB565(gap, gap, gap);
+#else
+        s_state.palette.color_bg_rgb565 = s_state.palette.color_bg;
+        s_state.palette.color_active_rgb565 = s_state.palette.color_active;
+        s_state.palette.color_inactive_rgb565 = s_state.palette.color_inactive;
+        s_state.palette.color_gap_rgb565 = s_state.palette.color_gap;
+#endif
+    }
+    s_legacy_cfg.palette = s_state.palette;
     state_unlock();
 
     trigger_display_invalidation();
+}
+
+void lcd_emulator_set_8bit_input_rgb232(bool is_rgb232)
+{
+    state_lock();
+    s_8bit_is_rgb232 = is_rgb232;
+    recompute_luts();
+    state_unlock();
+
+    trigger_display_invalidation();
+}
+
+bool lcd_emulator_is_8bit_input_rgb232(void)
+{
+    state_lock();
+    bool res = s_8bit_is_rgb232;
+    state_unlock();
+    return res;
 }
 
 void lcd_emulator_set_grid(uint8_t cell_size, uint8_t gap_size, uint8_t threshold)
@@ -820,4 +942,190 @@ void lcd_emulator_apply_filter(const lv_area_t *area, lcd_color_t *pixels, const
         .custom_user_ctx  = NULL,
     };
     lcd_emulator_apply_filter_ex(area, pixels, &temp_state, false);
+}
+
+void lcd_emulator_apply_filter_8to16(const lv_area_t *area,
+                                     const uint8_t *src_pixels,
+                                     uint16_t *dst_rgb565,
+                                     const lcd_decorator_state_t *state,
+                                     bool inverted,
+                                     bool wire_swap)
+{
+    if (!area || !src_pixels || !dst_rgb565 || !state) {
+        return;
+    }
+
+    const int32_t width = area->x2 - area->x1 + 1;
+    const int32_t height = area->y2 - area->y1 + 1;
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+
+    ensure_luts_inited();
+
+    const uint8_t cell_size = (state->cell_size >= 2) ? state->cell_size : 4;
+    const uint8_t gap_size = (state->gap_size < cell_size) ? state->gap_size : 1;
+    const uint8_t threshold = state->threshold;
+
+    uint16_t col_gap = state->palette.color_gap_rgb565 ? state->palette.color_gap_rgb565 : (uint16_t)state->palette.color_gap;
+    uint16_t col_active = state->palette.color_active_rgb565 ? state->palette.color_active_rgb565 : (uint16_t)state->palette.color_active;
+    uint16_t col_inactive = state->palette.color_inactive_rgb565 ? state->palette.color_inactive_rgb565 : (uint16_t)state->palette.color_inactive;
+
+    const bool is_grayscale_4bit = (state->mode == LCD_RENDER_MODE_GRAYSCALE_4BIT);
+    const bool is_grayscale_8bit = (state->mode == LCD_RENDER_MODE_GRAYSCALE_8BIT);
+    const bool is_grayscale = is_grayscale_4bit || is_grayscale_8bit;
+
+    uint16_t effective_col_gap = col_gap;
+    if (state->shading_mode == LCD_SHADING_NEUTRAL_GRAY && is_grayscale) {
+        const uint8_t gr5 = (uint8_t)((col_gap >> 11) & 0x1F);
+        const uint8_t gg6 = (uint8_t)((col_gap >> 5) & 0x3F);
+        const uint8_t gb5 = (uint8_t)(col_gap & 0x1F);
+        const uint8_t gr = (uint8_t)((gr5 << 3) | (gr5 >> 2));
+        const uint8_t gg = (uint8_t)((gg6 << 2) | (gg6 >> 4));
+        const uint8_t gb = (uint8_t)((gb5 << 3) | (gb5 >> 2));
+        const uint8_t glum = (uint8_t)((77u * gr + 150u * gg + 29u * gb) >> 8);
+        effective_col_gap = LCD_RGB565(glum, glum, glum);
+    }
+    if (wire_swap) {
+        effective_col_gap = LCD_RGB565_SWAP(effective_col_gap);
+    }
+
+    // Precalculate palette RGB565 deltas for fast linear interpolation in palette-tinted mode
+    const int32_t r0 = (int32_t)((col_inactive >> 11) & 0x1F);
+    const int32_t g0 = (int32_t)((col_inactive >> 5) & 0x3F);
+    const int32_t b0 = (int32_t)(col_inactive & 0x1F);
+    const int32_t dr = (int32_t)((col_active >> 11) & 0x1F) - r0;
+    const int32_t dg = (int32_t)((col_active >> 5) & 0x3F) - g0;
+    const int32_t db = (int32_t)(col_active & 0x1F) - b0;
+
+    const int32_t first_cell_x = area->x1 / cell_size;
+    const int32_t last_cell_x = area->x2 / cell_size;
+    const int32_t num_cols = last_cell_x - first_cell_x + 1;
+    if (num_cols <= 0 || num_cols > LCD_MAX_CELL_COLS) {
+        return;
+    }
+
+    const int32_t first_cell_y = area->y1 / cell_size;
+    const int32_t last_cell_y = area->y2 / cell_size;
+
+    uint16_t cell_color[LCD_MAX_CELL_COLS];
+
+    for (int32_t cell_y = first_cell_y; cell_y <= last_cell_y; cell_y++) {
+        const int32_t y_cell_start = cell_y * cell_size;
+        const int32_t y_cell_end = y_cell_start + cell_size - 1;
+
+        const int32_t band_y1 = (area->y1 > y_cell_start) ? area->y1 : y_cell_start;
+        const int32_t band_y2 = (area->y2 < y_cell_end) ? area->y2 : y_cell_end;
+
+        const int32_t dot_y_end = y_cell_start + cell_size - gap_size - 1;
+        const int32_t sample_y_start = band_y1;
+        const int32_t sample_y_end = (band_y2 < dot_y_end) ? band_y2 : dot_y_end;
+        const bool has_dot_rows = (sample_y_start <= sample_y_end);
+
+        for (int32_t c = 0; c < num_cols; c++) {
+            if (!has_dot_rows) {
+                cell_color[c] = wire_swap ? LCD_RGB565_SWAP(col_inactive) : col_inactive;
+                continue;
+            }
+
+            const int32_t curr_cell_x = first_cell_x + c;
+            const int32_t x_cell_start = curr_cell_x * cell_size;
+            const int32_t x_dot_end = x_cell_start + cell_size - gap_size - 1;
+
+            const int32_t sample_x_start = (x_cell_start > area->x1) ? x_cell_start : area->x1;
+            const int32_t sample_x_end = (x_dot_end < area->x2) ? x_dot_end : area->x2;
+
+            if (sample_x_start > sample_x_end) {
+                cell_color[c] = wire_swap ? LCD_RGB565_SWAP(col_inactive) : col_inactive;
+                continue;
+            }
+
+            uint16_t raw_color = col_inactive;
+
+            if (!is_grayscale) {
+                bool active = false;
+                for (int32_t sy = sample_y_start; sy <= sample_y_end; sy++) {
+                    const uint8_t *row = &src_pixels[(sy - area->y1) * width];
+                    for (int32_t sx = sample_x_start; sx <= sample_x_end; sx++) {
+                        const uint8_t lum = s_lum_lut[row[sx - area->x1]];
+                        if (state->dark_theme ? (lum >= threshold) : (lum < threshold)) {
+                            active = true;
+                            break;
+                        }
+                    }
+                    if (active) {
+                        break;
+                    }
+                }
+                const bool cell_is_active = inverted ? (!active) : active;
+                raw_color = cell_is_active ? col_active : col_inactive;
+            } else {
+                uint32_t sum_lum = 0;
+                uint16_t sample_count = 0;
+                for (int32_t sy = sample_y_start; sy <= sample_y_end; sy++) {
+                    const uint8_t *row = &src_pixels[(sy - area->y1) * width];
+                    for (int32_t sx = sample_x_start; sx <= sample_x_end; sx++) {
+                        sum_lum += (uint32_t)s_lum_lut[row[sx - area->x1]];
+                        sample_count++;
+                    }
+                }
+                const uint8_t cell_lum = (sample_count > 0) ? (uint8_t)(sum_lum / sample_count) : 0;
+                uint8_t intensity = state->dark_theme ? cell_lum : (uint8_t)(255 - cell_lum);
+                if (inverted) {
+                    intensity = 255 - intensity;
+                }
+
+                uint8_t q;
+                if (is_grayscale_4bit) {
+                    uint8_t level = (uint8_t)((intensity + 8) / 17);
+                    if (level > 15) level = 15;
+                    q = (uint8_t)(level * 17);
+                } else {
+                    q = intensity;
+                }
+
+                if (state->shading_mode == LCD_SHADING_NEUTRAL_GRAY) {
+                    raw_color = LCD_RGB565(q, q, q);
+                } else {
+                    if (q == 0) {
+                        raw_color = col_inactive;
+                    } else if (q == 255) {
+                        raw_color = col_active;
+                    } else {
+                        const int32_t nr = dr * (int32_t)q;
+                        const int32_t ng = dg * (int32_t)q;
+                        const int32_t nb = db * (int32_t)q;
+                        int32_t r = r0 + ((nr >= 0) ? (nr + 127) : (nr - 127)) / 255;
+                        int32_t g = g0 + ((ng >= 0) ? (ng + 127) : (ng - 127)) / 255;
+                        int32_t b = b0 + ((nb >= 0) ? (nb + 127) : (nb - 127)) / 255;
+                        if (r < 0) r = 0; else if (r > 31) r = 31;
+                        if (g < 0) g = 0; else if (g > 63) g = 63;
+                        if (b < 0) b = 0; else if (b > 31) b = 31;
+                        raw_color = (uint16_t)(((uint16_t)r << 11) | ((uint16_t)g << 5) | (uint16_t)b);
+                    }
+                }
+            }
+
+            cell_color[c] = wire_swap ? LCD_RGB565_SWAP(raw_color) : raw_color;
+        }
+
+        // Direct scanline emission into destination RGB565 buffer
+        for (int32_t y_screen = band_y1; y_screen <= band_y2; y_screen++) {
+            const bool is_gap_row = ((y_screen % cell_size) >= (cell_size - gap_size));
+            const int32_t local_y = y_screen - area->y1;
+            uint16_t *dst_row = &dst_rgb565[local_y * width];
+
+            for (int32_t x_screen = area->x1; x_screen <= area->x2; x_screen++) {
+                const bool is_gap_col = ((x_screen % cell_size) >= (cell_size - gap_size));
+                const int32_t local_x = x_screen - area->x1;
+
+                if (is_gap_row || is_gap_col) {
+                    dst_row[local_x] = effective_col_gap;
+                } else {
+                    const int32_t col_idx = (x_screen / cell_size) - first_cell_x;
+                    dst_row[local_x] = cell_color[col_idx];
+                }
+            }
+        }
+    }
 }

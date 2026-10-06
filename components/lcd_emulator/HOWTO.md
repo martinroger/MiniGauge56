@@ -113,17 +113,25 @@ lcd_emulator_set_dark_theme(true);
 // Adjust dot pitch, gap width, and luminance threshold on the fly:
 // (cell_size = 4 px, gap_size = 1 px, threshold = 100)
 lcd_emulator_set_grid(4, 1, 100);
+
+// In 8-bit mode (LV_COLOR_DEPTH == 8), toggle between L8 luminance (LVGL 9) and RGB232 (LVGL 8):
+lcd_emulator_set_8bit_input_rgb232(true);  // Enable RGB232 decoding
+lcd_emulator_set_8bit_input_rgb232(false); // Enable native L8 grayscale decoding
 ```
 
 ---
 
-## 4. Compile-Time 8-Bit Framebuffer & Hardware RGB565 Expansion
+## 4. Compile-Time 8-Bit Framebuffer & Single-Pass Hardware Expansion
 
-When compiling with `LV_COLOR_DEPTH == 8` (Grayscale L8 native format), the LVGL draw buffer footprint is halved (1 byte/pixel instead of 2 bytes/pixel), saving ~108 KB of internal SRAM or PSRAM for a 466×466 display. Furthermore, decimation filter throughput increases by ~27% due to zero-cost scalar luminance access.
+When compiling with `LV_COLOR_DEPTH == 8`, the LVGL draw buffer footprint is halved (1 byte/pixel instead of 2 bytes/pixel), saving ~108 KB of internal SRAM or PSRAM for a 466×466 display:
 
 - **`lcd_color_t`**: Resolves to `uint8_t` when `LV_COLOR_DEPTH == 8`, or `uint16_t` when `LV_COLOR_DEPTH == 16`.
 - **`LCD_COLOR_MAKE(r, g, b)`**: Compiles to ITU-R BT.601 integer luminance (`0..255`) under 8-bit mode, and standard RGB565 under 16-bit mode.
-- **Hardware Expansion**: When `CONFIG_LCD_EMULATOR_EXPAND_TO_RGB565` is enabled, `lcd_emulator_init()` pre-allocates a static RGB565 expansion buffer (zero dynamic allocation in hot path). The flush decorator runs the decimation filter directly on the 8-bit buffer, expands the result to 16-bit RGB565, and forwards the 16-bit buffer to the underlying display controller (e.g. CO5300 AMOLED).
+- **Single-Pass Streaming Decimator (`lcd_emulator_apply_filter_8to16`)**: When `CONFIG_LCD_EMULATOR_EXPAND_TO_RGB565` is enabled, `lcd_decorator_flush_cb()` uses a zero-mutation single-pass decimator. It directly box-samples from the 8-bit LVGL draw buffer and writes wire-swapped 16-bit RGB565 pixels into `s_rgb565_buf`, eliminating redundant buffer passes.
+- **True 16-Bit RGB565 Palettes in 8-Bit Mode**: The companion fields `color_bg_rgb565`, `color_active_rgb565`, `color_inactive_rgb565`, and `color_gap_rgb565` inside `lcd_palette_t` retain true 16-bit color definitions. Thus, even with an 8-bit LVGL render buffer, amber, cyan, and olive colors render in full 16-bit color fidelity on AMOLED hardware.
+- **Wire-Endianness Correction**: Over SPI/QSPI DMA, controllers like the CO5300 expect high byte followed by low byte. `LCD_RGB565_SWAP()` is applied during pixel emission so colors are displayed in correct RGB565 byte order without relying on driver bridge swaps.
+- **Fast Passthrough LUT**: When emulation is disabled in 8-bit mode, a precomputed 256-entry lookup table expands 8-bit pixels into wire-swapped 16-bit RGB565 with zero per-pixel arithmetic.
+
 
 ---
 
