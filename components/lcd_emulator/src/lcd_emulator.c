@@ -260,6 +260,144 @@ static inline void state_unlock(void) {}
 static lv_display_t *s_target_disp = NULL;
 static lv_display_flush_cb_t s_orig_flush_cb = NULL;
 
+#if defined(CONFIG_LCD_EMULATOR_PROFILE) && defined(ESP_PLATFORM)
+#define LCD_PROFILE 1
+#include "esp_cpu.h"
+#include "esp_timer.h"
+#include "esp_clk_tree.h"
+#include "freertos/task.h"
+
+typedef struct {
+    uint64_t tiles;
+    uint64_t pixels;
+    uint32_t max_tile_pixels;
+    uint64_t frames;
+    uint64_t decorate_cyc;
+    uint64_t orig_cyc;
+    uint64_t finish_us;
+    uint64_t finish_cnt;
+    uint64_t bypass_tiles;
+    uint64_t migrated_tiles; /* tiles whose cycle delta was discarded (LVGL task changed core) */
+} lcd_prof_t;
+
+static lcd_prof_t s_prof;
+static portMUX_TYPE s_prof_mux = portMUX_INITIALIZER_UNLOCKED;
+static volatile int64_t s_prof_flush_start_us;
+static TaskHandle_t s_prof_task = NULL;
+static esp_timer_handle_t s_prof_timer = NULL;
+static int64_t s_prof_last_us = 0;
+
+static inline uint32_t prof_cyc(void)
+{
+    return (uint32_t)esp_cpu_get_cycle_count();
+}
+
+static void lcd_prof_flush_finish_cb(lv_event_t *e)
+{
+    (void)e;
+    /* May fire from an ISR on either core: use the shared esp_timer clock, not CCOUNT. */
+    const int64_t dt = esp_timer_get_time() - s_prof_flush_start_us;
+    portENTER_CRITICAL(&s_prof_mux);
+    s_prof.finish_us += (uint64_t)(dt > 0 ? dt : 0);
+    s_prof.finish_cnt++;
+    portEXIT_CRITICAL(&s_prof_mux);
+}
+
+static void lcd_prof_report_cb(void *arg)
+{
+    (void)arg;
+    lcd_prof_t p;
+    portENTER_CRITICAL(&s_prof_mux);
+    p = s_prof;
+    memset(&s_prof, 0, sizeof(s_prof));
+    portEXIT_CRITICAL(&s_prof_mux);
+
+    const int64_t now = esp_timer_get_time();
+    const double secs = (s_prof_last_us > 0) ? (double)(now - s_prof_last_us) / 1e6 : 1.0;
+    s_prof_last_us = now;
+
+    uint32_t cpu_hz = 240000000u;
+    esp_clk_tree_src_get_freq_hz(SOC_MOD_CLK_CPU, ESP_CLK_TREE_SRC_FREQ_PRECISION_CACHED, &cpu_hz);
+    const double us_per_cyc = 1e6 / (double)cpu_hz;
+
+    const double dec_us = (double)p.decorate_cyc * us_per_cyc;
+    const double orig_us = (double)p.orig_cyc * us_per_cyc;
+    const double fin_us = (double)p.finish_us;
+    const double tiles = (double)p.tiles;
+    const double valid = (double)(p.tiles - p.migrated_tiles);
+    const double mpix = (double)p.pixels / 1e6 * (tiles > 0 ? valid / tiles : 0.0);
+
+    UBaseType_t hwm = s_prof_task ? uxTaskGetStackHighWaterMark(s_prof_task) : 0;
+    ESP_LOGI(TAG, "PROF %.2fs tiles/s=%.1f px/s=%.0f avg_px/tile=%.0f max_px/tile=%u fps=%.1f bypass=%u migrated=%u | "
+             "decorate us/tile=%.1f us/Mpx=%.0f | orig_flush us/tile=%.1f | finish_latency us/tile=%.1f | "
+             "lvgl_stack_hwm=%u B (%s) heap_int_free=%u largest=%u",
+             secs, tiles / secs, (double)p.pixels / secs,
+             tiles > 0 ? (double)p.pixels / tiles : 0.0, (unsigned)p.max_tile_pixels,
+             (double)p.frames / secs, (unsigned)p.bypass_tiles, (unsigned)p.migrated_tiles,
+             valid > 0 ? dec_us / valid : 0.0, mpix > 0 ? dec_us / mpix : 0.0,
+             valid > 0 ? orig_us / valid : 0.0,
+             p.finish_cnt > 0 ? fin_us / (double)p.finish_cnt : 0.0,
+             (unsigned)(hwm * sizeof(StackType_t)), s_prof_task ? pcTaskGetName(s_prof_task) : "?",
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+}
+
+static void lcd_prof_start(lv_display_t *disp)
+{
+    lv_display_add_event_cb(disp, lcd_prof_flush_finish_cb, LV_EVENT_FLUSH_FINISH, NULL);
+    if (!s_prof_timer) {
+        const esp_timer_create_args_t args = { .callback = lcd_prof_report_cb, .name = "lcd_prof" };
+        if (esp_timer_create(&args, &s_prof_timer) == ESP_OK) {
+            esp_timer_start_periodic(s_prof_timer, 1000000);
+        }
+    }
+}
+
+/* Called right before the original flush callback; t0 is the cycle stamp at decorator entry. */
+static inline void prof_call_orig(lv_display_t *disp, const lv_area_t *area, uint8_t *buf,
+                                  lv_display_flush_cb_t orig, uint32_t t0, bool decorated)
+{
+    const uint32_t t1 = prof_cyc();
+    s_prof_flush_start_us = esp_timer_get_time();
+    s_prof_task = xTaskGetCurrentTaskHandle();
+    if (orig) {
+        orig(disp, area, buf);
+    } else {
+        lv_display_flush_ready(disp);
+    }
+    const uint32_t t2 = prof_cyc();
+    const uint32_t px = (uint32_t)((area->x2 - area->x1 + 1) * (area->y2 - area->y1 + 1));
+    const bool last = lv_display_flush_is_last(disp);
+    portENTER_CRITICAL(&s_prof_mux);
+    s_prof.tiles++;
+    s_prof.pixels += px;
+    if (px > s_prof.max_tile_pixels) {
+        s_prof.max_tile_pixels = px;
+    }
+    if (last) {
+        s_prof.frames++;
+    }
+    /* CCOUNT is per-core: a negative delta (>= 2^31 unsigned) means the task migrated; drop it. */
+    if ((t1 - t0) >= 0x80000000u || (t2 - t1) >= 0x80000000u) {
+        s_prof.migrated_tiles++;
+    } else {
+        if (decorated) {
+            s_prof.decorate_cyc += (t1 - t0);
+        }
+        s_prof.orig_cyc += (t2 - t1);
+    }
+    if (!decorated) {
+        s_prof.bypass_tiles++;
+    }
+    portEXIT_CRITICAL(&s_prof_mux);
+}
+#define PROF_T0()                      const uint32_t prof_t0 = prof_cyc()
+#define CALL_ORIG(d, a, b, dec)        prof_call_orig((d), (a), (b), s_orig_flush_cb, prof_t0, (dec))
+#else
+#define PROF_T0()                      ((void)0)
+#define CALL_ORIG(d, a, b, dec)        do { if (s_orig_flush_cb) { s_orig_flush_cb((d), (a), (b)); } else { lv_display_flush_ready(d); } } while (0)
+#endif
+
 static void trigger_display_invalidation(void)
 {
     if (s_target_disp) {
@@ -274,6 +412,7 @@ static void trigger_display_invalidation(void)
 
 static void lcd_decorator_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 {
+    PROF_T0();
     lcd_decorator_state_t snap;
     state_lock();
     snap = s_state;
@@ -306,11 +445,7 @@ static void lcd_decorator_flush_cb(lv_display_t *disp, const lv_area_t *area, ui
                 lcd_emulator_apply_filter_8to16(area, (const uint8_t *)px_map, s_rgb565_buf, &snap, inv, true);
             }
 
-            if (s_orig_flush_cb) {
-                s_orig_flush_cb(disp, area, (uint8_t *)s_rgb565_buf);
-            } else {
-                lv_display_flush_ready(disp);
-            }
+            CALL_ORIG(disp, area, (uint8_t *)s_rgb565_buf, true);
             return;
         }
 #endif
@@ -341,11 +476,11 @@ static void lcd_decorator_flush_cb(lv_display_t *disp, const lv_area_t *area, ui
 #endif
     }
 
-    if (s_orig_flush_cb) {
-        s_orig_flush_cb(disp, area, px_map);
-    } else {
-        lv_display_flush_ready(disp);
-    }
+#if LV_COLOR_DEPTH == 8
+    CALL_ORIG(disp, area, px_map, false);
+#else
+    CALL_ORIG(disp, area, px_map, true);
+#endif
 }
 #else
 static void trigger_display_invalidation(void) {}
@@ -432,6 +567,9 @@ esp_err_t lcd_emulator_init(lv_display_t *disp)
     s_target_disp = disp;
     s_orig_flush_cb = disp->flush_cb;
     lv_display_set_flush_cb(disp, lcd_decorator_flush_cb);
+#ifdef LCD_PROFILE
+    lcd_prof_start(disp);
+#endif
     lv_unlock();
 
     ESP_LOGI(TAG, "LCD decorator attached to display %p: mode=%d, shading=%d, cell=%u, gap=%u, threshold=%u, preset=%d, dark_theme=%d, depth=%d",
