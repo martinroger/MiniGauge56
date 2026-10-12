@@ -151,3 +151,5 @@ flowchart LR
 
 ### Boot-time LVGL lock note
 During boot the LVGL task can hold the adapter lock for >100 ms across back-to-back first-frame render cycles and re-takes it ~14 us after releasing it, so a lower-priority waiter with a short timeout can starve. `wakeDisplay()` in `main/main.cpp` therefore waits up to `WAKE_DISPLAY_LOCK_TIMEOUT_MS` (500 ms).
+
+An illustrated explanation of every optimisation in this component, with measurements, is in [docs/LCD_DECORATOR_WALKTHROUGH.html](../../docs/LCD_DECORATOR_WALKTHROUGH.html).
