@@ -99,14 +99,17 @@ static esp_err_t app_can_frame_router(const twai_frame_t *rx_frame)
 /**
  * @brief Wakes up the display backlight and resets the inactivity timer.
  *
- * @note Thread-safety: Thread-safe; acquires BSP display lock with 100 ms timeout.
+ * @note Thread-safety: Thread-safe; acquires BSP display lock with WAKE_DISPLAY_LOCK_TIMEOUT_MS timeout.
  * @note Side effects: Powers on display backlight and resets sleepDisplayTimer.
  */
+/** @brief Lock timeout for waking the display; the boot-time first-frame render can hold the LVGL lock for >100 ms */
+#define WAKE_DISPLAY_LOCK_TIMEOUT_MS 500
+
 void wakeDisplay(void)
 {
     if (display_off)
     {
-        if (bsp_display_lock(100) == ESP_OK)
+        if (bsp_display_lock(WAKE_DISPLAY_LOCK_TIMEOUT_MS) == ESP_OK)
         {
             bsp_display_backlight_on();
             display_off = false;
@@ -115,7 +118,7 @@ void wakeDisplay(void)
     }
     else // If the display is on already
     {
-        if (bsp_display_lock(100) == ESP_OK)
+        if (bsp_display_lock(WAKE_DISPLAY_LOCK_TIMEOUT_MS) == ESP_OK)
         {
             backlight_override ? bsp_display_brightness_set(50) : bsp_display_backlight_on();
             bsp_display_unlock();
