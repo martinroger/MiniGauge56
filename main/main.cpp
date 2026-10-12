@@ -23,7 +23,6 @@
 /** @brief Global LVGL display object pointer */
 lv_display_t *main_display = NULL;
 
-
 /** @brief Counter of valid decoded BMWP2000 LID telemetry frames */
 static uint32_t s_bmwp_frame_count = 0;
 
@@ -69,8 +68,6 @@ bool backlight_override = false;
 
 /** @brief Software timer handle for display inactivity sleep timeout */
 static TimerHandle_t sleepDisplayTimer = NULL;
-
-
 
 /**
  * @brief Top-level CAN frame router registered with twai_daemon.
@@ -225,9 +222,9 @@ extern "C" void action_backlight_sw_unchecked(lv_event_t *e)
     wakeDisplay(); // For good measure to restart the sleep timer
 }
 
-extern "C" void action_filter_sw_actuated(lv_event_t * e)
+extern "C" void action_filter_sw_actuated(lv_event_t *e)
 {
-    if(lv_obj_has_state(objects.filter_sw,LV_STATE_CHECKED))
+    if (lv_obj_has_state(objects.filter_sw, LV_STATE_CHECKED))
     {
         // Turn off emulation
         lcd_emulator_set_enabled(false);
@@ -249,45 +246,58 @@ void update_display(void *pvParameters)
 {
     while (1)
     {
+        uint32_t tabID = lv_tabview_get_tab_active(objects.global_tabview);
         if (bsp_display_lock(100) == ESP_OK)
         {
-            lv_label_set_text_fmt(objects.filename, "%s", current_log_filename);
-            lv_label_set_text_fmt(objects.filesize, "%lu kB", current_file_size / 1024);
-            lv_label_set_text_fmt(objects.buffered_size, "%lu B", current_buffered_bytes);
-            lv_label_set_text_fmt(objects.start_stop_lbl, "%s", is_logging ? "STOP" : "START");
-            lv_obj_set_state(objects.start_stop_btn, LV_STATE_CHECKED, is_logging);
-            lv_label_set_text_fmt(objects.status, "%s", is_logging ? "Logging" : "Paused");
-
-
-
-            lv_label_set_text_fmt(objects.bmw_engine_temp, "%.1f", s_bmwp_cached_engine_temp);
-            lv_label_set_text_fmt(objects.bmw_frames_count,"%lu",s_bmwp_frame_count);
-            lv_label_set_text_fmt(objects.bmw_hpfp,"%.1f",s_bmwp_cached_hpfp);
-            lv_label_set_text_fmt(objects.bmw_oil_temp,"%.1f",s_bmwp_cached_oil_temp);
-            lv_label_set_text_fmt(objects.bmw_rpm,"%lu",lround(s_bmwp_cached_rpm));
-
-            //Here should put the state of the daemon
-            switch (bmwp2000_get_state())
+            switch (tabID)
             {
-            case BMWP2000_STATE_BACKOFF_WAIT:
-                lv_obj_add_state(objects.bmw_state,LV_STATE_DISABLED);
-                lv_obj_set_style_text_color(objects.bmw_state,lv_palette_main(LV_PALETTE_RED),LV_STATE_DISABLED);
-                break;
-            case BMWP2000_STATE_SETUP_LID:
-                lv_obj_add_state(objects.bmw_state,LV_STATE_DISABLED);
-                lv_obj_set_style_text_color(objects.bmw_state,lv_palette_main(LV_PALETTE_AMBER),LV_STATE_DISABLED);
+            case 0:
+                lv_label_set_text_fmt(objects.engine_temp, "%.1f", s_bmwp_cached_engine_temp);
                 break;
 
-            case BMWP2000_STATE_RUNNING:
-                lv_obj_remove_state(objects.bmw_state,LV_STATE_DISABLED);
-                lv_obj_set_style_text_color(objects.bmw_state,lv_palette_main(LV_PALETTE_GREEN),LV_STATE_DEFAULT);
+            case 1:
+                lv_label_set_text_fmt(objects.bmw_engine_temp, "%.1f", s_bmwp_cached_engine_temp);
+                lv_label_set_text_fmt(objects.bmw_frames_count, "%lu", s_bmwp_frame_count);
+                lv_label_set_text_fmt(objects.bmw_hpfp, "%.1f", s_bmwp_cached_hpfp);
+                lv_label_set_text_fmt(objects.bmw_oil_temp, "%.1f", s_bmwp_cached_oil_temp);
+                lv_label_set_text_fmt(objects.bmw_rpm, "%lu", lround(s_bmwp_cached_rpm));
+                switch (bmwp2000_get_state())
+                {
+                case BMWP2000_STATE_BACKOFF_WAIT:
+                    lv_obj_add_state(objects.bmw_state, LV_STATE_DISABLED);
+                    lv_obj_set_style_text_color(objects.bmw_state, lv_palette_main(LV_PALETTE_RED), LV_STATE_DISABLED);
+                    break;
+                case BMWP2000_STATE_SETUP_LID:
+                    lv_obj_add_state(objects.bmw_state, LV_STATE_DISABLED);
+                    lv_obj_set_style_text_color(objects.bmw_state, lv_palette_main(LV_PALETTE_AMBER), LV_STATE_DISABLED);
+                    break;
+
+                case BMWP2000_STATE_RUNNING:
+                    lv_obj_remove_state(objects.bmw_state, LV_STATE_DISABLED);
+                    lv_obj_set_style_text_color(objects.bmw_state, lv_palette_main(LV_PALETTE_GREEN), LV_STATE_DEFAULT);
+                    break;
+
+                default:
+                    lv_obj_remove_state(objects.bmw_state, LV_STATE_DISABLED);
+                    lv_obj_set_style_text_color(objects.bmw_state, lv_palette_main(LV_PALETTE_ORANGE), LV_STATE_DEFAULT);
+                    break;
+                }
                 break;
-            
+
+            case 2:
+                lv_label_set_text_fmt(objects.filename, "%s", current_log_filename);
+                lv_label_set_text_fmt(objects.filesize, "%lu kB", current_file_size / 1024);
+                lv_label_set_text_fmt(objects.buffered_size, "%lu B", current_buffered_bytes);
+                lv_label_set_text_fmt(objects.start_stop_lbl, "%s", is_logging ? "STOP" : "START");
+                lv_obj_set_state(objects.start_stop_btn, LV_STATE_CHECKED, is_logging);
+                lv_label_set_text_fmt(objects.status, "%s", is_logging ? "Logging" : "Paused");
+                break;
+
             default:
-                lv_obj_remove_state(objects.bmw_state,LV_STATE_DISABLED);
-                lv_obj_set_style_text_color(objects.bmw_state,lv_palette_main(LV_PALETTE_ORANGE),LV_STATE_DEFAULT);
                 break;
             }
+
+            // Here should put the state of the daemon
 
             bsp_display_unlock();
         }
@@ -304,7 +314,6 @@ void update_display(void *pvParameters)
 extern "C" void app_main(void)
 {
     sleepDisplayTimer = xTimerCreate("slp_disp", pdMS_TO_TICKS(10000), pdFALSE, NULL, sleepDisplayTimer_cb);
-
 
     if (bsp_sdcard_mount() != ESP_OK)
     {
@@ -332,8 +341,6 @@ extern "C" void app_main(void)
     {
         ESP_LOGE(__func__, "Failed to initialize TWAI modern driver");
     }
-
-
 
     // Initialize BMWP2000 Diagnostic Daemon (ISO 14230-3 / ISO 15765-2)
     if (bmwp2000_init() == ESP_OK)
@@ -396,4 +403,3 @@ extern "C" void app_main(void)
                  (unsigned long)s_bmwp_frame_count, s_bmwp_cached_rpm, s_bmwp_cached_oil_temp, s_bmwp_cached_engine_temp, s_bmwp_cached_hpfp);
     }
 }
-

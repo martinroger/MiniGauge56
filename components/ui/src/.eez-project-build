@@ -11,7 +11,9 @@
     "styles.h",
     "ui.c",
     "ui.h",
-    "ui_font_w_rabbit_128.c",
+    "ui_font_league_192px.c",
+    "ui_font_league_30px.c",
+    "ui_font_league_48px.c",
     "vars.h"
   ]
 }
