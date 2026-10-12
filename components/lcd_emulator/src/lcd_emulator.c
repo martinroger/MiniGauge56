@@ -18,11 +18,19 @@
 #include "freertos/semphr.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
+#include "esp_attr.h"
 static const char *TAG = "lcd_emulator";
 #else
 #define ESP_LOGI(tag, fmt, ...)
 #define ESP_LOGW(tag, fmt, ...)
 #define ESP_LOGE(tag, fmt, ...)
+#endif
+
+/* Optional placement of the hot 8-to-16 decimator in IRAM (avoids flash/PSRAM-XIP instruction fetch). */
+#if defined(CONFIG_LCD_EMULATOR_HOT_IN_IRAM) && defined(ESP_PLATFORM)
+#define LCD_HOT_ATTR IRAM_ATTR
+#else
+#define LCD_HOT_ATTR
 #endif
 
 /* Kconfig Default Mappings */
@@ -107,6 +115,13 @@ static const char *TAG = "lcd_emulator";
 #if LV_COLOR_DEPTH == 8
 static uint16_t *s_rgb565_buf = NULL;
 static size_t s_rgb565_buf_pixels = 0;
+static size_t s_rgb565_buf_req_pixels = 0;
+#if defined(CONFIG_LCD_EMULATOR_STAGING_INTERNAL) && defined(ESP_PLATFORM)
+#define LCD_STAGING_INTERNAL 1
+/* Internal DMA-capable staging tile (sized to the draw buffer); s_rgb565_buf stays the lazy PSRAM fallback. */
+static uint16_t *s_stage_buf = NULL;
+static size_t s_stage_buf_pixels = 0;
+#endif
 #endif
 
 static uint8_t s_lum_lut[256];
@@ -424,12 +439,29 @@ static void lcd_decorator_flush_cb(lv_display_t *disp, const lv_area_t *area, ui
         const int32_t width = area->x2 - area->x1 + 1;
         const int32_t height = area->y2 - area->y1 + 1;
         const size_t area_pixels = (size_t)(width * height);
-        if (s_rgb565_buf && area_pixels <= s_rgb565_buf_pixels) {
+        uint16_t *out_buf = s_rgb565_buf;
+        size_t out_pixels = s_rgb565_buf_pixels;
+#ifdef LCD_STAGING_INTERNAL
+        if (s_stage_buf && area_pixels <= s_stage_buf_pixels) {
+            out_buf = s_stage_buf;
+            out_pixels = s_stage_buf_pixels;
+        } else if (s_stage_buf && !s_rgb565_buf) {
+            /* Oversize tile: lazily allocate the full-frame PSRAM fallback */
+            s_rgb565_buf = (uint16_t *)heap_caps_malloc(s_rgb565_buf_req_pixels * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+            if (s_rgb565_buf) {
+                s_rgb565_buf_pixels = s_rgb565_buf_req_pixels;
+                ESP_LOGW(TAG, "Staging tile too small for %zu px, PSRAM fallback allocated", area_pixels);
+            }
+            out_buf = s_rgb565_buf;
+            out_pixels = s_rgb565_buf_pixels;
+        }
+#endif
+        if (out_buf && area_pixels <= out_pixels) {
             if (snap.mode == LCD_RENDER_MODE_PASSTHROUGH) {
                 // High-speed LUT expansion for passthrough mode (with wire byte-swap)
                 const uint8_t *src8 = (const uint8_t *)px_map;
                 for (size_t i = 0; i < area_pixels; i++) {
-                    s_rgb565_buf[i] = s_passthrough_lut[src8[i]];
+                    out_buf[i] = s_passthrough_lut[src8[i]];
                 }
             } else if (snap.mode == LCD_RENDER_MODE_CUSTOM) {
                 if (snap.custom_render_fn) {
@@ -437,15 +469,15 @@ static void lcd_decorator_flush_cb(lv_display_t *disp, const lv_area_t *area, ui
                 }
                 const uint8_t *src8 = (const uint8_t *)px_map;
                 for (size_t i = 0; i < area_pixels; i++) {
-                    s_rgb565_buf[i] = s_passthrough_lut[src8[i]];
+                    out_buf[i] = s_passthrough_lut[src8[i]];
                 }
             } else {
                 // Direct single-pass stream into 16-bit RGB565 buffer (wire-swapped, full palette colors)
                 const bool inv = (snap.mode == LCD_RENDER_MODE_RETRO_INVERTED);
-                lcd_emulator_apply_filter_8to16(area, (const uint8_t *)px_map, s_rgb565_buf, &snap, inv, true);
+                lcd_emulator_apply_filter_8to16(area, (const uint8_t *)px_map, out_buf, &snap, inv, true);
             }
 
-            CALL_ORIG(disp, area, (uint8_t *)s_rgb565_buf, true);
+            CALL_ORIG(disp, area, (uint8_t *)out_buf, true);
             return;
         }
 #endif
@@ -532,6 +564,28 @@ esp_err_t lcd_emulator_init(lv_display_t *disp)
     }
 #endif
     size_t req_pixels = (size_t)(hor_res * ver_res);
+    s_rgb565_buf_req_pixels = req_pixels;
+#ifdef LCD_STAGING_INTERNAL
+    if (!s_stage_buf && disp) {
+        size_t tile_px = req_pixels;
+        if (disp->buf_1 && disp->buf_1->data_size > 0) {
+            tile_px = disp->buf_1->data_size / lv_color_format_get_size(lv_display_get_color_format(disp));
+            if (tile_px > req_pixels) {
+                tile_px = req_pixels;
+            }
+        }
+        s_stage_buf = (uint16_t *)heap_caps_malloc(tile_px * sizeof(uint16_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+        if (s_stage_buf) {
+            s_stage_buf_pixels = tile_px;
+            ESP_LOGI(TAG, "Internal staging tile: %zu px (%zu B), draw buf %zu px", tile_px, tile_px * sizeof(uint16_t), tile_px);
+        } else {
+            ESP_LOGW(TAG, "Internal staging alloc of %zu B failed, using PSRAM buffer", tile_px * sizeof(uint16_t));
+        }
+    }
+    if (s_stage_buf) {
+        goto skip_psram_alloc; /* PSRAM fallback is allocated lazily on first oversize tile */
+    }
+#endif
     if (!s_rgb565_buf || s_rgb565_buf_pixels < req_pixels) {
 #if defined(ESP_PLATFORM)
         if (s_rgb565_buf) {
@@ -554,6 +608,9 @@ esp_err_t lcd_emulator_init(lv_display_t *disp)
             ESP_LOGE(TAG, "Failed to allocate %zu bytes for RGB565 expansion buffer", req_pixels * sizeof(uint16_t));
         }
     }
+#ifdef LCD_STAGING_INTERNAL
+skip_psram_alloc:;
+#endif
 #endif
 #endif
 
@@ -1309,7 +1366,7 @@ LCD_FORCE_INLINE void lcd_decimate_core(const lv_area_t *area, const uint8_t *sr
     }
 }
 
-void lcd_emulator_apply_filter_8to16(const lv_area_t *area,
+void LCD_HOT_ATTR lcd_emulator_apply_filter_8to16(const lv_area_t *area,
                                      const uint8_t *src_pixels,
                                      uint16_t *dst_rgb565,
                                      const lcd_decorator_state_t *state,

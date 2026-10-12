@@ -107,6 +107,22 @@ menu "Retro Monochrome LCD Emulator"
             enable this option to expand the 8-bit buffer to RGB565 before forwarding
             to the original display flush callback.
 
+    config LCD_EMULATOR_STAGING_INTERNAL
+        bool "Stage RGB565 output in an internal DMA-capable tile buffer"
+        default n
+        depends on LCD_EMULATOR_EXPAND_TO_RGB565
+        help
+            Allocate the RGB565 output buffer in internal DMA-capable RAM, sized to the largest
+            tile the LVGL draw buffer holds, instead of a full-frame PSRAM buffer. Tiles larger
+            than the staging buffer fall back to a lazily allocated PSRAM buffer.
+
+    config LCD_EMULATOR_HOT_IN_IRAM
+        bool "Place the 8-to-16 decimator in IRAM"
+        default n
+        help
+            Put lcd_emulator_apply_filter_8to16() (with its inlined helpers) in IRAM instead of
+            executing from flash/PSRAM-XIP.
+
     config LCD_EMULATOR_PROFILE
         bool "Enable flush-path profiling (1 Hz ESP_LOGI report)"
         default n
