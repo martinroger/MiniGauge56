@@ -148,3 +148,15 @@ When compiling with `LV_COLOR_DEPTH == 8`, the LVGL draw buffer footprint is hal
 | `CONFIG_LCD_EMULATOR_DEFAULT_GAP_SIZE` | `int` | `1` | `0 .. 3` | Physical pixel width of inactive substrate separator lines between dots. |
 | `CONFIG_LCD_EMULATOR_DEFAULT_THRESHOLD` | `int` | `100` | `0 .. 255` | 8-bit luminance threshold detecting active elements in monochrome modes. |
 | `CONFIG_LCD_EMULATOR_DEFAULT_PALETTE` | `choice` | `OLIVE` | `OLIVE`, `CASIO`, `AMBER`, `CYAN` | Active substrate and ink color palette applied at initialization. |
+
+---
+
+## Host checks for the 8-bit to RGB565 decimator
+
+`components/lcd_emulator/test/run_host_checks.sh [iterations] [seed]` builds and runs, at `LV_COLOR_DEPTH` 8 and 16:
+
+- the existing unit tests (`test_lcd_emulator.cpp`),
+- `lcd_diff_bench.cpp fuzz`: a differential fuzz that compares `lcd_emulator_apply_filter_8to16()` bit for bit against a baseline copy of `lcd_emulator.c` taken from git history (`BASE_REF`, default `2762974`) with its public symbols renamed `ref_*`, plus an exhaustive check of the reciprocal-divide identity,
+- optional `BENCH=1`: a timing table (baseline vs current) over several cell/gap geometries, tile shapes and content types. Host timings are relative only; they are not ESP32-S3 numbers.
+
+Set `ASAN=1` for AddressSanitizer + UBSan. The existing state-safety unit test deliberately feeds invalid enum values, which UBSan reports; that is expected.
