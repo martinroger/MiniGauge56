@@ -124,3 +124,30 @@ LVGL 9 native 8-bit color depth uses `LV_COLOR_FORMAT_L8` (pure 8-bit luminance)
    - In L8 mode: Expands grayscale intensity $Y$ to $R=Y, G=Y, B=Y$ in swapped RGB565.
    - In RGB232 mode: Expands 8-bit color directly to full 16-bit swapped RGB565.
 
+---
+
+## 7. Output Tile Staging (Internal RAM) & Flush Profiling
+
+### Memory placement
+The 8-bit LVGL draw buffer lives in PSRAM (`esp_lv_adapter`, `use_psram = true`). Before staging, the RGB565 output of the decimator was written to a full-frame (466x466x2 B) PSRAM buffer, so every tile crossed the PSRAM bus twice (read 8-bit source, write 16-bit result) and the SPI/QSPI DMA then read the result back out of PSRAM.
+
+With `CONFIG_LCD_EMULATOR_STAGING_INTERNAL` (default `y`) `lcd_emulator_init()` allocates one **staging tile** in internal DMA-capable RAM, sized to the LVGL draw buffer (`buf_1->data_size / bytes_per_pixel`, 23300 px = 46.6 KB for 466x50 tiles). The decimator writes into it and the original flush callback DMA-reads it directly. LVGL does not reuse the draw buffer or call the flush callback again until `flush_ready`, so a single staging tile is race-free. A tile larger than the staging buffer lazily allocates the full-frame PSRAM fallback on first use.
+
+```mermaid
+flowchart LR
+    subgraph PSRAM
+        DB["LVGL draw buffer (L8, 466x50)"]
+    end
+    subgraph "Internal RAM"
+        ST["Staging tile (RGB565, 46.6 KB)"]
+    end
+    DB -->|decimator reads| DEC["lcd_emulator_apply_filter_8to16"]
+    DEC -->|writes| ST
+    ST -->|SPI/QSPI DMA| PANEL["CO5300 panel"]
+```
+
+### Profiling (`CONFIG_LCD_EMULATOR_PROFILE`)
+`lcd_decorator_flush_cb` timestamps the decorate step and the wrapped flush with the CPU cycle counter (samples whose delta is negative because the LVGL task migrated cores are dropped) and the `LV_EVENT_FLUSH_FINISH` latency with `esp_timer`. A 1 Hz `esp_timer` logs the aggregate `PROF` line.
+
+### Boot-time LVGL lock note
+During boot the LVGL task can hold the adapter lock for >100 ms across back-to-back first-frame render cycles and re-takes it ~14 us after releasing it, so a lower-priority waiter with a short timeout can starve. `wakeDisplay()` in `main/main.cpp` therefore waits up to `WAKE_DISPLAY_LOCK_TIMEOUT_MS` (500 ms).

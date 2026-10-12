@@ -18,19 +18,11 @@
 #include "freertos/semphr.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
-#include "esp_attr.h"
 static const char *TAG = "lcd_emulator";
 #else
 #define ESP_LOGI(tag, fmt, ...)
 #define ESP_LOGW(tag, fmt, ...)
 #define ESP_LOGE(tag, fmt, ...)
-#endif
-
-/* Optional placement of the hot 8-to-16 decimator in IRAM (avoids flash/PSRAM-XIP instruction fetch). */
-#if defined(CONFIG_LCD_EMULATOR_HOT_IN_IRAM) && defined(ESP_PLATFORM)
-#define LCD_HOT_ATTR IRAM_ATTR
-#else
-#define LCD_HOT_ATTR
 #endif
 
 /* Kconfig Default Mappings */
@@ -1366,7 +1358,7 @@ LCD_FORCE_INLINE void lcd_decimate_core(const lv_area_t *area, const uint8_t *sr
     }
 }
 
-void LCD_HOT_ATTR lcd_emulator_apply_filter_8to16(const lv_area_t *area,
+void lcd_emulator_apply_filter_8to16(const lv_area_t *area,
                                      const uint8_t *src_pixels,
                                      uint16_t *dst_rgb565,
                                      const lcd_decorator_state_t *state,
