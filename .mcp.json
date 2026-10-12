@@ -1,0 +1,8 @@
+{
+	"mcpServers": {
+		"esp-idf-eim": {
+			"command": "eim",
+			"args": ["run", "idf.py mcp-server", "v6.1"]
+		}
+	}
+}

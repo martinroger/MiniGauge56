@@ -61,3 +61,16 @@
 - **Unified UI Design Tokens**: Styles inherit from `theme.css` maintaining Yaru Dark / Cold White light palette and responsive card layouts.
 - **Non-Diagnostic Stream Separation**: Background CAN broadcast frames are kept cleanly separated from diagnostic ISO-TP sessions and dynamically toggled in the timeline without re-requesting log parsing.
 
+---
+
+## 3. Build Server & Toolchain Constraints
+
+- **Toolchain Manager**: ESP-IDF is installed locally through Espressif Installation Manager (`eim` >= 0.8.1) with the `mcp` feature enabled. Toolchains live under `~/.espressif` (outside the repository).
+- **Build Server**: The official Espressif Tools MCP server (`idf.py mcp-server`, ESP-IDF >= v6.0) is registered in [.mcp.json](../.mcp.json) as `esp-idf-eim`, pinned to v6.1 via `eim run "idf.py mcp-server" v6.1`. It is a local stdio process: no network listener, no credentials.
+- **Version Pinning**: The pin is per-invocation, so the global `eim select` choice is irrelevant to this project.
+- **MCP-First Rule**: Agents use the MCP tools (`set_target`, `build_project`, `flash_project`, `clean_project`, resources `project://status|config|devices`) when the server is connected. Fallback: `eim run "idf.py fullclean build" v6.1`.
+- **Clean Rule**: `clean_project` (or `fullclean`) is mandatory after any `Kconfig`, `Kconfig.projbuild`, `sdkconfig` or `sdkconfig.*` change, at session start and after a branch switch.
+- **Privacy Invariant**: `.mcp.json` and all committed docs/hooks/skills MUST NOT contain absolute home paths (`/Users/<name>`, `/home/<name>`), `IDF_PATH` values, tokens or credentials. Generated `sdkconfig`, `sdkconfig.old`, `build/`, `*.log` and `.espressif/` are git-ignored and must stay untracked.
+- **Enforcement**: `.githooks/pre-commit` rejects staged text files containing absolute home paths or common secret patterns.
+
+---

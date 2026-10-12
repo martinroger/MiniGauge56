@@ -15,6 +15,7 @@ Before running compilation, determine the active environment mode in order of pr
 
 ### Mode A: ESP-IDF Build MCP Server (Preferred if present)
 If an ESP-IDF Build MCP server is active in the environment, use its native build tools instead of direct shell commands.
+In this repository the server is `esp-idf-eim` (see `.mcp.json`), pinned to v6.1 via `eim run "idf.py mcp-server" v6.1`; when appending a version to CLI fallbacks use `eim run "idf.py fullclean build" v6.1`.
 
 ### Mode B: Espressif Installation Manager (`eim`) (Recommended CLI)
 For ESP-IDF v6.0+, `eim` is the standard virtual environment and toolchain manager:

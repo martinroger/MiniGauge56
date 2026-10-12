@@ -27,6 +27,27 @@ if [ -n "$STAGED_DOCS" ]; then
   fi
 fi
 
+# 1b. Absolute Home Path & Secret Guard (all staged text files)
+# Blocks /Users/<name>/, /home/<name>/, and well-known credential patterns.
+# The hooks directory itself is excluded because it contains these patterns.
+PATH_RE='(/Users/[A-Za-z0-9._-]+/|/home/[A-Za-z0-9._-]+/)'
+SECRET_RE='(AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|xox[abprs]-[A-Za-z0-9-]{10,}|(password|passwd|secret|api[_-]?key|token)[[:space:]]*[=:][[:space:]]*["'"'"'][^"'"'"' ]{8,}["'"'"'])'
+STAGED_ALL=$(git diff --cached --name-only --diff-filter=ACM | grep -v -E '^\.githooks/' || true)
+if [ -n "$STAGED_ALL" ]; then
+  HITS=""
+  for f in $STAGED_ALL; do
+    if git show ":$f" | grep -I -E -q "$PATH_RE|$SECRET_RE"; then
+      HITS="${HITS}  - ${f}\n"
+    fi
+  done
+  if [ -n "$HITS" ]; then
+    echo "❌ [Git Hook: pre-commit] ERROR: Absolute home path or credential pattern detected in staged files:"
+    echo -e "$HITS"
+    echo "   Use workspace-relative paths and keep secrets out of git."
+    exit 1
+  fi
+fi
+
 # 2. Clang-Format Code Formatting & Indentation Check
 # If .clang-format is present and clang-format is installed, verify staged C/C++ files
 if [ -f ".clang-format" ] && command -v clang-format >/dev/null 2>&1; then

@@ -23,7 +23,7 @@ MiniGauge56 is an ESP32-S3 embedded digital gauge and high-throughput CAN teleme
 ## Documentation
 - [System Requirements & Traceability Matrix](docs/REQUIREMENTS.md)
 - [Platform & Architectural Constraints](docs/CONSTRAINTS.md)
-- [Theory of Operation (TOO)](docs/TOO.MD)
+- [Theory of Operation (TOO)](docs/TOO.MD) (includes the ESP-IDF v6.1 MCP build server setup, configured in [.mcp.json](.mcp.json))
 - [Retro LCD Emulator Guide](components/lcd_emulator/HOWTO.md) & [LCD Theory of Operation](components/lcd_emulator/TOO.MD)
 - [BMWP2000 Diagnostic Component Repository](https://github.com/martinroger/BMWP2000)
 - [TWAI Daemon Component Repository](https://github.com/martinroger/twai_daemon)

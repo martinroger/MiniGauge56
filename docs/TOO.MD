@@ -212,3 +212,21 @@ stateDiagram-v2
     ALWAYS_ON --> AWAKE_FULL: Backlight Switch Unchecked (Restore 100% & Start Timer)
 ```
 
+## 6. Build Server (ESP-IDF Tools MCP)
+
+The firmware is built through Espressif's local MCP server, registered in [.mcp.json](../.mcp.json):
+
+```
+eim run "idf.py mcp-server" v6.1
+```
+
+| Step | Action | Expected result |
+| :--- | :--- | :--- |
+| 1 | Start `claude` from the repository root and approve the project-scoped `esp-idf-eim` server | `claude mcp list` shows it connected |
+| 2 | Read resource `project://status` | Reports IDF v6.1, target and build dir |
+| 3 | `set_target` (esp32s3) when initializing, then `clean_project` | Fresh CMake cache |
+| 4 | `build_project` | `build/` populated; read the full log on failure |
+| 5 | `flash_project` (port from `project://devices`) | Only on explicit user request |
+
+The server resolves the project from its working directory. Fallback without MCP: `eim run "idf.py fullclean build" v6.1`. Constraints: see [docs/CONSTRAINTS.md](CONSTRAINTS.md).
+
