@@ -259,6 +259,10 @@ void update_display(void *pvParameters)
                 break;
 
             case 1:
+                lv_label_set_text_fmt(objects.oil_temp, "%.1f", s_bmwp_cached_oil_temp);
+                break;
+
+            case 2:
                 lv_label_set_text_fmt(objects.bmw_engine_temp, "%.1f", s_bmwp_cached_engine_temp);
                 lv_label_set_text_fmt(objects.bmw_frames_count, "%lu", s_bmwp_frame_count);
                 lv_label_set_text_fmt(objects.bmw_hpfp, "%.1f", s_bmwp_cached_hpfp);
@@ -287,7 +291,7 @@ void update_display(void *pvParameters)
                 }
                 break;
 
-            case 2:
+            case 3:
                 lv_label_set_text_fmt(objects.filename, "%s", current_log_filename);
                 lv_label_set_text_fmt(objects.filesize, "%lu kB", current_file_size / 1024);
                 lv_label_set_text_fmt(objects.buffered_size, "%lu B", current_buffered_bytes);
