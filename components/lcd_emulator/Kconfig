@@ -139,7 +139,33 @@ menu "Retro Monochrome LCD Emulator"
             bool "Industrial Amber Backlit"
         config LCD_EMULATOR_ALT_PALETTE_CYAN
             bool "Nokia Cyan EL Backlit"
+        config LCD_EMULATOR_ALT_PALETTE_CUSTOM
+            bool "Custom (colors set manually below)"
     endchoice
+
+    config LCD_EMULATOR_ALT_CUSTOM_COLOR_ON
+        hex "Alternate custom palette: ON (active dot) color, 0xRRGGBB"
+        default 0x1B2812
+        range 0x000000 0xFFFFFF
+        depends on LCD_EMULATOR_ALT_PALETTE_CUSTOM
+
+    config LCD_EMULATOR_ALT_CUSTOM_COLOR_OFF
+        hex "Alternate custom palette: OFF (inactive dot) color, 0xRRGGBB"
+        default 0x91A193
+        range 0x000000 0xFFFFFF
+        depends on LCD_EMULATOR_ALT_PALETTE_CUSTOM
+
+    config LCD_EMULATOR_ALT_CUSTOM_COLOR_GAP
+        hex "Alternate custom palette: GAP (grid line between dots) color, 0xRRGGBB"
+        default 0x7E8E80
+        range 0x000000 0xFFFFFF
+        depends on LCD_EMULATOR_ALT_PALETTE_CUSTOM
+
+    config LCD_EMULATOR_ALT_CUSTOM_COLOR_BG
+        hex "Alternate custom palette: substrate background color, 0xRRGGBB"
+        default 0xA0B0A2
+        range 0x000000 0xFFFFFF
+        depends on LCD_EMULATOR_ALT_PALETTE_CUSTOM
 
     config LCD_EMULATOR_EXPAND_TO_RGB565
         bool "Expand 8-bit framebuffer to 16-bit RGB565 for display hardware"

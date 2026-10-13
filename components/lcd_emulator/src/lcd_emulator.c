@@ -109,7 +109,10 @@ static const char *TAG = "lcd_emulator";
 #define LCD_RGB888_G(c) ((uint8_t)(((c) >> 8) & 0xFF))
 #define LCD_RGB888_B(c) ((uint8_t)((c) & 0xFF))
 
-#if defined(CONFIG_LCD_EMULATOR_ALT_PALETTE_OLIVE)
+#if defined(CONFIG_LCD_EMULATOR_ALT_PALETTE_CUSTOM)
+#define LCD_KCONFIG_ALT_CUSTOM 1
+#define LCD_KCONFIG_ALT_PRESET    LCD_PRESET_CASIO_GREY   /* unused when custom */
+#elif defined(CONFIG_LCD_EMULATOR_ALT_PALETTE_OLIVE)
 #define LCD_KCONFIG_ALT_PRESET    LCD_PRESET_OLIVE
 #elif defined(CONFIG_LCD_EMULATOR_ALT_PALETTE_AMBER)
 #define LCD_KCONFIG_ALT_PRESET    LCD_PRESET_AMBER
@@ -242,6 +245,16 @@ static lcd_palette_t kconfig_primary_palette(void)
                                             CONFIG_LCD_EMULATOR_CUSTOM_COLOR_GAP, CONFIG_LCD_EMULATOR_CUSTOM_COLOR_BG);
 #else
     return s_palettes[LCD_KCONFIG_PRESET];
+#endif
+}
+
+static lcd_palette_t kconfig_alt_palette(void)
+{
+#ifdef LCD_KCONFIG_ALT_CUSTOM
+    return lcd_emulator_palette_from_rgb888(CONFIG_LCD_EMULATOR_ALT_CUSTOM_COLOR_ON, CONFIG_LCD_EMULATOR_ALT_CUSTOM_COLOR_OFF,
+                                            CONFIG_LCD_EMULATOR_ALT_CUSTOM_COLOR_GAP, CONFIG_LCD_EMULATOR_ALT_CUSTOM_COLOR_BG);
+#else
+    return s_palettes[LCD_KCONFIG_ALT_PRESET];
 #endif
 }
 
@@ -593,7 +606,7 @@ esp_err_t lcd_emulator_init(lv_display_t *disp)
     s_state.gap_size         = LCD_KCONFIG_GAP_SIZE;
     s_state.threshold        = LCD_KCONFIG_THRESHOLD;
     s_slots[LCD_PALETTE_SLOT_PRIMARY] = kconfig_primary_palette();
-    s_slots[LCD_PALETTE_SLOT_ALT]     = s_palettes[LCD_KCONFIG_ALT_PRESET];
+    s_slots[LCD_PALETTE_SLOT_ALT]     = kconfig_alt_palette();
     s_active_slot            = LCD_PALETTE_SLOT_PRIMARY;
     s_state.palette          = s_slots[s_active_slot];
     s_state.custom_render_fn = NULL;
