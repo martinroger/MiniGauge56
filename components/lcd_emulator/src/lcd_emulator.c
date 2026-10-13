@@ -92,7 +92,10 @@ static const char *TAG = "lcd_emulator";
 #define LCD_KCONFIG_THRESHOLD     ((uint8_t)100)
 #endif
 
-#if defined(CONFIG_LCD_EMULATOR_PALETTE_CASIO)
+#if defined(CONFIG_LCD_EMULATOR_PALETTE_CUSTOM)
+#define LCD_KCONFIG_PRIMARY_CUSTOM 1
+#define LCD_KCONFIG_PRESET        LCD_PRESET_AMBER   /* index only used for logging */
+#elif defined(CONFIG_LCD_EMULATOR_PALETTE_CASIO)
 #define LCD_KCONFIG_PRESET        LCD_PRESET_CASIO_GREY
 #elif defined(CONFIG_LCD_EMULATOR_PALETTE_AMBER)
 #define LCD_KCONFIG_PRESET        LCD_PRESET_AMBER
@@ -100,6 +103,20 @@ static const char *TAG = "lcd_emulator";
 #define LCD_KCONFIG_PRESET        LCD_PRESET_CYAN
 #else
 #define LCD_KCONFIG_PRESET        LCD_PRESET_OLIVE
+#endif
+
+#define LCD_RGB888_R(c) ((uint8_t)(((c) >> 16) & 0xFF))
+#define LCD_RGB888_G(c) ((uint8_t)(((c) >> 8) & 0xFF))
+#define LCD_RGB888_B(c) ((uint8_t)((c) & 0xFF))
+
+#if defined(CONFIG_LCD_EMULATOR_ALT_PALETTE_OLIVE)
+#define LCD_KCONFIG_ALT_PRESET    LCD_PRESET_OLIVE
+#elif defined(CONFIG_LCD_EMULATOR_ALT_PALETTE_AMBER)
+#define LCD_KCONFIG_ALT_PRESET    LCD_PRESET_AMBER
+#elif defined(CONFIG_LCD_EMULATOR_ALT_PALETTE_CYAN)
+#define LCD_KCONFIG_ALT_PRESET    LCD_PRESET_CYAN
+#else
+#define LCD_KCONFIG_ALT_PRESET    LCD_PRESET_CASIO_GREY
 #endif
 
 #define LCD_MAX_CELL_COLS 256
@@ -197,6 +214,44 @@ static const lcd_palette_t s_palettes[LCD_PRESET_COUNT] = {
     },
 };
 
+lcd_palette_t lcd_emulator_palette_from_rgb888(uint32_t on, uint32_t off, uint32_t gap, uint32_t bg)
+{
+#define LCD_P_FIELDS(c) LCD_RGB888_R(c), LCD_RGB888_G(c), LCD_RGB888_B(c)
+#define LCD_P_RGB565(c) LCD_RGB565(LCD_RGB888_R(c), LCD_RGB888_G(c), LCD_RGB888_B(c))
+#define LCD_P_MAKE(c)   LCD_COLOR_MAKE(LCD_RGB888_R(c), LCD_RGB888_G(c), LCD_RGB888_B(c))
+    lcd_palette_t p = {
+        .color_bg       = LCD_P_MAKE(bg),
+        .color_active   = LCD_P_MAKE(on),
+        .color_inactive = LCD_P_MAKE(off),
+        .color_gap      = LCD_P_MAKE(gap),
+        .color_bg_rgb565       = LCD_P_RGB565(bg),
+        .color_active_rgb565   = LCD_P_RGB565(on),
+        .color_inactive_rgb565 = LCD_P_RGB565(off),
+        .color_gap_rgb565      = LCD_P_RGB565(gap),
+    };
+#undef LCD_P_FIELDS
+#undef LCD_P_RGB565
+#undef LCD_P_MAKE
+    return p;
+}
+
+static lcd_palette_t kconfig_primary_palette(void)
+{
+#ifdef LCD_KCONFIG_PRIMARY_CUSTOM
+    return lcd_emulator_palette_from_rgb888(CONFIG_LCD_EMULATOR_CUSTOM_COLOR_ON, CONFIG_LCD_EMULATOR_CUSTOM_COLOR_OFF,
+                                            CONFIG_LCD_EMULATOR_CUSTOM_COLOR_GAP, CONFIG_LCD_EMULATOR_CUSTOM_COLOR_BG);
+#else
+    return s_palettes[LCD_KCONFIG_PRESET];
+#endif
+}
+
+/* Palette slots: s_state.palette always mirrors s_slots[s_active_slot]. */
+static lcd_palette_t s_slots[LCD_PALETTE_SLOT_COUNT];
+static lcd_palette_slot_t s_active_slot = LCD_PALETTE_SLOT_PRIMARY;
+
+/* Caller holds the state lock (forward-declared below). */
+static void apply_active_palette(const lcd_palette_t *p);
+
 /* Active Decorator State (initialized with Kconfig defaults) */
 static lcd_decorator_state_t s_state = {
     .mode             = LCD_KCONFIG_RENDER_MODE,
@@ -235,6 +290,13 @@ static lcd_emulator_cfg_t s_legacy_cfg = {
         .color_gap_rgb565      = LCD_RGB565(0x6F, 0x7E, 0x45),
     },
 };
+
+static void apply_active_palette(const lcd_palette_t *p)
+{
+    s_state.palette = *p;
+    s_slots[s_active_slot] = *p;
+    s_legacy_cfg.palette = *p;
+}
 
 #if defined(ESP_PLATFORM)
 static SemaphoreHandle_t s_state_mutex = NULL;
@@ -530,7 +592,10 @@ esp_err_t lcd_emulator_init(lv_display_t *disp)
     s_state.cell_size        = LCD_KCONFIG_CELL_SIZE;
     s_state.gap_size         = LCD_KCONFIG_GAP_SIZE;
     s_state.threshold        = LCD_KCONFIG_THRESHOLD;
-    s_state.palette          = s_palettes[LCD_KCONFIG_PRESET];
+    s_slots[LCD_PALETTE_SLOT_PRIMARY] = kconfig_primary_palette();
+    s_slots[LCD_PALETTE_SLOT_ALT]     = s_palettes[LCD_KCONFIG_ALT_PRESET];
+    s_active_slot            = LCD_PALETTE_SLOT_PRIMARY;
+    s_state.palette          = s_slots[s_active_slot];
     s_state.custom_render_fn = NULL;
     s_state.custom_user_ctx  = NULL;
 
@@ -538,7 +603,7 @@ esp_err_t lcd_emulator_init(lv_display_t *disp)
     s_legacy_cfg.cell_size   = LCD_KCONFIG_CELL_SIZE;
     s_legacy_cfg.gap_size    = LCD_KCONFIG_GAP_SIZE;
     s_legacy_cfg.threshold   = LCD_KCONFIG_THRESHOLD;
-    s_legacy_cfg.palette     = s_palettes[LCD_KCONFIG_PRESET];
+    s_legacy_cfg.palette     = s_state.palette;
     state_unlock();
 
 #if LV_COLOR_DEPTH == 8
@@ -655,6 +720,7 @@ esp_err_t lcd_emulator_set_decorator_state(const lcd_decorator_state_t *state)
 
     state_lock();
     s_state = *state;
+    s_slots[s_active_slot] = s_state.palette;
 
     // Synchronize legacy configuration mirror
     s_legacy_cfg.enabled   = (s_state.mode != LCD_RENDER_MODE_PASSTHROUGH);
@@ -774,8 +840,7 @@ void lcd_emulator_set_preset(lcd_preset_t preset)
         return;
     }
     state_lock();
-    s_state.palette = s_palettes[preset];
-    s_legacy_cfg.palette = s_palettes[preset];
+    apply_active_palette(&s_palettes[preset]);
     state_unlock();
 
     trigger_display_invalidation();
@@ -805,10 +870,97 @@ void lcd_emulator_set_palette(const lcd_palette_t *palette)
         s_state.palette.color_gap_rgb565 = s_state.palette.color_gap;
 #endif
     }
+    s_slots[s_active_slot] = s_state.palette;
     s_legacy_cfg.palette = s_state.palette;
     state_unlock();
 
     trigger_display_invalidation();
+}
+
+esp_err_t lcd_emulator_set_color(lcd_color_role_t role, uint32_t rgb888)
+{
+    if (role >= LCD_COLOR_ROLE_COUNT) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    const uint8_t r = LCD_RGB888_R(rgb888), g = LCD_RGB888_G(rgb888), b = LCD_RGB888_B(rgb888);
+    state_lock();
+    lcd_palette_t p = s_state.palette;
+    switch (role) {
+    case LCD_COLOR_ROLE_ON:  p.color_active = LCD_COLOR_MAKE(r, g, b);   p.color_active_rgb565 = LCD_RGB565(r, g, b);   break;
+    case LCD_COLOR_ROLE_OFF: p.color_inactive = LCD_COLOR_MAKE(r, g, b); p.color_inactive_rgb565 = LCD_RGB565(r, g, b); break;
+    case LCD_COLOR_ROLE_GAP: p.color_gap = LCD_COLOR_MAKE(r, g, b);      p.color_gap_rgb565 = LCD_RGB565(r, g, b);      break;
+    default:                 p.color_bg = LCD_COLOR_MAKE(r, g, b);       p.color_bg_rgb565 = LCD_RGB565(r, g, b);       break;
+    }
+    apply_active_palette(&p);
+    state_unlock();
+    trigger_display_invalidation();
+    return ESP_OK;
+}
+
+void lcd_emulator_set_colors(uint32_t on, uint32_t off, uint32_t gap)
+{
+    state_lock();
+    lcd_palette_t p = lcd_emulator_palette_from_rgb888(on, off, gap, 0);
+    p.color_bg = s_state.palette.color_bg;
+    p.color_bg_rgb565 = s_state.palette.color_bg_rgb565;
+    apply_active_palette(&p);
+    state_unlock();
+    trigger_display_invalidation();
+}
+
+esp_err_t lcd_emulator_set_palette_slot(lcd_palette_slot_t slot, const lcd_palette_t *palette)
+{
+    if (slot >= LCD_PALETTE_SLOT_COUNT || !palette) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    state_lock();
+    s_slots[slot] = *palette;
+    bool active = (slot == s_active_slot);
+    if (active) {
+        apply_active_palette(palette);
+    }
+    state_unlock();
+    if (active) {
+        trigger_display_invalidation();
+    }
+    return ESP_OK;
+}
+
+esp_err_t lcd_emulator_set_preset_slot(lcd_palette_slot_t slot, lcd_preset_t preset)
+{
+    if (preset >= LCD_PRESET_COUNT) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return lcd_emulator_set_palette_slot(slot, &s_palettes[preset]);
+}
+
+esp_err_t lcd_emulator_select_palette_slot(lcd_palette_slot_t slot)
+{
+    if (slot >= LCD_PALETTE_SLOT_COUNT) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    state_lock();
+    s_active_slot = slot;
+    apply_active_palette(&s_slots[slot]);
+    state_unlock();
+    trigger_display_invalidation();
+    return ESP_OK;
+}
+
+lcd_palette_slot_t lcd_emulator_get_palette_slot(void)
+{
+    state_lock();
+    lcd_palette_slot_t slot = s_active_slot;
+    state_unlock();
+    return slot;
+}
+
+void lcd_emulator_swap_palette(void)
+{
+    state_lock();
+    lcd_palette_slot_t next = (s_active_slot == LCD_PALETTE_SLOT_PRIMARY) ? LCD_PALETTE_SLOT_ALT : LCD_PALETTE_SLOT_PRIMARY;
+    state_unlock();
+    lcd_emulator_select_palette_slot(next);
 }
 
 void lcd_emulator_set_8bit_input_rgb232(bool is_rgb232)
