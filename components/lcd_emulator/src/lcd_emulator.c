@@ -10,6 +10,8 @@
 #include "lcd_emulator.h"
 
 #include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
 
 #if defined(ESP_PLATFORM)
 #include "freertos/FreeRTOS.h"
@@ -105,6 +107,13 @@ static const char *TAG = "lcd_emulator";
 #if LV_COLOR_DEPTH == 8
 static uint16_t *s_rgb565_buf = NULL;
 static size_t s_rgb565_buf_pixels = 0;
+static size_t s_rgb565_buf_req_pixels = 0;
+#if defined(CONFIG_LCD_EMULATOR_STAGING_INTERNAL) && defined(ESP_PLATFORM)
+#define LCD_STAGING_INTERNAL 1
+/* Internal DMA-capable staging tile (sized to the draw buffer); s_rgb565_buf stays the lazy PSRAM fallback. */
+static uint16_t *s_stage_buf = NULL;
+static size_t s_stage_buf_pixels = 0;
+#endif
 #endif
 
 static uint8_t s_lum_lut[256];
@@ -258,6 +267,144 @@ static inline void state_unlock(void) {}
 static lv_display_t *s_target_disp = NULL;
 static lv_display_flush_cb_t s_orig_flush_cb = NULL;
 
+#if defined(CONFIG_LCD_EMULATOR_PROFILE) && defined(ESP_PLATFORM)
+#define LCD_PROFILE 1
+#include "esp_cpu.h"
+#include "esp_timer.h"
+#include "esp_clk_tree.h"
+#include "freertos/task.h"
+
+typedef struct {
+    uint64_t tiles;
+    uint64_t pixels;
+    uint32_t max_tile_pixels;
+    uint64_t frames;
+    uint64_t decorate_cyc;
+    uint64_t orig_cyc;
+    uint64_t finish_us;
+    uint64_t finish_cnt;
+    uint64_t bypass_tiles;
+    uint64_t migrated_tiles; /* tiles whose cycle delta was discarded (LVGL task changed core) */
+} lcd_prof_t;
+
+static lcd_prof_t s_prof;
+static portMUX_TYPE s_prof_mux = portMUX_INITIALIZER_UNLOCKED;
+static volatile int64_t s_prof_flush_start_us;
+static TaskHandle_t s_prof_task = NULL;
+static esp_timer_handle_t s_prof_timer = NULL;
+static int64_t s_prof_last_us = 0;
+
+static inline uint32_t prof_cyc(void)
+{
+    return (uint32_t)esp_cpu_get_cycle_count();
+}
+
+static void lcd_prof_flush_finish_cb(lv_event_t *e)
+{
+    (void)e;
+    /* May fire from an ISR on either core: use the shared esp_timer clock, not CCOUNT. */
+    const int64_t dt = esp_timer_get_time() - s_prof_flush_start_us;
+    portENTER_CRITICAL(&s_prof_mux);
+    s_prof.finish_us += (uint64_t)(dt > 0 ? dt : 0);
+    s_prof.finish_cnt++;
+    portEXIT_CRITICAL(&s_prof_mux);
+}
+
+static void lcd_prof_report_cb(void *arg)
+{
+    (void)arg;
+    lcd_prof_t p;
+    portENTER_CRITICAL(&s_prof_mux);
+    p = s_prof;
+    memset(&s_prof, 0, sizeof(s_prof));
+    portEXIT_CRITICAL(&s_prof_mux);
+
+    const int64_t now = esp_timer_get_time();
+    const double secs = (s_prof_last_us > 0) ? (double)(now - s_prof_last_us) / 1e6 : 1.0;
+    s_prof_last_us = now;
+
+    uint32_t cpu_hz = 240000000u;
+    esp_clk_tree_src_get_freq_hz(SOC_MOD_CLK_CPU, ESP_CLK_TREE_SRC_FREQ_PRECISION_CACHED, &cpu_hz);
+    const double us_per_cyc = 1e6 / (double)cpu_hz;
+
+    const double dec_us = (double)p.decorate_cyc * us_per_cyc;
+    const double orig_us = (double)p.orig_cyc * us_per_cyc;
+    const double fin_us = (double)p.finish_us;
+    const double tiles = (double)p.tiles;
+    const double valid = (double)(p.tiles - p.migrated_tiles);
+    const double mpix = (double)p.pixels / 1e6 * (tiles > 0 ? valid / tiles : 0.0);
+
+    UBaseType_t hwm = s_prof_task ? uxTaskGetStackHighWaterMark(s_prof_task) : 0;
+    ESP_LOGI(TAG, "PROF %.2fs tiles/s=%.1f px/s=%.0f avg_px/tile=%.0f max_px/tile=%u fps=%.1f bypass=%u migrated=%u | "
+             "decorate us/tile=%.1f us/Mpx=%.0f | orig_flush us/tile=%.1f | finish_latency us/tile=%.1f | "
+             "lvgl_stack_hwm=%u B (%s) heap_int_free=%u largest=%u",
+             secs, tiles / secs, (double)p.pixels / secs,
+             tiles > 0 ? (double)p.pixels / tiles : 0.0, (unsigned)p.max_tile_pixels,
+             (double)p.frames / secs, (unsigned)p.bypass_tiles, (unsigned)p.migrated_tiles,
+             valid > 0 ? dec_us / valid : 0.0, mpix > 0 ? dec_us / mpix : 0.0,
+             valid > 0 ? orig_us / valid : 0.0,
+             p.finish_cnt > 0 ? fin_us / (double)p.finish_cnt : 0.0,
+             (unsigned)(hwm * sizeof(StackType_t)), s_prof_task ? pcTaskGetName(s_prof_task) : "?",
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+}
+
+static void lcd_prof_start(lv_display_t *disp)
+{
+    lv_display_add_event_cb(disp, lcd_prof_flush_finish_cb, LV_EVENT_FLUSH_FINISH, NULL);
+    if (!s_prof_timer) {
+        const esp_timer_create_args_t args = { .callback = lcd_prof_report_cb, .name = "lcd_prof" };
+        if (esp_timer_create(&args, &s_prof_timer) == ESP_OK) {
+            esp_timer_start_periodic(s_prof_timer, 1000000);
+        }
+    }
+}
+
+/* Called right before the original flush callback; t0 is the cycle stamp at decorator entry. */
+static inline void prof_call_orig(lv_display_t *disp, const lv_area_t *area, uint8_t *buf,
+                                  lv_display_flush_cb_t orig, uint32_t t0, bool decorated)
+{
+    const uint32_t t1 = prof_cyc();
+    s_prof_flush_start_us = esp_timer_get_time();
+    s_prof_task = xTaskGetCurrentTaskHandle();
+    if (orig) {
+        orig(disp, area, buf);
+    } else {
+        lv_display_flush_ready(disp);
+    }
+    const uint32_t t2 = prof_cyc();
+    const uint32_t px = (uint32_t)((area->x2 - area->x1 + 1) * (area->y2 - area->y1 + 1));
+    const bool last = lv_display_flush_is_last(disp);
+    portENTER_CRITICAL(&s_prof_mux);
+    s_prof.tiles++;
+    s_prof.pixels += px;
+    if (px > s_prof.max_tile_pixels) {
+        s_prof.max_tile_pixels = px;
+    }
+    if (last) {
+        s_prof.frames++;
+    }
+    /* CCOUNT is per-core: a negative delta (>= 2^31 unsigned) means the task migrated; drop it. */
+    if ((t1 - t0) >= 0x80000000u || (t2 - t1) >= 0x80000000u) {
+        s_prof.migrated_tiles++;
+    } else {
+        if (decorated) {
+            s_prof.decorate_cyc += (t1 - t0);
+        }
+        s_prof.orig_cyc += (t2 - t1);
+    }
+    if (!decorated) {
+        s_prof.bypass_tiles++;
+    }
+    portEXIT_CRITICAL(&s_prof_mux);
+}
+#define PROF_T0()                      const uint32_t prof_t0 = prof_cyc()
+#define CALL_ORIG(d, a, b, dec)        prof_call_orig((d), (a), (b), s_orig_flush_cb, prof_t0, (dec))
+#else
+#define PROF_T0()                      ((void)0)
+#define CALL_ORIG(d, a, b, dec)        do { if (s_orig_flush_cb) { s_orig_flush_cb((d), (a), (b)); } else { lv_display_flush_ready(d); } } while (0)
+#endif
+
 static void trigger_display_invalidation(void)
 {
     if (s_target_disp) {
@@ -272,6 +419,7 @@ static void trigger_display_invalidation(void)
 
 static void lcd_decorator_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 {
+    PROF_T0();
     lcd_decorator_state_t snap;
     state_lock();
     snap = s_state;
@@ -283,12 +431,29 @@ static void lcd_decorator_flush_cb(lv_display_t *disp, const lv_area_t *area, ui
         const int32_t width = area->x2 - area->x1 + 1;
         const int32_t height = area->y2 - area->y1 + 1;
         const size_t area_pixels = (size_t)(width * height);
-        if (s_rgb565_buf && area_pixels <= s_rgb565_buf_pixels) {
+        uint16_t *out_buf = s_rgb565_buf;
+        size_t out_pixels = s_rgb565_buf_pixels;
+#ifdef LCD_STAGING_INTERNAL
+        if (s_stage_buf && area_pixels <= s_stage_buf_pixels) {
+            out_buf = s_stage_buf;
+            out_pixels = s_stage_buf_pixels;
+        } else if (s_stage_buf && !s_rgb565_buf) {
+            /* Oversize tile: lazily allocate the full-frame PSRAM fallback */
+            s_rgb565_buf = (uint16_t *)heap_caps_malloc(s_rgb565_buf_req_pixels * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+            if (s_rgb565_buf) {
+                s_rgb565_buf_pixels = s_rgb565_buf_req_pixels;
+                ESP_LOGW(TAG, "Staging tile too small for %zu px, PSRAM fallback allocated", area_pixels);
+            }
+            out_buf = s_rgb565_buf;
+            out_pixels = s_rgb565_buf_pixels;
+        }
+#endif
+        if (out_buf && area_pixels <= out_pixels) {
             if (snap.mode == LCD_RENDER_MODE_PASSTHROUGH) {
                 // High-speed LUT expansion for passthrough mode (with wire byte-swap)
                 const uint8_t *src8 = (const uint8_t *)px_map;
                 for (size_t i = 0; i < area_pixels; i++) {
-                    s_rgb565_buf[i] = s_passthrough_lut[src8[i]];
+                    out_buf[i] = s_passthrough_lut[src8[i]];
                 }
             } else if (snap.mode == LCD_RENDER_MODE_CUSTOM) {
                 if (snap.custom_render_fn) {
@@ -296,19 +461,15 @@ static void lcd_decorator_flush_cb(lv_display_t *disp, const lv_area_t *area, ui
                 }
                 const uint8_t *src8 = (const uint8_t *)px_map;
                 for (size_t i = 0; i < area_pixels; i++) {
-                    s_rgb565_buf[i] = s_passthrough_lut[src8[i]];
+                    out_buf[i] = s_passthrough_lut[src8[i]];
                 }
             } else {
                 // Direct single-pass stream into 16-bit RGB565 buffer (wire-swapped, full palette colors)
                 const bool inv = (snap.mode == LCD_RENDER_MODE_RETRO_INVERTED);
-                lcd_emulator_apply_filter_8to16(area, (const uint8_t *)px_map, s_rgb565_buf, &snap, inv, true);
+                lcd_emulator_apply_filter_8to16(area, (const uint8_t *)px_map, out_buf, &snap, inv, true);
             }
 
-            if (s_orig_flush_cb) {
-                s_orig_flush_cb(disp, area, (uint8_t *)s_rgb565_buf);
-            } else {
-                lv_display_flush_ready(disp);
-            }
+            CALL_ORIG(disp, area, (uint8_t *)out_buf, true);
             return;
         }
 #endif
@@ -339,11 +500,11 @@ static void lcd_decorator_flush_cb(lv_display_t *disp, const lv_area_t *area, ui
 #endif
     }
 
-    if (s_orig_flush_cb) {
-        s_orig_flush_cb(disp, area, px_map);
-    } else {
-        lv_display_flush_ready(disp);
-    }
+#if LV_COLOR_DEPTH == 8
+    CALL_ORIG(disp, area, px_map, false);
+#else
+    CALL_ORIG(disp, area, px_map, true);
+#endif
 }
 #else
 static void trigger_display_invalidation(void) {}
@@ -395,6 +556,28 @@ esp_err_t lcd_emulator_init(lv_display_t *disp)
     }
 #endif
     size_t req_pixels = (size_t)(hor_res * ver_res);
+    s_rgb565_buf_req_pixels = req_pixels;
+#ifdef LCD_STAGING_INTERNAL
+    if (!s_stage_buf && disp) {
+        size_t tile_px = req_pixels;
+        if (disp->buf_1 && disp->buf_1->data_size > 0) {
+            tile_px = disp->buf_1->data_size / lv_color_format_get_size(lv_display_get_color_format(disp));
+            if (tile_px > req_pixels) {
+                tile_px = req_pixels;
+            }
+        }
+        s_stage_buf = (uint16_t *)heap_caps_malloc(tile_px * sizeof(uint16_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+        if (s_stage_buf) {
+            s_stage_buf_pixels = tile_px;
+            ESP_LOGI(TAG, "Internal staging tile: %zu px (%zu B), draw buf %zu px", tile_px, tile_px * sizeof(uint16_t), tile_px);
+        } else {
+            ESP_LOGW(TAG, "Internal staging alloc of %zu B failed, using PSRAM buffer", tile_px * sizeof(uint16_t));
+        }
+    }
+    if (s_stage_buf) {
+        goto skip_psram_alloc; /* PSRAM fallback is allocated lazily on first oversize tile */
+    }
+#endif
     if (!s_rgb565_buf || s_rgb565_buf_pixels < req_pixels) {
 #if defined(ESP_PLATFORM)
         if (s_rgb565_buf) {
@@ -417,6 +600,9 @@ esp_err_t lcd_emulator_init(lv_display_t *disp)
             ESP_LOGE(TAG, "Failed to allocate %zu bytes for RGB565 expansion buffer", req_pixels * sizeof(uint16_t));
         }
     }
+#ifdef LCD_STAGING_INTERNAL
+skip_psram_alloc:;
+#endif
 #endif
 #endif
 
@@ -430,6 +616,9 @@ esp_err_t lcd_emulator_init(lv_display_t *disp)
     s_target_disp = disp;
     s_orig_flush_cb = disp->flush_cb;
     lv_display_set_flush_cb(disp, lcd_decorator_flush_cb);
+#ifdef LCD_PROFILE
+    lcd_prof_start(disp);
+#endif
     lv_unlock();
 
     ESP_LOGI(TAG, "LCD decorator attached to display %p: mode=%d, shading=%d, cell=%u, gap=%u, threshold=%u, preset=%d, dark_theme=%d, depth=%d",
@@ -944,6 +1133,231 @@ void lcd_emulator_apply_filter(const lv_area_t *area, lcd_color_t *pixels, const
     lcd_emulator_apply_filter_ex(area, pixels, &temp_state, false);
 }
 
+/* ------------------------------------------------------------------------------------------
+ * 8-bit -> RGB565 streaming decimator (hot path)
+ *
+ * Output is bit-exact with the straightforward per-pixel formulation (a cell is a cell_size x
+ * cell_size block whose leading (cell_size - gap_size) columns/rows are the dot and whose trailing
+ * gap_size columns/rows are the gap). Differences are purely in how the work is organised:
+ *   - one output row template is built per cell band and replicated with memcpy for the remaining
+ *     dot rows; gap rows are a constant fill (no per-pixel modulo/division),
+ *   - the final RGB565 of every possible cell luminance is looked up from a 256-entry ramp built
+ *     with the same arithmetic (when the tile has enough cells to amortise building it),
+ *   - the average luminance divides by a reciprocal multiply when exact (verified for all sums),
+ *   - the identity luminance table is skipped for L8 input.
+ * ---------------------------------------------------------------------------------------- */
+
+#if defined(__GNUC__)
+#define LCD_FORCE_INLINE static inline __attribute__((always_inline))
+typedef uint32_t __attribute__((may_alias)) lcd_u32_alias_t;
+#else
+#define LCD_FORCE_INLINE static inline
+typedef uint32_t lcd_u32_alias_t;
+#endif
+
+#define LCD_RECIP_SHIFT 24
+#define LCD_RECIP_MAX_CNT 255u
+#define LCD_RAMP_MIN_CELLS 384
+
+typedef struct {
+    bool neutral;
+    bool gray4;
+    bool dark;
+    bool inverted;
+    bool wire_swap;
+    uint16_t col_active;    /* raw (unswapped) */
+    uint16_t col_inactive;  /* raw (unswapped) */
+    int32_t r0, g0, b0, dr, dg, db;
+} lcd_shade_t;
+
+/** Final (optionally wire-swapped) RGB565 for a cell of average luminance @p lum. */
+LCD_FORCE_INLINE uint16_t lcd_lum_to_color(const lcd_shade_t *sh, uint8_t lum)
+{
+    uint8_t intensity = sh->dark ? lum : (uint8_t)(255 - lum);
+    if (sh->inverted) {
+        intensity = (uint8_t)(255 - intensity);
+    }
+
+    uint8_t q;
+    if (sh->gray4) {
+        uint8_t level = (uint8_t)((intensity + 8) / 17);
+        if (level > 15) level = 15;
+        q = (uint8_t)(level * 17);
+    } else {
+        q = intensity;
+    }
+
+    uint16_t raw;
+    if (sh->neutral) {
+        raw = LCD_RGB565(q, q, q);
+    } else if (q == 0) {
+        raw = sh->col_inactive;
+    } else if (q == 255) {
+        raw = sh->col_active;
+    } else {
+        const int32_t nr = sh->dr * (int32_t)q;
+        const int32_t ng = sh->dg * (int32_t)q;
+        const int32_t nb = sh->db * (int32_t)q;
+        int32_t r = sh->r0 + ((nr >= 0) ? (nr + 127) : (nr - 127)) / 255;
+        int32_t g = sh->g0 + ((ng >= 0) ? (ng + 127) : (ng - 127)) / 255;
+        int32_t b = sh->b0 + ((nb >= 0) ? (nb + 127) : (nb - 127)) / 255;
+        if (r < 0) r = 0; else if (r > 31) r = 31;
+        if (g < 0) g = 0; else if (g > 63) g = 63;
+        if (b < 0) b = 0; else if (b > 31) b = 31;
+        raw = (uint16_t)(((uint16_t)r << 11) | ((uint16_t)g << 5) | (uint16_t)b);
+    }
+    return sh->wire_swap ? LCD_RGB565_SWAP(raw) : raw;
+}
+
+LCD_FORCE_INLINE void lcd_fill16(uint16_t *p, uint16_t v, int32_t n)
+{
+    if (n >= 4) {
+        if (((uintptr_t)p) & 2u) {
+            *p++ = v;
+            n--;
+        }
+        const uint32_t v2 = ((uint32_t)v << 16) | v;
+        lcd_u32_alias_t *w = (lcd_u32_alias_t *)p;
+        for (int32_t k = n >> 1; k > 0; k--) {
+            *w++ = v2;
+        }
+        p = (uint16_t *)w;
+        n &= 1;
+    }
+    while (n-- > 0) {
+        *p++ = v;
+    }
+}
+
+/** Reciprocal such that floor(sum * recip >> 24) == floor(sum / cnt) for all sum <= 255 * cnt. */
+LCD_FORCE_INLINE uint32_t lcd_recip(uint32_t cnt)
+{
+    return (cnt <= LCD_RECIP_MAX_CNT) ? (((1u << LCD_RECIP_SHIFT) + cnt - 1u) / cnt) : 0u;
+}
+
+LCD_FORCE_INLINE uint32_t lcd_div_by_count(uint32_t sum, uint32_t cnt, uint32_t recip)
+{
+    return recip ? ((sum * recip) >> LCD_RECIP_SHIFT) : (sum / cnt);
+}
+
+/**
+ * Core decimator. @p gray and @p lut are compile-time constants at every call site so the unused
+ * variants fold away (lut == NULL means the 8-bit input already is luminance).
+ */
+LCD_FORCE_INLINE void lcd_decimate_core(const lv_area_t *area, const uint8_t *src, uint16_t *dst,
+                                        const lcd_shade_t *sh, const uint16_t *ramp,
+                                        uint8_t threshold, uint16_t col_gap,
+                                        uint16_t mono_active, uint16_t mono_inactive,
+                                        int32_t cs, int32_t gs, bool gray, const uint8_t *lut)
+{
+    const int32_t width = area->x2 - area->x1 + 1;
+    const int32_t dotw = cs - gs;
+    const int32_t first_cell_x = area->x1 / cs;
+    const int32_t num_cols = area->x2 / cs - first_cell_x + 1;
+    const int32_t first_cell_y = area->y1 / cs;
+    const int32_t last_cell_y = area->y2 / cs;
+    const size_t row_bytes = (size_t)width * sizeof(uint16_t);
+
+    uint16_t cell_color[LCD_MAX_CELL_COLS];
+    uint8_t cell_nx[LCD_MAX_CELL_COLS];
+
+    for (int32_t cell_y = first_cell_y; cell_y <= last_cell_y; cell_y++) {
+        const int32_t y_cell_start = cell_y * cs;
+        const int32_t band_y1 = (area->y1 > y_cell_start) ? area->y1 : y_cell_start;
+        const int32_t y_cell_end = y_cell_start + cs - 1;
+        const int32_t band_y2 = (area->y2 < y_cell_end) ? area->y2 : y_cell_end;
+        const int32_t dot_y_end = y_cell_start + dotw - 1;
+        const int32_t sy0 = band_y1;
+        const int32_t sy1 = (band_y2 < dot_y_end) ? band_y2 : dot_y_end;
+
+        if (sy0 > sy1) {
+            /* Band lies entirely in the gap rows. */
+            for (int32_t y = band_y1; y <= band_y2; y++) {
+                lcd_fill16(dst + (size_t)(y - area->y1) * width, col_gap, width);
+            }
+            continue;
+        }
+
+        const int32_t ny = sy1 - sy0 + 1;
+        const uint8_t *band_src = src + (size_t)(sy0 - area->y1) * width;
+        const uint32_t full_recip = gray ? lcd_recip((uint32_t)(dotw * ny)) : 0u;
+
+        for (int32_t c = 0; c < num_cols; c++) {
+            const int32_t x_cell_start = (first_cell_x + c) * cs;
+            const int32_t sx_start = (x_cell_start > area->x1) ? x_cell_start : area->x1;
+            const int32_t x_dot_end = x_cell_start + dotw - 1;
+            const int32_t sx_end = (x_dot_end < area->x2) ? x_dot_end : area->x2;
+            if (sx_start > sx_end) {
+                cell_nx[c] = 0;
+                continue;
+            }
+            const int32_t nx = sx_end - sx_start + 1;
+            cell_nx[c] = (uint8_t)nx;
+            const uint8_t *cell_src = band_src + (sx_start - area->x1);
+
+            if (gray) {
+                uint32_t sum = 0;
+                for (int32_t y = 0; y < ny; y++) {
+                    const uint8_t *row = cell_src + (size_t)y * width;
+                    for (int32_t x = 0; x < nx; x++) {
+                        sum += lut ? lut[row[x]] : row[x];
+                    }
+                }
+                const uint32_t cnt = (uint32_t)(nx * ny);
+                const uint32_t recip = (nx == dotw) ? full_recip : lcd_recip(cnt);
+                const uint8_t lum = (uint8_t)lcd_div_by_count(sum, cnt, recip);
+                cell_color[c] = ramp ? ramp[lum] : lcd_lum_to_color(sh, lum);
+            } else {
+                uint8_t ext = sh->dark ? 0 : 255;
+                for (int32_t y = 0; y < ny; y++) {
+                    const uint8_t *row = cell_src + (size_t)y * width;
+                    for (int32_t x = 0; x < nx; x++) {
+                        const uint8_t v = lut ? lut[row[x]] : row[x];
+                        if (sh->dark) {
+                            ext = (v > ext) ? v : ext;
+                        } else {
+                            ext = (v < ext) ? v : ext;
+                        }
+                    }
+                }
+                const bool active = sh->dark ? (ext >= threshold) : (ext < threshold);
+                const bool cell_is_active = sh->inverted ? !active : active;
+                cell_color[c] = cell_is_active ? mono_active : mono_inactive;
+            }
+        }
+
+        /* Build the first dot row of the band, then replicate it for the other dot rows. */
+        uint16_t *row0 = dst + (size_t)(sy0 - area->y1) * width;
+        uint16_t *p = row0;
+        for (int32_t c = 0; c < num_cols; c++) {
+            const int32_t nx = cell_nx[c];
+            int32_t gl;
+            if (c == 0 || c == num_cols - 1) {
+                const int32_t x_cell_start = (first_cell_x + c) * cs;
+                const int32_t lo = (x_cell_start > area->x1) ? x_cell_start : area->x1;
+                const int32_t x_cell_end = x_cell_start + cs - 1;
+                const int32_t hi = (x_cell_end < area->x2) ? x_cell_end : area->x2;
+                gl = (hi - lo + 1) - nx;
+            } else {
+                gl = gs;
+            }
+            const uint16_t color = cell_color[c];
+            for (int32_t k = 0; k < nx; k++) {
+                *p++ = color;
+            }
+            for (int32_t k = 0; k < gl; k++) {
+                *p++ = col_gap;
+            }
+        }
+        for (int32_t y = sy0 + 1; y <= sy1; y++) {
+            memcpy(dst + (size_t)(y - area->y1) * width, row0, row_bytes);
+        }
+        for (int32_t y = sy1 + 1; y <= band_y2; y++) {
+            lcd_fill16(dst + (size_t)(y - area->y1) * width, col_gap, width);
+        }
+    }
+}
+
 void lcd_emulator_apply_filter_8to16(const lv_area_t *area,
                                      const uint8_t *src_pixels,
                                      uint16_t *dst_rgb565,
@@ -965,11 +1379,10 @@ void lcd_emulator_apply_filter_8to16(const lv_area_t *area,
 
     const uint8_t cell_size = (state->cell_size >= 2) ? state->cell_size : 4;
     const uint8_t gap_size = (state->gap_size < cell_size) ? state->gap_size : 1;
-    const uint8_t threshold = state->threshold;
 
-    uint16_t col_gap = state->palette.color_gap_rgb565 ? state->palette.color_gap_rgb565 : (uint16_t)state->palette.color_gap;
-    uint16_t col_active = state->palette.color_active_rgb565 ? state->palette.color_active_rgb565 : (uint16_t)state->palette.color_active;
-    uint16_t col_inactive = state->palette.color_inactive_rgb565 ? state->palette.color_inactive_rgb565 : (uint16_t)state->palette.color_inactive;
+    const uint16_t col_gap = state->palette.color_gap_rgb565 ? state->palette.color_gap_rgb565 : (uint16_t)state->palette.color_gap;
+    const uint16_t col_active = state->palette.color_active_rgb565 ? state->palette.color_active_rgb565 : (uint16_t)state->palette.color_active;
+    const uint16_t col_inactive = state->palette.color_inactive_rgb565 ? state->palette.color_inactive_rgb565 : (uint16_t)state->palette.color_inactive;
 
     const bool is_grayscale_4bit = (state->mode == LCD_RENDER_MODE_GRAYSCALE_4BIT);
     const bool is_grayscale_8bit = (state->mode == LCD_RENDER_MODE_GRAYSCALE_8BIT);
@@ -990,142 +1403,57 @@ void lcd_emulator_apply_filter_8to16(const lv_area_t *area,
         effective_col_gap = LCD_RGB565_SWAP(effective_col_gap);
     }
 
-    // Precalculate palette RGB565 deltas for fast linear interpolation in palette-tinted mode
-    const int32_t r0 = (int32_t)((col_inactive >> 11) & 0x1F);
-    const int32_t g0 = (int32_t)((col_inactive >> 5) & 0x3F);
-    const int32_t b0 = (int32_t)(col_inactive & 0x1F);
-    const int32_t dr = (int32_t)((col_active >> 11) & 0x1F) - r0;
-    const int32_t dg = (int32_t)((col_active >> 5) & 0x3F) - g0;
-    const int32_t db = (int32_t)(col_active & 0x1F) - b0;
-
-    const int32_t first_cell_x = area->x1 / cell_size;
-    const int32_t last_cell_x = area->x2 / cell_size;
-    const int32_t num_cols = last_cell_x - first_cell_x + 1;
+    const int32_t num_cols = area->x2 / cell_size - area->x1 / cell_size + 1;
     if (num_cols <= 0 || num_cols > LCD_MAX_CELL_COLS) {
         return;
     }
 
-    const int32_t first_cell_y = area->y1 / cell_size;
-    const int32_t last_cell_y = area->y2 / cell_size;
+    lcd_shade_t sh;
+    sh.neutral = (state->shading_mode == LCD_SHADING_NEUTRAL_GRAY);
+    sh.gray4 = is_grayscale_4bit;
+    sh.dark = state->dark_theme;
+    sh.inverted = inverted;
+    sh.wire_swap = wire_swap;
+    sh.col_active = col_active;
+    sh.col_inactive = col_inactive;
+    sh.r0 = (int32_t)((col_inactive >> 11) & 0x1F);
+    sh.g0 = (int32_t)((col_inactive >> 5) & 0x3F);
+    sh.b0 = (int32_t)(col_inactive & 0x1F);
+    sh.dr = (int32_t)((col_active >> 11) & 0x1F) - sh.r0;
+    sh.dg = (int32_t)((col_active >> 5) & 0x3F) - sh.g0;
+    sh.db = (int32_t)(col_active & 0x1F) - sh.b0;
 
-    uint16_t cell_color[LCD_MAX_CELL_COLS];
+    const uint16_t mono_active = wire_swap ? LCD_RGB565_SWAP(col_active) : col_active;
+    const uint16_t mono_inactive = wire_swap ? LCD_RGB565_SWAP(col_inactive) : col_inactive;
 
-    for (int32_t cell_y = first_cell_y; cell_y <= last_cell_y; cell_y++) {
-        const int32_t y_cell_start = cell_y * cell_size;
-        const int32_t y_cell_end = y_cell_start + cell_size - 1;
-
-        const int32_t band_y1 = (area->y1 > y_cell_start) ? area->y1 : y_cell_start;
-        const int32_t band_y2 = (area->y2 < y_cell_end) ? area->y2 : y_cell_end;
-
-        const int32_t dot_y_end = y_cell_start + cell_size - gap_size - 1;
-        const int32_t sample_y_start = band_y1;
-        const int32_t sample_y_end = (band_y2 < dot_y_end) ? band_y2 : dot_y_end;
-        const bool has_dot_rows = (sample_y_start <= sample_y_end);
-
-        for (int32_t c = 0; c < num_cols; c++) {
-            if (!has_dot_rows) {
-                cell_color[c] = wire_swap ? LCD_RGB565_SWAP(col_inactive) : col_inactive;
-                continue;
+    uint16_t ramp_storage[256];
+    const uint16_t *ramp = NULL;
+    if (is_grayscale) {
+        const int32_t cells = num_cols * (area->y2 / cell_size - area->y1 / cell_size + 1);
+        if (cells >= LCD_RAMP_MIN_CELLS) {
+            for (int i = 0; i < 256; i++) {
+                ramp_storage[i] = lcd_lum_to_color(&sh, (uint8_t)i);
             }
-
-            const int32_t curr_cell_x = first_cell_x + c;
-            const int32_t x_cell_start = curr_cell_x * cell_size;
-            const int32_t x_dot_end = x_cell_start + cell_size - gap_size - 1;
-
-            const int32_t sample_x_start = (x_cell_start > area->x1) ? x_cell_start : area->x1;
-            const int32_t sample_x_end = (x_dot_end < area->x2) ? x_dot_end : area->x2;
-
-            if (sample_x_start > sample_x_end) {
-                cell_color[c] = wire_swap ? LCD_RGB565_SWAP(col_inactive) : col_inactive;
-                continue;
-            }
-
-            uint16_t raw_color = col_inactive;
-
-            if (!is_grayscale) {
-                bool active = false;
-                for (int32_t sy = sample_y_start; sy <= sample_y_end; sy++) {
-                    const uint8_t *row = &src_pixels[(sy - area->y1) * width];
-                    for (int32_t sx = sample_x_start; sx <= sample_x_end; sx++) {
-                        const uint8_t lum = s_lum_lut[row[sx - area->x1]];
-                        if (state->dark_theme ? (lum >= threshold) : (lum < threshold)) {
-                            active = true;
-                            break;
-                        }
-                    }
-                    if (active) {
-                        break;
-                    }
-                }
-                const bool cell_is_active = inverted ? (!active) : active;
-                raw_color = cell_is_active ? col_active : col_inactive;
-            } else {
-                uint32_t sum_lum = 0;
-                uint16_t sample_count = 0;
-                for (int32_t sy = sample_y_start; sy <= sample_y_end; sy++) {
-                    const uint8_t *row = &src_pixels[(sy - area->y1) * width];
-                    for (int32_t sx = sample_x_start; sx <= sample_x_end; sx++) {
-                        sum_lum += (uint32_t)s_lum_lut[row[sx - area->x1]];
-                        sample_count++;
-                    }
-                }
-                const uint8_t cell_lum = (sample_count > 0) ? (uint8_t)(sum_lum / sample_count) : 0;
-                uint8_t intensity = state->dark_theme ? cell_lum : (uint8_t)(255 - cell_lum);
-                if (inverted) {
-                    intensity = 255 - intensity;
-                }
-
-                uint8_t q;
-                if (is_grayscale_4bit) {
-                    uint8_t level = (uint8_t)((intensity + 8) / 17);
-                    if (level > 15) level = 15;
-                    q = (uint8_t)(level * 17);
-                } else {
-                    q = intensity;
-                }
-
-                if (state->shading_mode == LCD_SHADING_NEUTRAL_GRAY) {
-                    raw_color = LCD_RGB565(q, q, q);
-                } else {
-                    if (q == 0) {
-                        raw_color = col_inactive;
-                    } else if (q == 255) {
-                        raw_color = col_active;
-                    } else {
-                        const int32_t nr = dr * (int32_t)q;
-                        const int32_t ng = dg * (int32_t)q;
-                        const int32_t nb = db * (int32_t)q;
-                        int32_t r = r0 + ((nr >= 0) ? (nr + 127) : (nr - 127)) / 255;
-                        int32_t g = g0 + ((ng >= 0) ? (ng + 127) : (ng - 127)) / 255;
-                        int32_t b = b0 + ((nb >= 0) ? (nb + 127) : (nb - 127)) / 255;
-                        if (r < 0) r = 0; else if (r > 31) r = 31;
-                        if (g < 0) g = 0; else if (g > 63) g = 63;
-                        if (b < 0) b = 0; else if (b > 31) b = 31;
-                        raw_color = (uint16_t)(((uint16_t)r << 11) | ((uint16_t)g << 5) | (uint16_t)b);
-                    }
-                }
-            }
-
-            cell_color[c] = wire_swap ? LCD_RGB565_SWAP(raw_color) : raw_color;
+            ramp = ramp_storage;
         }
+    }
 
-        // Direct scanline emission into destination RGB565 buffer
-        for (int32_t y_screen = band_y1; y_screen <= band_y2; y_screen++) {
-            const bool is_gap_row = ((y_screen % cell_size) >= (cell_size - gap_size));
-            const int32_t local_y = y_screen - area->y1;
-            uint16_t *dst_row = &dst_rgb565[local_y * width];
-
-            for (int32_t x_screen = area->x1; x_screen <= area->x2; x_screen++) {
-                const bool is_gap_col = ((x_screen % cell_size) >= (cell_size - gap_size));
-                const int32_t local_x = x_screen - area->x1;
-
-                if (is_gap_row || is_gap_col) {
-                    dst_row[local_x] = effective_col_gap;
-                } else {
-                    const int32_t col_idx = (x_screen / cell_size) - first_cell_x;
-                    dst_row[local_x] = cell_color[col_idx];
-                }
-            }
+    const uint8_t *lut = s_8bit_is_rgb232 ? s_lum_lut : NULL;
+    if (is_grayscale) {
+        if (lut) {
+            lcd_decimate_core(area, src_pixels, dst_rgb565, &sh, ramp, state->threshold, effective_col_gap,
+                              mono_active, mono_inactive, cell_size, gap_size, true, s_lum_lut);
+        } else {
+            lcd_decimate_core(area, src_pixels, dst_rgb565, &sh, ramp, state->threshold, effective_col_gap,
+                              mono_active, mono_inactive, cell_size, gap_size, true, NULL);
+        }
+    } else {
+        if (lut) {
+            lcd_decimate_core(area, src_pixels, dst_rgb565, &sh, NULL, state->threshold, effective_col_gap,
+                              mono_active, mono_inactive, cell_size, gap_size, false, s_lum_lut);
+        } else {
+            lcd_decimate_core(area, src_pixels, dst_rgb565, &sh, NULL, state->threshold, effective_col_gap,
+                              mono_active, mono_inactive, cell_size, gap_size, false, NULL);
         }
     }
 }

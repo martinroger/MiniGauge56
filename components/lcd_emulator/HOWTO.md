@@ -142,9 +142,23 @@ When compiling with `LV_COLOR_DEPTH == 8`, the LVGL draw buffer footprint is hal
 | `CONFIG_LCD_EMULATOR_BOOT_RENDER_MODE` | `choice` | `RETRO_MONOCHROME` | `PASSTHROUGH`, `RETRO_MONOCHROME`, `RETRO_INVERTED`, `GRAYSCALE_4BIT`, `GRAYSCALE_8BIT` | Initial rendering mode applied at boot. |
 | `CONFIG_LCD_EMULATOR_GRAYSCALE_SHADING_STYLE` | `choice` | `PALETTE_TINTED` | `PALETTE_TINTED`, `NEUTRAL_GRAY` | Grayscale shading interpolation style (palette-tinted vs neutral monochrome gray). |
 | `CONFIG_LCD_EMULATOR_EXPAND_TO_RGB565` | `bool` | `y if LV_COLOR_DEPTH_8` | `y / n` | Expand 8-bit L8 buffer to 16-bit RGB565 in flush decorator for physical RGB565 controllers. |
+| `CONFIG_LCD_EMULATOR_STAGING_INTERNAL` | `bool` | `y` (needs `EXPAND_TO_RGB565`) | `y / n` | Stage the RGB565 output tile in internal DMA-capable RAM (sized to the LVGL draw buffer, ~46.6 KB for 466x50 tiles) instead of a full-frame PSRAM buffer. Oversize tiles lazily fall back to PSRAM. Costs ~35 KB internal heap; cuts wrapped flush time ~40 % and decorate time ~10-25 %. |
+| `CONFIG_LCD_EMULATOR_PROFILE` | `bool` | `n` | `y / n` | 1 Hz `PROF` log line: tiles/s, px/s, decorate / orig-flush / flush-finish times, fps, LVGL stack high-water mark, internal heap. Compiled out when disabled. |
 | `CONFIG_LCD_EMULATOR_INVERT_OUTPUT` | `bool` | `n` | `y / n` | Invert dot matrix state (produces negative / inverted LCD). |
 | `CONFIG_LCD_EMULATOR_DARK_THEME_INPUT` | `bool` | `y` | `y / n` | Source UI is dark theme (black background with bright text/gauges). |
 | `CONFIG_LCD_EMULATOR_DEFAULT_CELL_SIZE` | `int` | `4` | `2 .. 8` | Physical dot pitch in OLED pixels (3 px yields 155×155 grid; 4 px yields 116×116). |
 | `CONFIG_LCD_EMULATOR_DEFAULT_GAP_SIZE` | `int` | `1` | `0 .. 3` | Physical pixel width of inactive substrate separator lines between dots. |
 | `CONFIG_LCD_EMULATOR_DEFAULT_THRESHOLD` | `int` | `100` | `0 .. 255` | 8-bit luminance threshold detecting active elements in monochrome modes. |
 | `CONFIG_LCD_EMULATOR_DEFAULT_PALETTE` | `choice` | `OLIVE` | `OLIVE`, `CASIO`, `AMBER`, `CYAN` | Active substrate and ink color palette applied at initialization. |
+
+---
+
+## Host checks for the 8-bit to RGB565 decimator
+
+`components/lcd_emulator/test/run_host_checks.sh [iterations] [seed]` builds and runs, at `LV_COLOR_DEPTH` 8 and 16:
+
+- the existing unit tests (`test_lcd_emulator.cpp`),
+- `lcd_diff_bench.cpp fuzz`: a differential fuzz that compares `lcd_emulator_apply_filter_8to16()` bit for bit against a baseline copy of `lcd_emulator.c` taken from git history (`BASE_REF`, default `2762974`) with its public symbols renamed `ref_*`, plus an exhaustive check of the reciprocal-divide identity,
+- optional `BENCH=1`: a timing table (baseline vs current) over several cell/gap geometries, tile shapes and content types. Host timings are relative only; they are not ESP32-S3 numbers.
+
+Set `ASAN=1` for AddressSanitizer + UBSan. The existing state-safety unit test deliberately feeds invalid enum values, which UBSan reports; that is expected.
