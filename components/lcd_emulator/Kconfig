@@ -95,7 +95,77 @@ menu "Retro Monochrome LCD Emulator"
 
         config LCD_EMULATOR_PALETTE_CYAN
             bool "Nokia Cyan EL Backlit"
+
+        config LCD_EMULATOR_PALETTE_CUSTOM
+            bool "Custom (colors set manually below)"
     endchoice
+
+    config LCD_EMULATOR_CUSTOM_COLOR_ON
+        hex "Custom palette: ON (active dot) color, 0xRRGGBB"
+        default 0xFFAA00
+        range 0x000000 0xFFFFFF
+        depends on LCD_EMULATOR_PALETTE_CUSTOM
+
+    config LCD_EMULATOR_CUSTOM_COLOR_OFF
+        hex "Custom palette: OFF (inactive dot) color, 0xRRGGBB"
+        default 0x362104
+        range 0x000000 0xFFFFFF
+        depends on LCD_EMULATOR_PALETTE_CUSTOM
+
+    config LCD_EMULATOR_CUSTOM_COLOR_GAP
+        hex "Custom palette: GAP (grid line between dots) color, 0xRRGGBB"
+        default 0x0D0700
+        range 0x000000 0xFFFFFF
+        depends on LCD_EMULATOR_PALETTE_CUSTOM
+
+    config LCD_EMULATOR_CUSTOM_COLOR_BG
+        hex "Custom palette: substrate background color, 0xRRGGBB"
+        default 0x181002
+        range 0x000000 0xFFFFFF
+        depends on LCD_EMULATOR_PALETTE_CUSTOM
+
+    choice LCD_EMULATOR_ALT_PALETTE
+        prompt "Alternate LCD Color Palette (for lcd_emulator_swap_palette)"
+        default LCD_EMULATOR_ALT_PALETTE_CASIO
+        help
+            Palette stored in the alternate slot at boot. lcd_emulator_swap_palette() flips
+            between the default palette and this one; both slots can be redefined at runtime.
+
+        config LCD_EMULATOR_ALT_PALETTE_OLIVE
+            bool "Classic Olive STN"
+        config LCD_EMULATOR_ALT_PALETTE_CASIO
+            bool "Casio Reflective Grey / Silver"
+        config LCD_EMULATOR_ALT_PALETTE_AMBER
+            bool "Industrial Amber Backlit"
+        config LCD_EMULATOR_ALT_PALETTE_CYAN
+            bool "Nokia Cyan EL Backlit"
+        config LCD_EMULATOR_ALT_PALETTE_CUSTOM
+            bool "Custom (colors set manually below)"
+    endchoice
+
+    config LCD_EMULATOR_ALT_CUSTOM_COLOR_ON
+        hex "Alternate custom palette: ON (active dot) color, 0xRRGGBB"
+        default 0x1B2812
+        range 0x000000 0xFFFFFF
+        depends on LCD_EMULATOR_ALT_PALETTE_CUSTOM
+
+    config LCD_EMULATOR_ALT_CUSTOM_COLOR_OFF
+        hex "Alternate custom palette: OFF (inactive dot) color, 0xRRGGBB"
+        default 0x91A193
+        range 0x000000 0xFFFFFF
+        depends on LCD_EMULATOR_ALT_PALETTE_CUSTOM
+
+    config LCD_EMULATOR_ALT_CUSTOM_COLOR_GAP
+        hex "Alternate custom palette: GAP (grid line between dots) color, 0xRRGGBB"
+        default 0x7E8E80
+        range 0x000000 0xFFFFFF
+        depends on LCD_EMULATOR_ALT_PALETTE_CUSTOM
+
+    config LCD_EMULATOR_ALT_CUSTOM_COLOR_BG
+        hex "Alternate custom palette: substrate background color, 0xRRGGBB"
+        default 0xA0B0A2
+        range 0x000000 0xFFFFFF
+        depends on LCD_EMULATOR_ALT_PALETTE_CUSTOM
 
     config LCD_EMULATOR_EXPAND_TO_RGB565
         bool "Expand 8-bit framebuffer to 16-bit RGB565 for display hardware"

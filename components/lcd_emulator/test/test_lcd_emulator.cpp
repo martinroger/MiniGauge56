@@ -801,6 +801,40 @@ static void test_single_pass_8to16_and_lut()
     printf("  -> Single-pass 8to16 stream, wire-swap, LUT, and mode restoration verified.\n");
 }
 
+/**
+ * @brief Runtime color roles and palette slot swapping.
+ */
+static void test_runtime_colors_and_palette_swap()
+{
+    printf("[TEST 13] Verifying runtime colors and palette slot swap...\n");
+    lcd_decorator_state_t st;
+    lcd_emulator_set_preset(LCD_PRESET_AMBER);
+    lcd_emulator_set_palette_slot(LCD_PALETTE_SLOT_ALT, &s_palettes[LCD_PRESET_CYAN]);
+    ASSERT_EQ(lcd_emulator_get_palette_slot(), LCD_PALETTE_SLOT_PRIMARY);
+
+    ASSERT_EQ(lcd_emulator_set_color(LCD_COLOR_ROLE_COUNT, 0), ESP_ERR_INVALID_ARG);
+    ASSERT_EQ(lcd_emulator_set_color(LCD_COLOR_ROLE_GAP, 0x102030), ESP_OK);
+    lcd_emulator_get_decorator_state(&st);
+    ASSERT_EQ(st.palette.color_gap_rgb565, LCD_RGB565(0x10, 0x20, 0x30));
+    lcd_emulator_set_colors(0xFF0000, 0x00FF00, 0x0000FF);
+    lcd_emulator_get_decorator_state(&st);
+    ASSERT_EQ(st.palette.color_active_rgb565, LCD_RGB565(0xFF, 0, 0));
+    ASSERT_EQ(st.palette.color_inactive_rgb565, LCD_RGB565(0, 0xFF, 0));
+    ASSERT_EQ(st.palette.color_gap_rgb565, LCD_RGB565(0, 0, 0xFF));
+    ASSERT_EQ(st.palette.color_bg_rgb565, s_palettes[LCD_PRESET_AMBER].color_bg_rgb565);
+
+    lcd_palette_t edited = st.palette;
+    lcd_emulator_swap_palette();
+    ASSERT_EQ(lcd_emulator_get_palette_slot(), LCD_PALETTE_SLOT_ALT);
+    lcd_emulator_get_decorator_state(&st);
+    ASSERT_EQ(st.palette.color_active_rgb565, s_palettes[LCD_PRESET_CYAN].color_active_rgb565);
+    lcd_emulator_swap_palette();
+    lcd_emulator_get_decorator_state(&st);
+    ASSERT_EQ(memcmp(&st.palette, &edited, sizeof(edited)), 0);  /* edits survive the round trip */
+    ASSERT_EQ(lcd_emulator_select_palette_slot(LCD_PALETTE_SLOT_COUNT), ESP_ERR_INVALID_ARG);
+    printf("  [OK] Runtime colors and palette swap verified.\n");
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -821,6 +855,7 @@ int main(int argc, char **argv)
     test_high_volume_stress_endurance();
     test_color_depth_configuration();
     test_single_pass_8to16_and_lut();
+    test_runtime_colors_and_palette_swap();
 
     printf("====================================================\n");
     printf("  ALL 11 TEST SUITES PASSED CLEANLY (Zero Errors)\n");

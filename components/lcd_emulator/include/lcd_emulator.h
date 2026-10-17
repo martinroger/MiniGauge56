@@ -120,6 +120,26 @@ typedef enum {
 } lcd_preset_t;
 
 /**
+ * @brief Palette color roles addressable individually at runtime.
+ */
+typedef enum {
+    LCD_COLOR_ROLE_ON = 0,   /**< Active (energized) dot color */
+    LCD_COLOR_ROLE_OFF,      /**< Inactive (unenergized) dot color */
+    LCD_COLOR_ROLE_GAP,      /**< Grid line between dots */
+    LCD_COLOR_ROLE_BG,       /**< Substrate background */
+    LCD_COLOR_ROLE_COUNT
+} lcd_color_role_t;
+
+/**
+ * @brief Palette slots for lcd_emulator_swap_palette() / lcd_emulator_select_palette_slot().
+ */
+typedef enum {
+    LCD_PALETTE_SLOT_PRIMARY = 0,   /**< Boot palette (Kconfig default palette) */
+    LCD_PALETTE_SLOT_ALT,           /**< Alternate palette (Kconfig alternate palette) */
+    LCD_PALETTE_SLOT_COUNT
+} lcd_palette_slot_t;
+
+/**
  * @brief Pluggable render function callback type for custom post-processing.
  *
  * @param[in] area Coordinates of the redraw buffer relative to the physical screen.
@@ -280,6 +300,40 @@ void lcd_emulator_set_preset(lcd_preset_t preset);
  * @param[in] palette Pointer to custom RGB565 palette structure.
  */
 void lcd_emulator_set_palette(const lcd_palette_t *palette);
+
+/**
+ * @brief Build a full palette from 0xRRGGBB colors (fills native and RGB565 fields).
+ */
+lcd_palette_t lcd_emulator_palette_from_rgb888(uint32_t on, uint32_t off, uint32_t gap, uint32_t bg);
+
+/**
+ * @brief Change a single palette color (0xRRGGBB) of the active palette slot at runtime.
+ *
+ * Takes effect on the next redraw; no per-pixel cost is added (the shading ramp is rebuilt per tile).
+ *
+ * @return ESP_OK, or ESP_ERR_INVALID_ARG if role is out of range.
+ */
+esp_err_t lcd_emulator_set_color(lcd_color_role_t role, uint32_t rgb888);
+
+/** @brief Set the ON, OFF and GAP colors (0xRRGGBB) of the active slot in one redraw; bg is kept. */
+void lcd_emulator_set_colors(uint32_t on, uint32_t off, uint32_t gap);
+
+/**
+ * @brief Store a palette into a slot. If the slot is active it is applied immediately.
+ */
+esp_err_t lcd_emulator_set_palette_slot(lcd_palette_slot_t slot, const lcd_palette_t *palette);
+
+/** @brief Store a built-in preset into a slot (applied immediately if the slot is active). */
+esp_err_t lcd_emulator_set_preset_slot(lcd_palette_slot_t slot, lcd_preset_t preset);
+
+/** @brief Make a slot the active palette. Runtime edits of the active palette stay in its slot. */
+esp_err_t lcd_emulator_select_palette_slot(lcd_palette_slot_t slot);
+
+/** @brief Currently active palette slot. */
+lcd_palette_slot_t lcd_emulator_get_palette_slot(void);
+
+/** @brief Flip between the primary and alternate palette (call again to go back). */
+void lcd_emulator_swap_palette(void);
 
 /**
  * @brief Configure dot matrix geometry and threshold parameters.
