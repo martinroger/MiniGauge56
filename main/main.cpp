@@ -276,36 +276,46 @@ void update_display(void *pvParameters)
                 {
                 case BMWP2000_STATE_BACKOFF_WAIT:
                     lv_label_set_text(objects.bmw_state, "WAIT");
+                    lcd_emulator_select_palette_slot(LCD_PALETTE_SLOT_PRIMARY);
                     break;
                 case BMWP2000_STATE_SETUP_LID:
                     lv_label_set_text(objects.bmw_state, "SETUP");
+                    lcd_emulator_select_palette_slot(LCD_PALETTE_SLOT_PRIMARY);
                     break;
 
                 case BMWP2000_STATE_RUNNING:
                     lv_label_set_text(objects.bmw_state, "RUNNING");
+                    lcd_emulator_select_palette_slot(LCD_PALETTE_SLOT_PRIMARY);
                     break;
 
                 case BMWP2000_STATE_CLEAR_LID:
                     lv_label_set_text(objects.bmw_state, "CLEARING");
+                    lcd_emulator_select_palette_slot(LCD_PALETTE_SLOT_ALT);
                     break;
 
                 case BMWP2000_STATE_READ_REQ:
                     lv_label_set_text(objects.bmw_state, "REQUEST");
+                    lcd_emulator_select_palette_slot(LCD_PALETTE_SLOT_PRIMARY);
                     break;
                 case BMWP2000_STATE_RESPONSE_PENDING:
                     lv_label_set_text(objects.bmw_state, "PENDING");
+                    lcd_emulator_select_palette_slot(LCD_PALETTE_SLOT_PRIMARY);
                     break;
                 case BMWP2000_STATE_RX_WAIT_CF:
                     lv_label_set_text(objects.bmw_state, "WAIT CF");
+                    lcd_emulator_select_palette_slot(LCD_PALETTE_SLOT_PRIMARY);
                     break;
                 case BMWP2000_STATE_TX_WAIT_FC:
                     lv_label_set_text(objects.bmw_state, "WAIT FC");
+                    lcd_emulator_select_palette_slot(LCD_PALETTE_SLOT_PRIMARY);
                     break;
                 case BMWP2000_STATE_UNINIT:
                     lv_label_set_text(objects.bmw_state, "UNINIT");
+                    lcd_emulator_select_palette_slot(LCD_PALETTE_SLOT_ALT);
                     break;
                 default:
                     lv_label_set_text(objects.bmw_state, "BMWP2000");
+                    lcd_emulator_select_palette_slot(LCD_PALETTE_SLOT_PRIMARY);
                     break;
                 }
                 break;
