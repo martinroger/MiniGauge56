@@ -174,15 +174,17 @@ extern "C" void action_start_stop_clicked(lv_event_t *e)
         wakeDisplay();
         return;
     }
-
-    if (is_logging)
+    if (lv_obj_has_state(objects.log_sw, LV_STATE_CHECKED))
     {
-        stop_logging();
+        is_logging = true;
+        start_logging();
     }
     else
     {
-        start_logging();
-        // start_logging_test();
+        if (is_logging)
+        {
+            stop_logging();
+        }
     }
     wakeDisplay();
 }
@@ -254,15 +256,17 @@ void update_display(void *pvParameters)
         {
             switch (tabID)
             {
-            case 0:
+            case 0: // Engine temp
                 lv_label_set_text_fmt(objects.engine_temp, "%.1f", s_bmwp_cached_engine_temp);
+                // Update the arc
                 break;
 
-            case 1:
+            case 1: // Oil temp
                 lv_label_set_text_fmt(objects.oil_temp, "%.1f", s_bmwp_cached_oil_temp);
+                // Update arc
                 break;
 
-            case 2:
+            case 2: // BM Daemon
                 lv_label_set_text_fmt(objects.bmw_engine_temp, "%.1f", s_bmwp_cached_engine_temp);
                 lv_label_set_text_fmt(objects.bmw_frames_count, "%lu", s_bmwp_frame_count);
                 lv_label_set_text_fmt(objects.bmw_hpfp, "%.1f", s_bmwp_cached_hpfp);
@@ -271,40 +275,56 @@ void update_display(void *pvParameters)
                 switch (bmwp2000_get_state())
                 {
                 case BMWP2000_STATE_BACKOFF_WAIT:
-                    lv_obj_add_state(objects.bmw_state, LV_STATE_DISABLED);
-                    lv_obj_set_style_text_color(objects.bmw_state, lv_palette_main(LV_PALETTE_RED), LV_STATE_DISABLED);
+                    lv_label_set_text(objects.bmw_state, "WAIT");
                     break;
                 case BMWP2000_STATE_SETUP_LID:
-                    lv_obj_add_state(objects.bmw_state, LV_STATE_DISABLED);
-                    lv_obj_set_style_text_color(objects.bmw_state, lv_palette_main(LV_PALETTE_AMBER), LV_STATE_DISABLED);
+                    lv_label_set_text(objects.bmw_state, "SETUP");
                     break;
 
                 case BMWP2000_STATE_RUNNING:
-                    lv_obj_remove_state(objects.bmw_state, LV_STATE_DISABLED);
-                    lv_obj_set_style_text_color(objects.bmw_state, lv_palette_main(LV_PALETTE_GREEN), LV_STATE_DEFAULT);
+                    lv_label_set_text(objects.bmw_state, "RUNNING");
                     break;
 
+                case BMWP2000_STATE_CLEAR_LID:
+                    lv_label_set_text(objects.bmw_state, "CLEARING");
+                    break;
+
+                case BMWP2000_STATE_READ_REQ:
+                    lv_label_set_text(objects.bmw_state, "REQUEST");
+                    break;
+                case BMWP2000_STATE_RESPONSE_PENDING:
+                    lv_label_set_text(objects.bmw_state, "PENDING");
+                    break;
+                case BMWP2000_STATE_RX_WAIT_CF:
+                    lv_label_set_text(objects.bmw_state, "WAIT CF");
+                    break;
+                case BMWP2000_STATE_TX_WAIT_FC:
+                    lv_label_set_text(objects.bmw_state, "WAIT FC");
+                    break;
+                case BMWP2000_STATE_UNINIT:
+                    lv_label_set_text(objects.bmw_state, "UNINIT");
+                    break;
                 default:
-                    lv_obj_remove_state(objects.bmw_state, LV_STATE_DISABLED);
-                    lv_obj_set_style_text_color(objects.bmw_state, lv_palette_main(LV_PALETTE_ORANGE), LV_STATE_DEFAULT);
+                    lv_label_set_text(objects.bmw_state, "BMWP2000");
                     break;
                 }
                 break;
 
-            case 3:
-                lv_label_set_text_fmt(objects.filename, "%s", current_log_filename);
-                lv_label_set_text_fmt(objects.filesize, "%lu kB", current_file_size / 1024);
-                lv_label_set_text_fmt(objects.buffered_size, "%lu B", current_buffered_bytes);
-                lv_label_set_text_fmt(objects.start_stop_lbl, "%s", is_logging ? "STOP" : "START");
-                lv_obj_set_state(objects.start_stop_btn, LV_STATE_CHECKED, is_logging);
-                lv_label_set_text_fmt(objects.status, "%s", is_logging ? "Logging" : "Paused");
+            case 3: // Logger
+                if (current_file_size > 1024 * 1024)
+                {
+                    lv_label_set_text_fmt(objects.current_file_size, "%.1f MB", (float)(current_file_size) / (1024.0 * 1024.0));
+                }
+                else
+                {
+                    lv_label_set_text_fmt(objects.current_file_size, "%lu kB", current_file_size / 1024);
+                }
+                lv_label_set_text_fmt(objects.status, "%s", is_logging ? "LOGGING" : "PAUSED");
                 break;
 
             default:
                 break;
             }
-
-            // Here should put the state of the daemon
 
             bsp_display_unlock();
         }

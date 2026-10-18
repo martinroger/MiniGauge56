@@ -11,9 +11,12 @@
     "styles.h",
     "ui.c",
     "ui.h",
+    "ui_font_league_120px.c",
     "ui_font_league_192px.c",
-    "ui_font_league_30px.c",
+    "ui_font_league_42px.c",
     "ui_font_league_48px.c",
+    "ui_font_league_96px.c",
+    "ui_font_teko_36px.c",
     "vars.h"
   ]
 }

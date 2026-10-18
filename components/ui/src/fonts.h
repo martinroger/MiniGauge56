@@ -8,8 +8,11 @@ extern "C" {
 #endif
 
 extern const lv_font_t ui_font_league_192px;
-extern const lv_font_t ui_font_league_30px;
+extern const lv_font_t ui_font_league_120px;
+extern const lv_font_t ui_font_league_96px;
 extern const lv_font_t ui_font_league_48px;
+extern const lv_font_t ui_font_league_42px;
+extern const lv_font_t ui_font_teko_36px;
 
 #ifndef EXT_FONT_DESC_T
 #define EXT_FONT_DESC_T
