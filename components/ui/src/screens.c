@@ -58,6 +58,7 @@ void create_screen_main() {
             lv_tabview_set_tab_bar_size(obj, 0);
             lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
             lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
+            lv_obj_set_scroll_dir(obj, LV_DIR_HOR);
             lv_obj_set_style_bg_color(obj, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
             {
                 lv_obj_t *parent_obj = obj;
@@ -65,6 +66,7 @@ void create_screen_main() {
                     lv_obj_t *obj = lv_tabview_add_tab(parent_obj, "engine_temp");
                     lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
                     lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
+                    lv_obj_set_scroll_dir(obj, LV_DIR_NONE);
                     {
                         lv_obj_t *parent_obj = obj;
                         {
@@ -79,6 +81,8 @@ void create_screen_main() {
                             lv_scale_set_total_tick_count(obj, 15);
                             lv_scale_set_major_tick_every(obj, 2);
                             lv_scale_set_label_show(obj, false);
+                            lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
+                            lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
                             add_style_mg_scale(obj);
                             lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
                         }
@@ -129,6 +133,7 @@ void create_screen_main() {
                     lv_obj_t *obj = lv_tabview_add_tab(parent_obj, "oil_temp");
                     lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
                     lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
+                    lv_obj_set_scroll_dir(obj, LV_DIR_NONE);
                     {
                         lv_obj_t *parent_obj = obj;
                         {
@@ -143,6 +148,8 @@ void create_screen_main() {
                             lv_scale_set_total_tick_count(obj, 15);
                             lv_scale_set_major_tick_every(obj, 2);
                             lv_scale_set_label_show(obj, false);
+                            lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
+                            lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
                             add_style_mg_scale(obj);
                             lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
                         }

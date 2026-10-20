@@ -273,7 +273,15 @@
                         "childStyles": []
                       },
                       "timeline": [],
-                      "eventHandlers": [],
+                      "eventHandlers": [
+                        {
+                          "objID": "982ee9ea-3966-465f-c06f-fca061294157",
+                          "eventName": "PRESSED",
+                          "handlerType": "action",
+                          "action": "global_pressed",
+                          "userData": 0
+                        }
+                      ],
                       "leftUnit": "px",
                       "topUnit": "px",
                       "widthUnit": "px",
@@ -281,7 +289,7 @@
                       "children": [],
                       "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
                       "hiddenFlagType": "literal",
-                      "clickableFlag": true,
+                      "clickableFlag": false,
                       "clickableFlagType": "literal",
                       "flagScrollbarMode": "",
                       "flagScrollDirection": "",
@@ -544,7 +552,7 @@
                   "clickableFlag": true,
                   "clickableFlagType": "literal",
                   "flagScrollbarMode": "off",
-                  "flagScrollDirection": "",
+                  "flagScrollDirection": "none",
                   "scrollSnapX": "",
                   "scrollSnapY": "",
                   "checkedStateType": "literal",
@@ -604,7 +612,15 @@
                         "childStyles": []
                       },
                       "timeline": [],
-                      "eventHandlers": [],
+                      "eventHandlers": [
+                        {
+                          "objID": "d7d7ee76-9278-4ea3-976e-582dcb531970",
+                          "eventName": "PRESSED",
+                          "handlerType": "action",
+                          "action": "global_pressed",
+                          "userData": 0
+                        }
+                      ],
                       "leftUnit": "px",
                       "topUnit": "px",
                       "widthUnit": "px",
@@ -612,7 +628,7 @@
                       "children": [],
                       "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
                       "hiddenFlagType": "literal",
-                      "clickableFlag": true,
+                      "clickableFlag": false,
                       "clickableFlagType": "literal",
                       "flagScrollbarMode": "",
                       "flagScrollDirection": "",
@@ -875,7 +891,7 @@
                   "clickableFlag": true,
                   "clickableFlagType": "literal",
                   "flagScrollbarMode": "off",
-                  "flagScrollDirection": "",
+                  "flagScrollDirection": "none",
                   "scrollSnapX": "",
                   "scrollSnapY": "",
                   "checkedStateType": "literal",
@@ -1984,7 +2000,7 @@
               "clickableFlag": true,
               "clickableFlagType": "literal",
               "flagScrollbarMode": "off",
-              "flagScrollDirection": "",
+              "flagScrollDirection": "hor",
               "scrollSnapX": "",
               "scrollSnapY": "",
               "checkedStateType": "literal",
