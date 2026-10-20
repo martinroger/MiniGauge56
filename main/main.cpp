@@ -64,7 +64,8 @@ static void on_bmwp_telemetry_updated(void *user_ctx)
 /** @brief Flag indicating whether the AMOLED display backlight is asleep/off */
 bool display_off = false;
 
-bool backlight_override = false;
+/** @brief Always-on backlight mode (inactivity sleep disabled); enabled by default at boot */
+bool backlight_override = true;
 
 /** @brief Software timer handle for display inactivity sleep timeout */
 static TimerHandle_t sleepDisplayTimer = NULL;
@@ -117,7 +118,8 @@ void wakeDisplay(void)
     {
         if (bsp_display_lock(WAKE_DISPLAY_LOCK_TIMEOUT_MS) == ESP_OK)
         {
-            backlight_override ? bsp_display_brightness_set(50) : bsp_display_backlight_on();
+            // backlight_override ? bsp_display_brightness_set(50) : bsp_display_backlight_on();
+            bsp_display_backlight_on();
             bsp_display_unlock();
         }
     }
@@ -176,8 +178,12 @@ extern "C" void action_start_stop_clicked(lv_event_t *e)
     }
     if (lv_obj_has_state(objects.log_sw, LV_STATE_CHECKED))
     {
-        is_logging = true;
         start_logging();
+        if (!is_logging)
+        {
+            // Writer still draining a previous session, or start refused: revert the switch
+            lv_obj_remove_state(objects.log_sw, LV_STATE_CHECKED);
+        }
     }
     else
     {
@@ -202,7 +208,7 @@ extern "C" void action_global_pressed(lv_event_t *e)
 /**
  * @brief LVGL event callback triggered when the backlight override switch is turned on.
  *
- * Forces the display to remain always on at a reduced 50% brightness and cancels inactivity sleep timer.
+ * Forces the display to remain always on (full brightness) and cancels inactivity sleep timer.
  *
  * @param[in] e Pointer to LVGL event descriptor.
  * @note Thread-safety: Must be called from the LVGL task context.
@@ -321,20 +327,29 @@ void update_display(void *pvParameters)
                 break;
 
             case 3: // Logger
-                if (current_file_size > 1024 * 1024)
-                {
-                    lv_label_set_text_fmt(objects.current_file_size, "%.1f MB", (float)(current_file_size) / (1024.0 * 1024.0));
-                }
-                else
-                {
-                    lv_label_set_text_fmt(objects.current_file_size, "%lu kB", current_file_size / 1024);
-                }
-                lv_label_set_text_fmt(objects.status, "%s", is_logging ? "LOGGING" : "PAUSED");
+
                 break;
 
             default:
                 break;
             }
+
+            // Update in any case
+            // Revert the switch if the writer aborted (e.g. file open failure)
+            if (!is_logging && lv_obj_has_state(objects.log_sw, LV_STATE_CHECKED))
+            {
+                lv_obj_remove_state(objects.log_sw, LV_STATE_CHECKED);
+            }
+            uint32_t displayed_size = current_file_size + current_buffered_bytes;
+            if (displayed_size > 1024 * 1024)
+            {
+                lv_label_set_text_fmt(objects.current_file_size, "%.1f MB", (float)displayed_size / (1024.0 * 1024.0));
+            }
+            else
+            {
+                lv_label_set_text_fmt(objects.current_file_size, "%lu kB", displayed_size / 1024);
+            }
+            lv_label_set_text_fmt(objects.status, "%s", is_logging ? "LOGGING" : "PAUSED");
 
             bsp_display_unlock();
         }
@@ -409,6 +424,18 @@ extern "C" void app_main(void)
                 ESP_LOGI(__func__, "Retro LCD flush decorator attached successfully");
             }
             ui_init();
+            // Reflect the default always-on backlight mode on the switch
+            if (objects.backlight_sw)
+            {
+                if (backlight_override)
+                {
+                    lv_obj_add_state(objects.backlight_sw, LV_STATE_CHECKED);
+                }
+                else
+                {
+                    lv_obj_remove_state(objects.backlight_sw, LV_STATE_CHECKED);
+                }
+            }
             if (objects.filter_sw)
             {
                 if (lcd_emulator_is_enabled())
