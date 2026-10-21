@@ -46,6 +46,17 @@
     "unit": "hPa",
     "description": "Pre-Throttle Charge Pressure (Actual Boost) (Druck vor Drosselklappe Rohwert)"
   },
+    "manifoldPressureBoost1": {
+    "id": "0x4205",
+    "memory_size": 2,
+    "position": 1,
+    "signed": false,
+    "mul": 0.078125,
+    "div": 1.0,
+    "add": 0.0,
+    "unit": "hPa",
+    "description": "Intake manifold pressure 1 (boost pressure 1)"
+  },
   "vehicleSpeed": {
     "id": "0x580D",
     "memory_size": 1,
@@ -68,6 +79,17 @@
     "unit": "°C",
     "description": "Engine Coolant Temperature 1 (Motortemperatur, linearisiert und umgerechnet)"
   },
+    "coolantTemp": {
+    "id": "0x4300",
+    "memory_size": 1,
+    "position": 1,
+    "signed": false,
+    "mul": 0.75,
+    "div": 1.0,
+    "add": -48.0,
+    "unit": "°C",
+    "description": "Engine coolant temperature"
+  },
   "iat": {
     "id": "0x580F",
     "memory_size": 1,
@@ -89,6 +111,39 @@
     "add": 0.0,
     "unit": "MPa",
     "description": "High Pressure Fuel Rail Pressure (Actual) (ungefilterter Raildruck Istwert (abs.))"
+  },
+    "engineOilTemp": {
+    "id": "0x5822",
+    "memory_size": 1,
+    "position": 1,
+    "signed": false,
+    "mul": 1.0,
+    "div": 1.0,
+    "add": -60.0,
+    "unit": "°C",
+    "description": "Engine oil temperature"
+  },
+  "oilPressureActual": {
+    "id": "0x586F",
+    "memory_size": 2,
+    "position": 1,
+    "signed": true,
+    "mul": 1.0,
+    "div": 1.0,
+    "add": 0.0,
+    "unit": "hPa",
+    "description": "Oil pressure, actual"
+  },
+    "gearActual": {
+    "id": "0x5881",
+    "memory_size": 1,
+    "position": 1,
+    "signed": false,
+    "mul": 1.0,
+    "div": 1.0,
+    "add": 0.0,
+    "unit": "",
+    "description": "Actual gear"
   },
   "oilTemp": {
     "id": "0x4402",

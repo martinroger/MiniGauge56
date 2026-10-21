@@ -233,7 +233,7 @@
 
     els.inputTrainLocalId.value = train.local_id || '';
     els.inputTrainName.value = train.name || '';
-    els.selectTrainMode.value = train.transmission_mode || 'fast';
+    els.selectTrainMode.value = train.transmission_mode === 'single' ? 'single' : 'fast';
 
     renderSequenceList(train.cids || []);
     updateFramingMetrics(train.cids || []);

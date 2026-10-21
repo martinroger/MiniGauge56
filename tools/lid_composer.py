@@ -118,7 +118,7 @@ def validate_lids(lids_list: List[Any], known_cids: Optional[Dict[str, Any]] = N
         return False, "LIDs payload must be a JSON array"
 
     hex_id_re = re.compile(r"^0x[0-9a-fA-F]{2}$")
-    valid_modes = {"fast", "medium", "slow", "single", "stop"}
+    valid_modes = {"fast", "single"}  # Only modes supported by the BMWP2000 library
 
     seen_ids = set()
 

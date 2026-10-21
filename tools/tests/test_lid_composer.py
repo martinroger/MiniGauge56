@@ -168,7 +168,7 @@ class TestLIDComposerLogic(unittest.TestCase):
         # Duplicate local_id
         valid, err = validate_lids([
             {"local_id": "0xF0", "name": "A", "transmission_mode": "fast", "cids": []},
-            {"local_id": "0xF0", "name": "B", "transmission_mode": "slow", "cids": []}
+            {"local_id": "0xF0", "name": "B", "transmission_mode": "single", "cids": []}
         ])
         self.assertFalse(valid)
         self.assertIn("Duplicate local_id", err)
@@ -177,6 +177,12 @@ class TestLIDComposerLogic(unittest.TestCase):
         valid, err = validate_lids([{"local_id": "0xF0", "name": "A", "transmission_mode": "ultra_fast", "cids": []}])
         self.assertFalse(valid)
         self.assertIn("invalid transmission_mode", err)
+
+        # Modes not supported by the BMWP2000 library
+        for unsupported in ("medium", "slow", "stop"):
+            valid, err = validate_lids([{"local_id": "0xF0", "name": "A", "transmission_mode": unsupported, "cids": []}])
+            self.assertFalse(valid)
+            self.assertIn("invalid transmission_mode", err)
 
         # cids is not a list
         valid, err = validate_lids([{"local_id": "0xF0", "name": "A", "transmission_mode": "fast", "cids": "RPM"}])
@@ -383,7 +389,7 @@ class TestLIDComposerServerEndpoints(unittest.TestCase):
             {
                 "local_id": "0xF1",
                 "name": "Custom_Metrics",
-                "transmission_mode": "medium",
+                "transmission_mode": "single",
                 "cids": ["RPM"]
             }
         ]

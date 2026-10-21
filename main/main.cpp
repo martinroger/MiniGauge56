@@ -41,6 +41,33 @@ static double s_bmwp_cached_engine_temp = 0.0;
 /** @brief Cached high-pressure fuel pump pressure (Bar) decoded from BMWP2000 telemetry */
 static double s_bmwp_cached_hpfp = 0.0;
 
+/** @brief Cached vehicle speed (km/h) decoded from BMWP2000 telemetry */
+static double s_bmwp_cached_vehicle_speed = 0.0;
+
+/** @brief Cached mass air flow (kg/h) decoded from BMWP2000 telemetry */
+static double s_bmwp_cached_maf = 0.0;
+
+/** @brief Cached intake air temperature (degC) decoded from BMWP2000 telemetry */
+static double s_bmwp_cached_iat = 0.0;
+
+/** @brief Cached pre-throttle charge pressure (hPa) decoded from BMWP2000 telemetry */
+static double s_bmwp_cached_throttle_pressure = 0.0;
+
+/** @brief Cached intake manifold boost pressure 1 (hPa) decoded from BMWP2000 telemetry */
+static double s_bmwp_cached_manifold_pressure_boost1 = 0.0;
+
+/** @brief Cached engine oil temperature (degC) decoded from BMWP2000 telemetry */
+static double s_bmwp_cached_engine_oil_temp = 0.0;
+
+/** @brief Cached actual oil pressure (hPa) decoded from BMWP2000 telemetry */
+static double s_bmwp_cached_oil_pressure_actual = 0.0;
+
+/** @brief Cached engine coolant temperature (degC) from the coolantTemp CID decoded from BMWP2000 telemetry */
+static double s_bmwp_cached_coolant_temp = 0.0;
+
+/** @brief Cached actual gear decoded from BMWP2000 telemetry */
+static double s_bmwp_cached_gear_actual = 0.0;
+
 /**
  * @brief Callback triggered when a fresh BMWP2000 LID packet is parsed.
  *
@@ -59,6 +86,15 @@ static void on_bmwp_telemetry_updated(void *user_ctx)
     bmwp2000_get_cid_value("oilTemp", &s_bmwp_cached_oil_temp);
     bmwp2000_get_cid_value("engineTemp", &s_bmwp_cached_engine_temp);
     bmwp2000_get_cid_value("hpfpPressure", &s_bmwp_cached_hpfp);
+    bmwp2000_get_cid_value("vehicleSpeed", &s_bmwp_cached_vehicle_speed);
+    bmwp2000_get_cid_value("maf", &s_bmwp_cached_maf);
+    bmwp2000_get_cid_value("iat", &s_bmwp_cached_iat);
+    bmwp2000_get_cid_value("throttlePressure", &s_bmwp_cached_throttle_pressure);
+    bmwp2000_get_cid_value("manifoldPressureBoost1", &s_bmwp_cached_manifold_pressure_boost1);
+    bmwp2000_get_cid_value("engineOilTemp", &s_bmwp_cached_engine_oil_temp);
+    bmwp2000_get_cid_value("oilPressureActual", &s_bmwp_cached_oil_pressure_actual);
+    bmwp2000_get_cid_value("coolantTemp", &s_bmwp_cached_coolant_temp);
+    bmwp2000_get_cid_value("gearActual", &s_bmwp_cached_gear_actual);
 }
 
 /** @brief Flag indicating whether the AMOLED display backlight is asleep/off */
@@ -402,6 +438,7 @@ extern "C" void app_main(void)
         if (bmwp2000_start() == ESP_OK)
         {
             ESP_LOGI(__func__, "BMWP2000 background daemon task started");
+            
         }
         else
         {

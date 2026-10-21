@@ -1,0 +1,104 @@
+{
+  "_schema_guide": {
+    "description": "Master Common Identifier (CID) Dictionary Schema Guide & Example Value Options (ISO 14230-3)",
+    "keys": {
+      "id": "Hexadecimal ECU Common Identifier string (e.g., '0x580C', '0x58F0', '0x4402').",
+      "memory_size": "Length in bytes in ECU RAM: 1 (uint8/int8), 2 (uint16/int16), 4 (uint32/int32).",
+      "position": "1-indexed byte offset inside raw ECU parameter payload (typically 1).",
+      "signed": "Boolean indicating signed integer representation (true for int8/int16/int32, default: false).",
+      "mul": "Formula multiplier (floating-point or integer, default: 1.0). Formula: ((raw * mul) / div) + add.",
+      "div": "Formula divisor (floating-point or integer, default: 1.0). Formula: ((raw * mul) / div) + add.",
+      "add": "Formula offset addition (floating-point or integer, default: 0.0).",
+      "unit": "Engineering unit display string (e.g., 'RPM', 'Bar', 'kg/h', 'mbar', 'km/h', '°C', 'V', '%').",
+      "description": "Human-readable description and explanation of the ECU parameter."
+    }
+  },
+  "rpm": {
+    "id": "0x580C",
+    "memory_size": 1,
+    "position": 1,
+    "signed": false,
+    "mul": 40.0,
+    "div": 1.0,
+    "add": 0.0,
+    "unit": "1/min",
+    "description": "Engine Speed (Motordrehzahl)"
+  },
+  "maf": {
+    "id": "0x5ABC",
+    "memory_size": 2,
+    "position": 1,
+    "signed": false,
+    "mul": 0.10000000149011612,
+    "div": 1.0,
+    "add": 0.0,
+    "unit": "kg/h",
+    "description": "Mass Air Flow (Luftmasse)"
+  },
+  "throttlePressure": {
+    "id": "0x58DD",
+    "memory_size": 2,
+    "position": 1,
+    "signed": false,
+    "mul": 0.078125,
+    "div": 1.0,
+    "add": 0.0,
+    "unit": "hPa",
+    "description": "Pre-Throttle Charge Pressure (Actual Boost) (Druck vor Drosselklappe Rohwert)"
+  },
+  "vehicleSpeed": {
+    "id": "0x580D",
+    "memory_size": 1,
+    "position": 1,
+    "signed": false,
+    "mul": 1.25,
+    "div": 1.0,
+    "add": 0.0,
+    "unit": "km/h",
+    "description": "Vehicle Speed (Geschwindigkeit)"
+  },
+  "engineTemp": {
+    "id": "0x5805",
+    "memory_size": 1,
+    "position": 1,
+    "signed": false,
+    "mul": 0.75,
+    "div": 1.0,
+    "add": -48.0,
+    "unit": "°C",
+    "description": "Engine Coolant Temperature 1 (Motortemperatur, linearisiert und umgerechnet)"
+  },
+  "iat": {
+    "id": "0x580F",
+    "memory_size": 1,
+    "position": 1,
+    "signed": false,
+    "mul": 0.75,
+    "div": 1.0,
+    "add": -48.0,
+    "unit": "°C",
+    "description": "Intake Air Temperature (Manifold) (Ansaugluft-Temperatur)"
+  },
+  "hpfpPressure": {
+    "id": "0x58F0",
+    "memory_size": 2,
+    "position": 1,
+    "signed": false,
+    "mul": 0.0005000000237487257,
+    "div": 1.0,
+    "add": 0.0,
+    "unit": "MPa",
+    "description": "High Pressure Fuel Rail Pressure (Actual) (ungefilterter Raildruck Istwert (abs.))"
+  },
+  "oilTemp": {
+    "id": "0x4402",
+    "memory_size": 1,
+    "position": 1,
+    "signed": false,
+    "mul": 1.0,
+    "div": 1.0,
+    "add": -60.0,
+    "unit": "°C",
+    "description": "Engine Oil Temperature (Ãltemperatur)"
+  }
+}
