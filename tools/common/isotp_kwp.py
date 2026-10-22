@@ -430,7 +430,11 @@ class IsoTpReassembler:
 class BmwP2000Dissector:
     """High-level KWP2000 protocol exchange dissector and LID/CID interpreter."""
 
-    def __init__(self, master_cids: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        master_cids: Optional[Dict[str, Any]] = None,
+        fallback_lids: Optional[Any] = None,
+    ):
         self.master_cids = master_cids or {}
         # Invert master cids mapping hex id -> key
         self.cid_hex_map: Dict[str, str] = {}
@@ -450,6 +454,51 @@ class BmwP2000Dissector:
 
         # Dynamic LID registry keyed by Local ID (e.g. 0xF0)
         self.active_lids: Dict[int, LidDefinition] = {}
+        # LIDs from config/lids.json, used only when the log never defined that LID
+        self.fallback_lids: Dict[int, LidDefinition] = self.build_fallback_lids(fallback_lids)
+
+    def build_fallback_lids(self, lids_config: Optional[Any]) -> Dict[int, LidDefinition]:
+        """Builds LID definitions from a lids.json list, resolving CID keys via the master CIDs."""
+        result: Dict[int, LidDefinition] = {}
+        if not isinstance(lids_config, list):
+            return result
+        for item in lids_config:
+            if not isinstance(item, dict) or "local_id" not in item:
+                continue
+            try:
+                local_id = int(str(item["local_id"]), 16)
+            except ValueError:
+                continue
+            entries: List[LidEntry] = []
+            pos_in_lid = 1
+            for cid_key in item.get("cids", []):
+                meta = self.master_cids.get(cid_key)
+                if not isinstance(meta, dict):
+                    continue
+                try:
+                    cid_num = int(str(meta.get("id", "")), 16)
+                except ValueError:
+                    continue
+                size = int(meta.get("memory_size", 1))
+                entries.append(LidEntry(
+                    definition_mode=0x02,
+                    definition_mode_name="defineByCommonIdentifier",
+                    pos_in_lid=pos_in_lid,
+                    memory_size=size,
+                    cid_hex=f"0x{cid_num:04X}",
+                    cid_name=cid_key,
+                    pos_in_source=int(meta.get("position", 1)),
+                    is_known=True,
+                ))
+                pos_in_lid += size
+            if entries:
+                result[local_id] = LidDefinition(
+                    local_id=local_id,
+                    name=str(item.get("name") or f"LID_0x{local_id:02X}"),
+                    entries=entries,
+                    total_bytes=pos_in_lid - 1,
+                )
+        return result
 
     def reload_cids(self, master_cids: Dict[str, Any]) -> None:
         self.master_cids = master_cids
@@ -736,6 +785,10 @@ class BmwP2000Dissector:
                     if parse_cids and local_id in self.active_lids:
                         parsed_signals = self.unpack_lid_payload(self.active_lids[local_id], data_bytes)
                         result["details"]["signals"] = parsed_signals
+                    elif parse_cids and local_id in self.fallback_lids:
+                        result["details"]["signals"] = self.unpack_lid_payload(self.fallback_lids[local_id], data_bytes)
+                        result["details"]["signals_status"] = f"Decoded using lids.json fallback definition for 0x{local_id:02X} (not defined in log)"
+                        result["details"]["lid_source"] = "lids.json"
                     elif parse_cids:
                         result["details"]["signals_status"] = f"No active LID definition found for 0x{local_id:02X}"
             return result
