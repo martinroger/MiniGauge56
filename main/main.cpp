@@ -505,71 +505,71 @@ extern "C" void app_main(void)
         ESP_LOGD("BMWP_STATUS", "Frames: %lu | RPM: %.0f | Oil: %.1f degC | Coolant: %.1f degC | HPFP: %.1f Bar",
                  (unsigned long)s_bmwp_frame_count, s_bmwp_cached_rpm, s_bmwp_cached_oil_temp, s_bmwp_cached_engine_temp, s_bmwp_cached_hpfp);
         // Find problematic cid
-        if(bmwp2000_read_cid_single("rpm") == ESP_OK)
-        {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-        else vTaskDelay(pdMS_TO_TICKS(700));
-        if(bmwp2000_read_cid_single("oilTemp") == ESP_OK)
-        {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-        else vTaskDelay(pdMS_TO_TICKS(700));
-        if(bmwp2000_read_cid_single("engineTemp") == ESP_OK)
-        {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-        else vTaskDelay(pdMS_TO_TICKS(700));
-        if(bmwp2000_read_cid_single("hpfpPressure") == ESP_OK)
-        {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-        else vTaskDelay(pdMS_TO_TICKS(700));
-        if(bmwp2000_read_cid_single("vehicleSpeed") == ESP_OK)
-        {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-        else vTaskDelay(pdMS_TO_TICKS(700));
-        if(bmwp2000_read_cid_single("maf") == ESP_OK)
-        {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-        else vTaskDelay(pdMS_TO_TICKS(700));
-        if(bmwp2000_read_cid_single("iat") == ESP_OK)
-        {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-        else vTaskDelay(pdMS_TO_TICKS(700));
-        if(bmwp2000_read_cid_single("throttlePressure") == ESP_OK)
-        {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-        else vTaskDelay(pdMS_TO_TICKS(700));
-        if(bmwp2000_read_cid_single("manifoldPressureBoost1") == ESP_OK)
-        {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-        else vTaskDelay(pdMS_TO_TICKS(700));
-        if(bmwp2000_read_cid_single("engineOilTemp") == ESP_OK)
-        {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-        else vTaskDelay(pdMS_TO_TICKS(700));
-        if(bmwp2000_read_cid_single("oilPressureActual") == ESP_OK)
-        {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-        else vTaskDelay(pdMS_TO_TICKS(700));
-        if(bmwp2000_read_cid_single("coolantTemp") == ESP_OK)
-        {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-        else vTaskDelay(pdMS_TO_TICKS(700));
-        if(bmwp2000_read_cid_single("gearActual") == ESP_OK)
-        {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-        else vTaskDelay(pdMS_TO_TICKS(700));
+        // if(bmwp2000_read_cid_single("rpm") == ESP_OK)
+        // {
+        //     vTaskDelay(pdMS_TO_TICKS(50));
+        // }
+        // else vTaskDelay(pdMS_TO_TICKS(700));
+        // if(bmwp2000_read_cid_single("oilTemp") == ESP_OK)
+        // {
+        //     vTaskDelay(pdMS_TO_TICKS(50));
+        // }
+        // else vTaskDelay(pdMS_TO_TICKS(700));
+        // if(bmwp2000_read_cid_single("engineTemp") == ESP_OK)
+        // {
+        //     vTaskDelay(pdMS_TO_TICKS(50));
+        // }
+        // else vTaskDelay(pdMS_TO_TICKS(700));
+        // if(bmwp2000_read_cid_single("hpfpPressure") == ESP_OK)
+        // {
+        //     vTaskDelay(pdMS_TO_TICKS(50));
+        // }
+        // else vTaskDelay(pdMS_TO_TICKS(700));
+        // if(bmwp2000_read_cid_single("vehicleSpeed") == ESP_OK)
+        // {
+        //     vTaskDelay(pdMS_TO_TICKS(50));
+        // }
+        // else vTaskDelay(pdMS_TO_TICKS(700));
+        // if(bmwp2000_read_cid_single("maf") == ESP_OK)
+        // {
+        //     vTaskDelay(pdMS_TO_TICKS(50));
+        // }
+        // else vTaskDelay(pdMS_TO_TICKS(700));
+        // if(bmwp2000_read_cid_single("iat") == ESP_OK)
+        // {
+        //     vTaskDelay(pdMS_TO_TICKS(50));
+        // }
+        // else vTaskDelay(pdMS_TO_TICKS(700));
+        // if(bmwp2000_read_cid_single("throttlePressure") == ESP_OK)
+        // {
+        //     vTaskDelay(pdMS_TO_TICKS(50));
+        // }
+        // else vTaskDelay(pdMS_TO_TICKS(700));
+        // if(bmwp2000_read_cid_single("manifoldPressureBoost1") == ESP_OK)
+        // {
+        //     vTaskDelay(pdMS_TO_TICKS(50));
+        // }
+        // else vTaskDelay(pdMS_TO_TICKS(700));
+        // if(bmwp2000_read_cid_single("engineOilTemp") == ESP_OK)
+        // {
+        //     vTaskDelay(pdMS_TO_TICKS(50));
+        // }
+        // else vTaskDelay(pdMS_TO_TICKS(700));
+        // if(bmwp2000_read_cid_single("oilPressureActual") == ESP_OK)
+        // {
+        //     vTaskDelay(pdMS_TO_TICKS(50));
+        // }
+        // else vTaskDelay(pdMS_TO_TICKS(700));
+        // if(bmwp2000_read_cid_single("coolantTemp") == ESP_OK)
+        // {
+        //     vTaskDelay(pdMS_TO_TICKS(50));
+        // }
+        // else vTaskDelay(pdMS_TO_TICKS(700));
+        // if(bmwp2000_read_cid_single("gearActual") == ESP_OK)
+        // {
+        //     vTaskDelay(pdMS_TO_TICKS(50));
+        // }
+        // else vTaskDelay(pdMS_TO_TICKS(700));
 
     }
 }
