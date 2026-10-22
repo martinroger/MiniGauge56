@@ -36,6 +36,8 @@ from common.isotp_kwp import (
 
 DEFAULT_CIDS_PATH = REPO_ROOT / "config" / "cids.json"
 CIDS_FILE_PATH: Path = DEFAULT_CIDS_PATH
+DEFAULT_LIDS_PATH = REPO_ROOT / "config" / "lids.json"
+LIDS_FILE_PATH: Path = DEFAULT_LIDS_PATH
 INITIAL_LOG_FILE: Optional[Path] = None
 
 
@@ -59,16 +61,29 @@ def load_cids_dictionary(path: Path) -> Dict[str, Any]:
     return {}
 
 
+def load_lids_config(path: Path) -> List[Dict[str, Any]]:
+    """Loads the local LID definitions list (config/lids.json); empty on any problem."""
+    if path.is_file():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return data
+        except Exception:
+            pass
+    return []
+
+
 def analyze_log_exchanges(
     log_path: Path,
     parse_cids: bool = True,
     master_cids: Optional[Dict[str, Any]] = None,
     include_raw_can: bool = True,
+    fallback_lids: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Parses a log file and reconstructs BMWP2000 diagnostic exchanges and raw CAN traffic."""
     frames = load_log_file(log_path)
     reassembler = IsoTpReassembler()
-    dissector = BmwP2000Dissector(master_cids)
+    dissector = BmwP2000Dissector(master_cids, fallback_lids=fallback_lids)
 
     # Ingest frames and correlate raw CAN frames and reassembled ISO-TP messages
     events: List[Dict[str, Any]] = []
@@ -355,11 +370,13 @@ class BmwP2000ViewerHandler(BaseAppHandler):
                 self.send_error(404, f"Log file '{target_name}' not found")
                 return
 
+            use_lids_fallback = query.get("lids_fallback", ["true"])[0].lower() != "false"
             master_cids = load_cids_dictionary(CIDS_FILE_PATH)
             analysis = analyze_log_exchanges(
                 target_path,
                 parse_cids=parse_cids,
                 master_cids=master_cids,
+                fallback_lids=load_lids_config(LIDS_FILE_PATH) if use_lids_fallback else None,
             )
             self.send_json(analysis)
             return
