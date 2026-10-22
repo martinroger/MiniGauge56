@@ -13,7 +13,7 @@
   {
     "local_id": "0xF0",
     "name": "engineCore",
-    "transmission_mode": "fast",
+    "transmission_mode": "single",
     "cids": [
       "rpm",
       "vehicleSpeed",
