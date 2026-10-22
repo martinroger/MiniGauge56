@@ -29,6 +29,7 @@
   const btnBrowseFile = document.getElementById('btn-browse-file');
   const inputFilePicker = document.getElementById('input-file-picker');
   const chkParseCids = document.getElementById('chk-parse-cids');
+  const chkLidsFallback = document.getElementById('chk-lids-fallback');
   const chkShowRawCan = document.getElementById('chk-show-raw-can');
   const chkHideUnknown = document.getElementById('chk-hide-unknown');
   const inputSearch = document.getElementById('input-search-exchanges');
@@ -86,6 +87,14 @@
 
     if (chkParseCids) {
       chkParseCids.addEventListener('change', () => {
+        if (currentLogFile) {
+          fetchExchanges();
+        }
+      });
+    }
+
+    if (chkLidsFallback) {
+      chkLidsFallback.addEventListener('change', () => {
         if (currentLogFile) {
           fetchExchanges();
         }
@@ -302,9 +311,10 @@
     if (!currentLogFile) return;
 
     const parseCids = chkParseCids ? chkParseCids.checked : true;
+    const lidsFallback = chkLidsFallback ? chkLidsFallback.checked : true;
     exchangeTbody.innerHTML = '<tr><td colspan="10" style="padding: 24px; text-align: center; color: var(--text-muted);">Loading and analyzing exchanges...</td></tr>';
 
-    fetch(`/api/exchanges?file=${encodeURIComponent(currentLogFile)}&parse_cids=${parseCids}&parse_dids=${parseCids}`)
+    fetch(`/api/exchanges?file=${encodeURIComponent(currentLogFile)}&parse_cids=${parseCids}&parse_dids=${parseCids}&lids_fallback=${lidsFallback}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();

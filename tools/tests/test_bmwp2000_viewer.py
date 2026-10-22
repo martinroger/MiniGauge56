@@ -428,6 +428,29 @@ class TestBmwP2000ServerAndApi(unittest.TestCase):
         self.assertEqual(signals[1]["scaled_value"], 42)
         self.assertEqual(signals[1]["raw_hex"], "2A")
 
+    def test_lids_json_fallback_when_log_lacks_definition(self):
+        master_cids = {
+            "ambientTemp": {"id": "0x4401", "memory_size": 1, "signed": True, "mul": 1, "div": 1, "add": 0},
+            "timingAdvance": {"id": "0x4402", "memory_size": 2, "signed": True, "mul": 0.5, "div": 1.0, "add": 0},
+        }
+        lids = [{"local_id": "0xF0", "name": "mix", "transmission_mode": "fast", "cids": ["ambientTemp", "timingAdvance"]}]
+        resp_payload = bytes.fromhex("61F0FBFFF6")
+        frame = CanFrame(110, 0.11, 0x612, 8, bytes([0xF1, len(resp_payload)]) + resp_payload)
+
+        def dissect(fallback):
+            msg = IsoTpReassembler().process_frame(frame)
+            return BmwP2000Dissector(master_cids, fallback_lids=fallback).dissect_message(msg)["details"]
+
+        details = dissect(lids)
+        self.assertEqual([s["cid_name"] for s in details["signals"]], ["ambientTemp", "timingAdvance"])
+        self.assertEqual(details["signals"][1]["scaled_value"], -5.0)
+        self.assertEqual(details["lid_source"], "lids.json")
+
+        details = dissect(None)
+        self.assertNotIn("signals", details)
+        self.assertIn("No active LID definition", details["signals_status"])
+
+
     def test_post_upload_api(self):
         import base64
         test_log_content = "(1708736315.011192) can0 6F1#12032CF004000000\n(1708736315.015143) can0 612#F1026CF0FFFFFFFF\n"
