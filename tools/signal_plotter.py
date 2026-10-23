@@ -27,9 +27,13 @@ INITIAL_LOG_FILE: Optional[Path] = None
 _CACHE: Dict[str, Dict[str, Any]] = {}
 
 
-def extract_signals(log_path: Path) -> Dict[str, Any]:
-    """Collects every decoded signal of a log as parallel time/value series."""
-    key = f"{log_path}:{log_path.stat().st_mtime_ns}"
+def extract_signals(log_path: Path, use_lids_fallback: bool = True) -> Dict[str, Any]:
+    """Collects every decoded signal of a log as parallel time/value series.
+
+    With use_lids_fallback, LIDs the log never defines are decoded using
+    config/lids.json (same behaviour as the exchange viewer's toggle).
+    """
+    key = f"{log_path}:{log_path.stat().st_mtime_ns}:{viewer.CIDS_FILE_PATH}:{use_lids_fallback}"
     if key in _CACHE:
         return _CACHE[key]
 
@@ -38,7 +42,7 @@ def extract_signals(log_path: Path) -> Dict[str, Any]:
         parse_cids=True,
         master_cids=viewer.load_cids_dictionary(viewer.CIDS_FILE_PATH),
         include_raw_can=False,
-        fallback_lids=viewer.load_lids_config(viewer.LIDS_FILE_PATH),
+        fallback_lids=viewer.load_lids_config(viewer.LIDS_FILE_PATH) if use_lids_fallback else None,
     )
     series: Dict[str, Dict[str, Any]] = {}
     for ex in result["exchanges"]:
@@ -60,6 +64,7 @@ def extract_signals(log_path: Path) -> Dict[str, Any]:
     data = {
         "filename": log_path.name,
         "duration_s": result["duration_s"],
+        "lids_fallback": use_lids_fallback,
         "signals": sorted(series.values(), key=lambda s: s["name"].lower()),
     }
     _CACHE.clear()
@@ -95,8 +100,9 @@ class SignalPlotterHandler(BaseAppHandler):
             if target is None:
                 self.send_json({"error": f"Log '{wanted}' not found"}, status=404)
                 return
+            use_fallback = query.get("lids_fallback", ["true"])[0].lower() != "false"
             try:
-                self.send_json(extract_signals(target))
+                self.send_json(extract_signals(target, use_lids_fallback=use_fallback))
             except Exception as exc:  # surface parse errors to the UI
                 self.send_json({"error": str(exc)}, status=500)
             return

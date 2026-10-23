@@ -23,6 +23,12 @@ class SignalPlotterTests(unittest.TestCase):
             self.assertEqual(len(s["t"]), len(s["v"]))
             self.assertEqual(s["t"], sorted(s["t"]))
 
+    def test_lids_fallback_can_be_disabled(self):
+        log = TOOLS_DIR / "fixtures" / "candump-2024-02-24_020530.log"
+        with_fallback = {s["name"] for s in signal_plotter.extract_signals(log, use_lids_fallback=True)["signals"]}
+        without = {s["name"] for s in signal_plotter.extract_signals(log, use_lids_fallback=False)["signals"]}
+        self.assertTrue(without < with_fallback)
+
     def test_log_without_readouts_yields_no_signals(self):
         data = signal_plotter.extract_signals(TOOLS_DIR / "fixtures" / "uploaded_test_fixture.log")
         self.assertEqual(data["signals"], [])

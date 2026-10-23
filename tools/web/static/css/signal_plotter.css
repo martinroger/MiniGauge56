@@ -1,10 +1,24 @@
 /* MiniGauge Signal Plotter */
+.app-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.5rem 1.25rem; }
+.header-left, .header-right, .app-logo { display: flex; align-items: center; gap: 0.75rem; }
+.logo-icon { width: 30px; height: 30px; flex-shrink: 0; }
+.logo-text { display: flex; flex-direction: column; line-height: 1.2; }
+.logo-text h1 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.02em; }
+.logo-text h1 span { color: var(--primary); }
+.logo-sub { font-size: 0.72rem; color: var(--text-muted); }
+.select-styled {
+  background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border);
+  padding: 5px 10px; border-radius: 6px; font-size: 13px; max-width: 280px;
+}
+.select-styled:disabled { opacity: 0.5; }
+.select-sm { padding: 3px 6px; }
+.switch-label { display: flex; align-items: center; gap: 0.4rem; font-size: 13px; cursor: pointer; white-space: nowrap; }
 .sp-toolbar {
   display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
   padding: 0.5rem 1.25rem; background: var(--card-bg);
   border-bottom: 1px solid var(--divider); flex-shrink: 0; font-size: 13px;
 }
-.sp-toolbar .toolbar-group, .sp-toolbar .switch-label { display: flex; align-items: center; gap: 0.5rem; }
+.sp-toolbar .toolbar-group { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .sp-right { margin-left: auto; }
 .seg { display: inline-flex; border: 1px solid var(--input-border); border-radius: 6px; overflow: hidden; }
 .seg-btn {
@@ -17,7 +31,7 @@
 
 .sp-main { flex: 1; display: flex; min-height: 0; }
 .sp-sidebar {
-  width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.5rem;
+  width: 280px; min-width: 180px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.5rem;
   padding: 0.75rem; border-right: 1px solid var(--divider); background: var(--card-bg); min-height: 0;
 }
 .sp-sidebar input[type=search] {
@@ -38,6 +52,12 @@
 .sp-signal-list .meta { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
 .sp-signal-list .xmark { font-size: 10px; color: var(--accent); }
 
+.sp-splitter {
+  width: 6px; flex-shrink: 0; cursor: col-resize; background: transparent;
+  margin-left: -3px; margin-right: -3px; z-index: 2; position: relative;
+}
+.sp-splitter:hover, .sp-resizing .sp-splitter { background: var(--primary); opacity: 0.5; }
+.sp-resizing, .sp-resizing * { cursor: col-resize !important; user-select: none; }
 .sp-plot-area { flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 0.75rem; gap: 0.4rem; }
 .sp-canvas-wrap {
   position: relative; flex: 1; min-height: 0; background: var(--card-bg);
@@ -55,5 +75,6 @@
 }
 .sp-tooltip .row { display: flex; align-items: center; gap: 0.4rem; }
 .sp-tooltip .dot { width: 8px; height: 8px; border-radius: 50%; }
-.sp-help { font-size: 11px; }
+.sp-help { font-size: 11px; padding: 0 2px; }
+.sp-signal-list li { min-width: 0; }
 [hidden] { display: none !important; }
