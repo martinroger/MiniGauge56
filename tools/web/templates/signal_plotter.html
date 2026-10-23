@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MiniGauge - Signal Plotter</title>
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/theme.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/signal_plotter.css">
+</head>
+<body class="theme-dark">
+  <header class="app-header">
+    <div class="header-left">
+      <div class="logo-text">
+        <h1>MiniGauge <span>Signal Plotter</span></h1>
+        <span class="logo-sub">Parsed CID values vs time and vs each other</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="toolbar-group">
+        <label for="select-log-file" class="text-muted" style="font-size: 12px;">Log File:</label>
+        <select id="select-log-file" class="select-styled"><option value="">Loading logs...</option></select>
+      </div>
+      <button type="button" class="btn-theme-toggle" id="theme-toggle-btn" data-role="theme-toggle" title="Toggle Light / Dark / Auto">
+        <span id="themeIcon" class="theme-icon">🌓</span>
+        <span id="themeLabel" class="theme-label">Auto</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="sp-toolbar">
+    <div class="seg" role="tablist" aria-label="Plot mode">
+      <button type="button" class="seg-btn active" data-mode="lanes">Stacked lanes</button>
+      <button type="button" class="seg-btn" data-mode="overlay">Overlay</button>
+      <button type="button" class="seg-btn" data-mode="xy">XY</button>
+    </div>
+    <div class="toolbar-group" id="xy-controls" hidden>
+      <label for="select-x" class="text-muted">X axis:</label>
+      <select id="select-x" class="select-styled"></select>
+      <label class="switch-label" title="Color XY points by time (dark to bright)">
+        <input type="checkbox" id="chk-xy-time" class="switch-input" checked><span>Color by time</span>
+      </label>
+    </div>
+    <div class="toolbar-group">
+      <label class="switch-label" title="Draw sample points on each trace">
+        <input type="checkbox" id="chk-points" class="switch-input"><span>Points</span>
+      </label>
+      <label class="switch-label" title="Hold last value between samples (CAN-style) instead of straight lines">
+        <input type="checkbox" id="chk-step" class="switch-input"><span>Step</span>
+      </label>
+    </div>
+    <div class="toolbar-group sp-right">
+      <span class="text-muted" id="range-readout"></span>
+      <button type="button" class="btn btn-secondary btn-sm" id="btn-reset-zoom">Reset zoom</button>
+    </div>
+  </div>
+
+  <main class="sp-main">
+    <aside class="sp-sidebar">
+      <input type="search" id="signal-filter" class="input-styled" placeholder="Filter signals...">
+      <div class="sp-sidebar-actions">
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-clear">Clear</button>
+        <span class="text-muted" id="signal-count"></span>
+      </div>
+      <ul id="signal-list" class="sp-signal-list"></ul>
+    </aside>
+
+    <section class="sp-plot-area">
+      <div class="sp-canvas-wrap" id="canvas-wrap">
+        <canvas id="plot"></canvas>
+        <div class="sp-empty" id="empty-hint">Pick one or more signals on the left.<br>In XY mode, the first selected signals are plotted against the chosen X axis.</div>
+        <div class="sp-tooltip" id="tooltip" hidden></div>
+      </div>
+      <div class="sp-help text-muted">Wheel: zoom · Drag: pan · Double-click: reset · Shift+drag: box zoom</div>
+    </section>
+  </main>
+
+  <script src="/static/js/theme.js"></script>
+  <script src="/static/js/toast.js"></script>
+  <script src="/static/js/signal_plotter.js"></script>
+</body>
+</html>

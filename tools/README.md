@@ -5,7 +5,8 @@ This directory contains standalone, zero-dependency tools for inspecting ISO-TP 
 The toolset consists of:
 1. **BMWP2000 LID Composer (`lid_composer.py`)**: Web configuration workstation to compose and reorder Dynamically Defined Local Identifier (LID) trains, inspect ISO-TP payload framing (SF vs. FF+CF), compute CAN frame counts, and view/edit the master CID dictionary (`config/cids.json`).
 2. **BMWP2000 Diagnostic Exchange Viewer (`bmwp2000_viewer.py`)**: Interactive web inspector for ISO-TP reassembled exchanges, KWP2000 service dissection, dynamic LID tracking, CID scaling, Negative Response Codes (NRC), and unknown command alerts.
-3. **Retro LCD Flush Simulator (`lcd_simulator.html`)**: Standalone browser-based visual simulation tool for tuning screen-space pixel decimation, sub-pixel matrix gaps, and STN/TN monochrome palettes for the 466x466 AMOLED display.
+3. **Signal Plotter (`signal_plotter.py`)**: *(prototype)* Plots decoded CID values from a log against time (stacked lanes or normalized overlay) or against each other (XY), with zoom/pan and hover readout. Run `python3 tools/signal_plotter.py` and open [http://localhost:8097](http://localhost:8097).
+4. **Retro LCD Flush Simulator (`lcd_simulator.html`)**: Standalone browser-based visual simulation tool for tuning screen-space pixel decimation, sub-pixel matrix gaps, and STN/TN monochrome palettes for the 466x466 AMOLED display.
 
 Both tools are written in pure Python 3 and have **zero external pip dependencies**.
 
