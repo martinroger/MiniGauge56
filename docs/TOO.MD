@@ -6,13 +6,13 @@ MiniGauge56 is an automotive instrument cluster companion and telemetry bridge d
 
 ```mermaid
 graph TD
-    subgraph External Transports
+    subgraph EXT["External Transports"]
         RB[RaceBox Mini / Micro / S] -->|BLE 5.0 GATT Notifications| BLE_MOD[racebox_ble Central]
         BUS[Vehicle CAN Bus / Transceiver] <-->|TWAI ISO 11898-2| TWAI_MOD[twai_daemon]
         ECU[DME Engine ECU 0x12] <-->|KWP2000 0x612 / 0x6F1| TWAI_MOD
     end
 
-    subgraph Core 1: Ingestion & Telemetry Processing
+    subgraph C1["Core 1: Ingestion & Telemetry Processing"]
         BLE_MOD -->|pvt_cb| COMP[racebox_companion]
         COMP -->|Clock Sync settimeofday| RTC[(ESP32 RTC)]
         COMP -->|racebox_twai_broadcast| TWAI_MOD
@@ -25,7 +25,7 @@ graph TD
         ROUTER -->|binocan_*_unpack| CAN_SIG[CAN Signals: Speed / RPM Freq]
     end
 
-    subgraph Core 0: Storage, Estimation & Graphics
+    subgraph C0["Core 0: Storage, Estimation & Graphics"]
         RB_BUF -->|xRingbufferReceiveUpTo| SD_TASK[sd_writer_task]
         SD_TASK -->|DMA Block Writes 8 KB| SD[(FATFS MicroSD Card)]
         CAN_SIG -->|speed_freq / rpm_freq| GEAR_TASK[update_gear_estimator - 40 Hz]
@@ -78,7 +78,7 @@ sequenceDiagram
     ROUTER->>LOGGER: log_can_frame_handler(rx_frame)
     Note over LOGGER: Pack 16-byte record<br/>(timestamp, id, dlc, data)
     LOGGER->>RB: xRingbufferSend(can_rb, &record, 0)
-    Note over LOGGER: Zero-wait; drops on full
+    Note over LOGGER: Zero-wait, drops on full
     ROUTER->>ROUTER: Unpack Speed & RPM Signals (0x300, 0x301)
     
     loop Every 8 KB or 100 ms
