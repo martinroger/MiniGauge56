@@ -1,5 +1,7 @@
 # MiniGauge56
 
+[![Build](https://github.com/martinroger/MiniGauge56/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/martinroger/MiniGauge56/actions/workflows/build.yml)
+
 MiniGauge56 is an ESP32-S3 embedded digital gauge and high-throughput CAN telemetry logger with an integrated 1.75" AMOLED capacitive touch display.
 
 ## Architecture Overview
