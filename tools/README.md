@@ -8,7 +8,7 @@ The toolset consists of:
 3. **Signal Plotter (`signal_plotter.py`)**: *(prototype)* Plots decoded CID values from a log against time (stacked lanes or normalized overlay) or against each other (XY), with zoom/pan and hover readout. Run `python3 tools/signal_plotter.py` and open [http://localhost:8097](http://localhost:8097).
 4. **Retro LCD Flush Simulator (`lcd_simulator.html`)**: Standalone browser-based visual simulation tool for tuning screen-space pixel decimation, sub-pixel matrix gaps, and STN/TN monochrome palettes for the 466x466 AMOLED display.
 
-Both tools are written in pure Python 3 and have **zero external pip dependencies**.
+The Python tools are written in pure Python 3 and have **zero external pip dependencies**.
 
 ---
 
@@ -18,6 +18,8 @@ Both tools are written in pure Python 3 and have **zero external pip dependencie
 tools/
 ├── bmwp2000_viewer.py        # Web KWP2000 log inspector & exchange timeline
 ├── lid_composer.py           # Web LID train composer with CID lookup
+├── signal_plotter.py         # (prototype) Web CID signal plotter
+├── lcd_simulator.html        # Standalone retro LCD flush simulator
 ├── common/                   # Shared zero-pip Python library
 │   ├── can_core.py           # CAN binary record unpacker & CanFrame class
 │   ├── log_loader.py         # Multi-format CAN log parser (.bin, candump .log, Vector .asc)
@@ -27,6 +29,8 @@ tools/
 ├── tests/                    # Automated unit & integration tests
 │   ├── test_bmwp2000_viewer.py
 │   ├── test_lid_composer.py
+│   ├── test_isotp_bmw_fast.py
+│   ├── test_signal_plotter.py
 │   └── test_common_components.py
 └── web/                      # Web frontend assets
     ├── static/
@@ -35,15 +39,18 @@ tools/
     │   │   ├── components.css
     │   │   ├── theme.css
     │   │   ├── bmwp2000_viewer.css
-    │   │   └── lid_composer.css
+    │   │   ├── lid_composer.css
+    │   │   └── signal_plotter.css
     │   └── js/
     │       ├── theme.js
     │       ├── toast.js
     │       ├── bmwp2000_viewer.js
-    │       └── lid_composer.js
+    │       ├── lid_composer.js
+    │       └── signal_plotter.js
     └── templates/
         ├── bmwp2000_viewer.html
-        └── lid_composer.html
+        ├── lid_composer.html
+        └── signal_plotter.html
 ```
 
 ---
@@ -54,7 +61,7 @@ tools/
 ```bash
 python3 tools/bmwp2000_viewer.py
 ```
-Open [http://localhost:8080](http://localhost:8080) to inspect incoming/outgoing diagnostic exchanges, drill down into raw underlying CAN frames, view positive/negative responses, and visualize the CID train memory map.
+Open [http://localhost:8096](http://localhost:8096) to inspect incoming/outgoing diagnostic exchanges, drill down into raw underlying CAN frames, view positive/negative responses, and visualize the CID train memory map.
 
 ### 2. Launch the LID Composer
 ```bash

@@ -117,7 +117,15 @@ lcd_emulator_set_grid(4, 1, 100);
 // In 8-bit mode (LV_COLOR_DEPTH == 8), toggle between L8 luminance (LVGL 9) and RGB232 (LVGL 8):
 lcd_emulator_set_8bit_input_rgb232(true);  // Enable RGB232 decoding
 lcd_emulator_set_8bit_input_rgb232(false); // Enable native L8 grayscale decoding
+
+// Two palette slots (primary = Kconfig default palette, alternate = Kconfig alternate palette).
+// Select one, or flip between them; runtime palette edits stay in the active slot:
+lcd_emulator_select_palette_slot(LCD_PALETTE_SLOT_ALT);
+lcd_emulator_swap_palette();
+lcd_emulator_set_preset_slot(LCD_PALETTE_SLOT_ALT, LCD_PRESET_CYAN); // redefine a slot
 ```
+
+MiniGauge56 uses the slots as a status indicator: `main.cpp` selects the alternate slot while the BMWP2000 daemon is in `CLEAR_LID` or `UNINIT`, and the primary slot otherwise.
 
 ---
 
@@ -149,7 +157,12 @@ When compiling with `LV_COLOR_DEPTH == 8`, the LVGL draw buffer footprint is hal
 | `CONFIG_LCD_EMULATOR_DEFAULT_CELL_SIZE` | `int` | `4` | `2 .. 8` | Physical dot pitch in OLED pixels (3 px yields 155×155 grid; 4 px yields 116×116). |
 | `CONFIG_LCD_EMULATOR_DEFAULT_GAP_SIZE` | `int` | `1` | `0 .. 3` | Physical pixel width of inactive substrate separator lines between dots. |
 | `CONFIG_LCD_EMULATOR_DEFAULT_THRESHOLD` | `int` | `100` | `0 .. 255` | 8-bit luminance threshold detecting active elements in monochrome modes. |
-| `CONFIG_LCD_EMULATOR_DEFAULT_PALETTE` | `choice` | `OLIVE` | `OLIVE`, `CASIO`, `AMBER`, `CYAN` | Active substrate and ink color palette applied at initialization. |
+| `CONFIG_LCD_EMULATOR_DEFAULT_PALETTE` | `choice` | `OLIVE` | `OLIVE`, `CASIO`, `AMBER`, `CYAN`, `CUSTOM` | Palette stored in the primary slot and applied at initialization. |
+| `CONFIG_LCD_EMULATOR_CUSTOM_COLOR_ON` / `_OFF` / `_GAP` / `_BG` | `hex` | per palette | `0x000000 .. 0xFFFFFF` | Colors of the custom primary palette (only with `PALETTE_CUSTOM`). |
+| `CONFIG_LCD_EMULATOR_ALT_PALETTE` | `choice` | `CASIO` | `OLIVE`, `CASIO`, `AMBER`, `CYAN`, `CUSTOM` | Palette stored in the alternate slot at boot. |
+| `CONFIG_LCD_EMULATOR_ALT_CUSTOM_COLOR_ON` / `_OFF` / `_GAP` / `_BG` | `hex` | per palette | `0x000000 .. 0xFFFFFF` | Colors of the custom alternate palette (only with `ALT_PALETTE_CUSTOM`). |
+
+MiniGauge56's `sdkconfig.defaults` uses `MODE_GRAYSCALE_8BIT`, cell size 3, and custom primary (amber, ON `0xff7010`) and alternate (red-amber, ON `0xff4a26`) palettes.
 
 ---
 

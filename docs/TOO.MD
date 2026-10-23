@@ -1,232 +1,237 @@
 # MiniGauge56 — Theory of Operation (TOO)
 
-## 1. System Architecture Overview
+## 1. System Overview
 
-MiniGauge56 is an automotive instrument cluster companion and telemetry bridge designed for the ESP32-S3 dual-core microcontroller. It bridges vehicle CAN networks, wireless GNSS/IMU telemetry, high-throughput SD card data logging, and interactive user visualization on a 1.75" AMOLED capacitive touch display.
+MiniGauge56 is a side gauge for the Mini R56 built on the Waveshare ESP32-S3 Touch AMOLED 1.75". One CAN link carries both the diagnostic exchange with the DME and the traffic that is logged to SD. Received frames go through a single router to the SD logger and to the `bmwp2000` KWP2000 engine, which polls engine parameters and hands decoded values to the UI.
 
 ```mermaid
 graph TD
-    subgraph External Transports
-        RB[RaceBox Mini / Micro / S] -->|BLE 5.0 GATT Notifications| BLE_MOD[racebox_ble Central]
-        BUS[Vehicle CAN Bus / Transceiver] <-->|TWAI ISO 11898-2| TWAI_MOD[twai_daemon]
-        ECU[DME Engine ECU 0x12] <-->|KWP2000 0x612 / 0x6F1| TWAI_MOD
+    subgraph EXT["External"]
+        DME["DME engine ECU (0x12)"]
+        BUS["CAN transceiver, 500 kbps"]
+        DME <-->|"BMW FAST: tester 0x6F1, DME 0x612"| BUS
     end
 
-    subgraph Core 1: Ingestion & Telemetry Processing
-        BLE_MOD -->|pvt_cb| COMP[racebox_companion]
-        COMP -->|Clock Sync settimeofday| RTC[(ESP32 RTC)]
-        COMP -->|racebox_twai_broadcast| TWAI_MOD
-        TWAI_MOD -->|app_can_frame_router| ROUTER{CAN Router}
-        ROUTER -->|log_can_frame_handler| RB_BUF[(PSRAM Ringbuffer - 32 KB)]
-        ROUTER -->|bmwp2000_feed_can_frame| BMWP_Q[(BMWP FreeRTOS rx_queue)]
-        BMWP_Q --> BMWP_TASK[bmwp_daemon_task - Core 1]
-        BMWP_TASK -->|twai_transmit_msg| TWAI_MOD
-        BMWP_TASK -->|on_bmwp_telemetry_updated| BMWP_CACHE[(Inline Telemetry Cache)]
-        ROUTER -->|binocan_*_unpack| CAN_SIG[CAN Signals: Speed / RPM Freq]
+    subgraph CAN["CAN path"]
+        TWAI["twai_daemon: ISR + RX worker task"]
+        ROUTER{"app_can_frame_router"}
+        BUS <-->|"GPIO 43 TX / GPIO 44 RX"| TWAI
+        TWAI --> ROUTER
     end
 
-    subgraph Core 0: Storage, Estimation & Graphics
-        RB_BUF -->|xRingbufferReceiveUpTo| SD_TASK[sd_writer_task]
-        SD_TASK -->|DMA Block Writes 8 KB| SD[(FATFS MicroSD Card)]
-        CAN_SIG -->|speed_freq / rpm_freq| GEAR_TASK[update_gear_estimator - 40 Hz]
-        GEAR_TASK -->|Bayesian Filter & Latch| GEAR_ST[(gear_estimator State)]
-        GEAR_ST -->|latched_gear| UI_TASK[update_display - 10 Hz]
-        CAN_SIG -->|telemetry metrics| UI_TASK
-        BMWP_CACHE -->|telemetry snapshot| UI_TASK
-        UI_TASK -->|LVGL Mutex bsp_display_lock| AMOLED[RM69090 AMOLED Display]
+    subgraph LOG["SD logging"]
+        HANDLER["log_can_frame_handler"]
+        RB[("PSRAM ring buffer, 32 KB")]
+        WRITER["sd_writer_task"]
+        SD[("/sdcard/log_uptime.bin")]
+        ROUTER --> HANDLER
+        HANDLER -->|"16-byte record, zero wait"| RB
+        RB --> WRITER
+        WRITER -->|"8 KB blocks"| SD
+    end
+
+    subgraph DIAG["Engine telemetry"]
+        BMWP["bmwp2000 daemon"]
+        CB["on_bmwp_telemetry_updated"]
+        CACHE[("Cached CID values")]
+        ROUTER -->|"bmwp2000_feed_can_frame"| BMWP
+        BMWP -->|"requests via twai_daemon TX"| TWAI
+        BMWP --> CB
+        CB --> CACHE
+    end
+
+    subgraph UI["Display"]
+        UPD["update_display, 10 Hz"]
+        LVGL["LVGL 9, 8-bit frame"]
+        EMU["lcd_emulator flush decorator"]
+        PANEL["CO5300 AMOLED 466x466"]
+        CACHE --> UPD
+        UPD -->|"bsp_display_lock"| LVGL
+        LVGL --> EMU
+        EMU -->|"RGB565 over QSPI"| PANEL
     end
 ```
 
+---
+
+## 2. Hardware
+
+- **SoC**: ESP32-S3, dual-core Xtensa LX7 at 240 MHz, 16 MB flash, octal PSRAM at 80 MHz (`sdkconfig.defaults`).
+- **CAN**: on-chip TWAI controller to an external transceiver, TX on GPIO 43, RX on GPIO 44, 500 kbps.
+- **Display**: 466x466 round AMOLED with a CO5300 controller over QSPI and a CST9217 touch controller over I2C, both driven by the `waveshare/esp32_s3_touch_amoled_1_75` BSP.
+- **Storage**: MicroSD card mounted at `/sdcard` through the BSP's FATFS driver.
 
 ---
 
-## 2. Hardware Subsystems
+## 3. Boot Sequence
 
-### 2.1 Microcontroller & Memory Architecture
-- **ESP32-S3-WROOM-1**: Xtensa Dual-Core 32-bit LX7 CPU running at 240 MHz.
-- **PSRAM Allocation**: 8 MB Octal SPI PSRAM. Utilized for non-blocking telemetry buffering (`can_rb`, 32 KB) and DMA buffer staging.
-- **Core Partitioning**:
-  - **Core 0**: LVGL display task, SD card DMA block writer task (`sd_writer_task`), and Bayesian gear estimator task (`upd_gear`).
-  - **Core 1**: FreeRTOS timer daemon, Apache NimBLE Bluetooth Central stack, and `CAN_RX_Task` worker (`CONFIG_CAN_CORE_AFFINITY=1`).
+`app_main()` in `main/main.cpp` runs these steps in order. A failing step is logged and the next one still runs, except that a display lock failure aborts the UI setup.
 
-### 2.2 Peripheral Interfacing
-- **TWAI CAN Controller**: Native ESP32-S3 on-chip TWAI controller routed to external transceiver via `GPIO 43` (TX) and `GPIO 44` (RX) configured for 500 kbps bit rate.
-- **MicroSD Interface**: 4-wire SDMMC/SPI routed to `/sdcard` through ESP-IDF VFS FATFS.
-- **AMOLED Display**: Waveshare 1.75" 466x466 capacitive touch AMOLED panel driven by RM69090 controller over QSPI, accompanied by CST9217 touch controller over I2C.
+1. Create the 10 s one-shot display sleep timer (`slp_disp`).
+2. Mount the SD card. On success, allocate the logging ring buffer (`init_can_logging()`).
+3. Start TWAI with `initCAN(app_can_frame_router)`.
+4. Initialise `bmwp2000`, register `on_bmwp_telemetry_updated()` and start the daemon.
+5. Start the display (`bsp_display_start()`), then under the display lock: attach the LCD emulator, build the EEZ UI (`ui_init()`), and set the BKLT and filter switches to match the current state.
+6. Wake the display, start the `upd_disp` task, then loop once per second printing debug status (`STATUS`, `BMWP_STATUS` at debug log level).
 
 ---
 
-## 3. Data Ingestion & Dispatch Loops
+## 4. Tasks
 
-### 3.1 CAN Ingestion & Zero-Copy Logging
-Incoming frames are captured via hardware interrupts into `twai_daemon`'s queue and dispatched sequentially:
+| Task | Created by | Priority | Core | Role |
+| :--- | :--- | :--- | :--- | :--- |
+| `twai RX worker` (`CAN_RX_Task`) | `twai_daemon` | 5 | `CONFIG_CAN_CORE_AFFINITY` (default 1) | Takes frames from the RX queue and calls the router |
+| `bmwp2000` daemon | `bmwp2000` | see component | see component | KWP2000 / ISO-TP state machine, polling, decoding |
+| `sd_writer` | `start_logging()` | 5 | unpinned | Drains the ring buffer to SD; exits when a session ends |
+| `upd_disp` | `app_main()` | 3 | unpinned | Refreshes the active UI page every 100 ms |
+| LVGL task | BSP (`esp_lvgl_adapter`) | see BSP | see BSP | Renders and flushes; the LCD emulator runs inside its flush callback |
+| `slp_disp` | FreeRTOS timer service | timer task | | Turns the backlight off after 10 s without touch when always-on is off |
+
+---
+
+## 5. CAN Path
+
+### 5.1 Reception and routing
+`twai_daemon` receives frames in its `on_rx_done` ISR, queues them (32-entry RX queue) and its RX worker calls `app_can_frame_router()` for each one. The router calls the SD logger handler first and then `bmwp2000_feed_can_frame()`. With `CONFIG_CAN_ENABLE_LOOPBACK=y`, frames the gauge transmits are received too, so an SD log contains both the requests and the DME's responses.
+
+### 5.2 SD logging
 
 ```mermaid
 sequenceDiagram
-    participant BUS as Physical CAN Bus
-    participant ISR as TWAI on_rx_done ISR
-    participant RX_TSK as CAN_RX_Task (Core 1)
+    participant RX as twai RX worker
     participant ROUTER as app_can_frame_router
     participant LOGGER as log_can_frame_handler
-    participant RB as PSRAM Ringbuffer
-    participant SD_TSK as sd_writer_task (Core 0)
-    participant SD as MicroSD Card
+    participant RB as PSRAM ring buffer
+    participant WR as sd_writer_task
+    participant SD as MicroSD
 
-    BUS->>ISR: CAN Frame Received
-    ISR->>RX_TSK: xQueueSendFromISR(g_twai_rx_queue)
-    RX_TSK->>ROUTER: dispatchCANFrame(&rx_frame)
-    ROUTER->>LOGGER: log_can_frame_handler(rx_frame)
-    Note over LOGGER: Pack 16-byte record<br/>(timestamp, id, dlc, data)
-    LOGGER->>RB: xRingbufferSend(can_rb, &record, 0)
-    Note over LOGGER: Zero-wait; drops on full
-    ROUTER->>ROUTER: Unpack Speed & RPM Signals (0x300, 0x301)
-    
-    loop Every 8 KB or 100 ms
-        SD_TSK->>RB: xRingbufferReceiveUpTo(BLOCK_SIZE)
-        RB-->>SD_TSK: Batch Buffer
-        SD_TSK->>SD: fwrite(batch_buffer, BLOCK_SIZE)
+    RX->>ROUTER: frame
+    ROUTER->>LOGGER: log_can_frame_handler(frame)
+    Note over LOGGER: Only while is_logging is set
+    LOGGER->>RB: xRingbufferSend(record, wait 0)
+    Note over LOGGER: Record dropped if the buffer is full
+    loop While logging, then until drained
+        WR->>RB: xRingbufferReceive (100 ms wait, 0 when stopping)
+        RB-->>WR: records, up to 512 per batch
+        alt 512 records, 5 s since last write, or stopping
+            WR->>SD: fwrite batch + fsync
+        end
     end
 ```
 
-### 3.2 RaceBox BLE Telemetry & GPS Time Synchronization
-The `racebox_companion` module searches for BLE advertisements matching `"RaceBox "` and registers GATT notification callbacks for high-rate PVT (Position, Velocity, Time) packets:
+**Record format** (16 bytes, packed, little-endian): uptime in ms (`uint32`), CAN ID (`uint16`), DLC (`uint8`), 8 data bytes (zero padded), 1 padding byte. Only the low 16 bits of the ID are kept.
+
+**Session lifecycle**:
+- `start_logging()` runs only when no session is active and the previous writer has exited. It empties stale records from the ring buffer, sets `is_logging` and creates `sd_writer`.
+- `sd_writer` opens `/sdcard/log_<esp_timer_us>.bin` unbuffered and allocates an 8 KB DMA-capable batch buffer. If either fails, it clears `is_logging` and exits; the UI then reverts the LOG switch.
+- `stop_logging()` clears `is_logging`. The writer keeps draining without waiting, writes the last partial batch, closes the file and exits.
+- `current_file_size` and `current_buffered_bytes` feed the logger page.
+
+`start_logging_test()` runs the same writer with a synthetic 500 Hz frame generator for throughput tests; nothing calls it in the current firmware.
+
+---
+
+## 6. Engine Telemetry (BMWP2000)
+
+`bmwp2000` implements KWP2000 (ISO 14230-3) over ISO-TP (ISO 15765-2) with BMW FAST addressing: the tester sends on CAN ID `0x6F1`, the DME (address `0x12`) answers on `0x612`. Its parameter dictionary and LID layout are the project files set in `sdkconfig.defaults`:
+
+- `CONFIG_BMWP2000_CUSTOM_CIDS_PATH="config/cids.json"`: the CID dictionary (ECU identifier, size, position, sign and `((raw * mul) / div) + add` scaling for each named parameter).
+- `CONFIG_BMWP2000_CUSTOM_LIDS_PATH="config/lids.json"`: the LID trains to define on the ECU.
+
+The project defines one LID, `0xF0` "engineCore", in `single` transmission mode: the daemon defines the LID on the DME with `dynamicallyDefineLocalIdentifier` (`0x2C`), then polls it with `readDataByLocalIdentifier` (`0x21`) and decodes the 13 CIDs from each response.
 
 ```mermaid
 sequenceDiagram
-    participant RBX as RaceBox Unit
-    participant BLE as racebox_ble (NimBLE)
-    participant COMP as racebox_companion
-    participant RTC as POSIX System Time
-    participant TWAI as twai_daemon
-    participant BUS as CAN Bus
-
-    RBX->>BLE: 25 Hz PVT Notification (Binary)
-    BLE->>COMP: on_racebox_telemetry(pvt)
-    alt First Valid 3D Fix (fix_status >= 3, SV >= 4)
-        COMP->>RTC: settimeofday(&tv, NULL)
-        Note over COMP,RTC: Synchronizes epoch clock<br/>Log filenames use YYYYMMDD_log_HHMMSS.bin
-    end
-    alt auto_can_forward Enabled
-        COMP->>TWAI: racebox_twai_broadcast_pvt(pvt)
-        TWAI->>BUS: Broadcast CAN frames 0x600 - 0x605
-    end
-```
-
-### 3.3 BMWP2000 Diagnostic Telemetry & Fast DDLI Stream
-The `bmwp2000` protocol engine communicates with the engine ECU (DME `0x12`) using ISO 14230-3 (KWP2000) over ISO 15765-2 (ISO-TP):
-
-```mermaid
-sequenceDiagram
-    participant DAEMON as bmwp_daemon_task (Core 1)
-    participant TWAI as twai_daemon TX Pool
-    participant BUS as Physical CAN Bus
+    participant D as bmwp2000 daemon
+    participant TX as twai_daemon TX
+    participant DME as DME 0x12
     participant ROUTER as app_can_frame_router
     participant CB as on_bmwp_telemetry_updated
-    participant CACHE as Inline Telemetry Cache
 
-    DAEMON->>TWAI: Clear DDLI SID 0x2C (0x6F1)
-    TWAI->>BUS: CAN Frame (0x6F1)
-    BUS-->>ROUTER: Positive Response 0x6C (0x612)
-    ROUTER->>DAEMON: bmwp2000_feed_can_frame(rx)
-
-    DAEMON->>TWAI: Dynamically Define Local Identifier SID 0x2C (0xF0)
-    TWAI->>BUS: Multi-frame ISO-TP Request (0x6F1)
-    BUS-->>ROUTER: Positive Response 0x6C (0x612)
-    ROUTER->>DAEMON: bmwp2000_feed_can_frame(rx)
-
-    DAEMON->>TWAI: Read Data By Local Identifier SID 0x21 (0xF0, Mode 0x04 Fast)
-    TWAI->>BUS: CAN Frame (0x6F1)
-
-    loop Fast Periodic Telemetry Stream
-        BUS-->>ROUTER: DDLI 0xF0 Stream Frames (0x612)
-        ROUTER->>DAEMON: bmwp2000_feed_can_frame(rx)
-        Note over DAEMON: Assemble ISO-TP multi-frame,<br/>unpack DIDs via master dictionary
-        DAEMON->>CB: bmwp2000_register_callback()
-        CB->>CACHE: Update RPM, Oil Temp, Coolant, HPFP
+    D->>TX: 0x2C define LID 0xF0 (ISO-TP, 0x6F1)
+    TX->>DME: request frames
+    DME-->>ROUTER: positive response 0x6C (0x612)
+    ROUTER->>D: bmwp2000_feed_can_frame
+    loop Polling
+        D->>TX: 0x21 read LID 0xF0
+        TX->>DME: request
+        DME-->>ROUTER: 0x61 response, multi-frame ISO-TP
+        ROUTER->>D: bmwp2000_feed_can_frame
+        Note over D: Reassemble and decode 13 CIDs
+        D->>CB: callback
+        Note over CB: Cache values with bmwp2000_get_cid_value
     end
 ```
 
----
+The daemon reports its state through `bmwp2000_get_state()`. The UI shows these states on the BMWP2000 page:
 
+| State | Label | LCD palette |
+| :--- | :--- | :--- |
+| `BMWP2000_STATE_UNINIT` | UNINIT | alternate |
+| `BMWP2000_STATE_BACKOFF_WAIT` | WAIT | primary |
+| `BMWP2000_STATE_SETUP_LID` | SETUP | primary |
+| `BMWP2000_STATE_CLEAR_LID` | CLEARING | alternate |
+| `BMWP2000_STATE_READ_REQ` | REQUEST | primary |
+| `BMWP2000_STATE_RESPONSE_PENDING` | PENDING | primary |
+| `BMWP2000_STATE_TX_WAIT_FC` | WAIT FC | primary |
+| `BMWP2000_STATE_RX_WAIT_CF` | WAIT CF | primary |
+| `BMWP2000_STATE_RUNNING` | RUNNING | primary |
 
-## 4. Bayesian Gear Estimation Model
+Retry, back-off and task details belong to the component; see the [BMWP2000 repository](https://github.com/martinroger/BMWP2000).
 
-### 4.1 Mathematical Formulation
-The gear estimator predicts transmission state `g in {0, 1, 2, 3, 4, 5, 14}` (Neutral, Forward Gears 1 to 5, and Uncertain) using a kinematic-conditioned recursive Bayesian filter.
-
-1. **State Space & Observation**:
-   - `speed_freq`: Vehicle wheel/driveshaft pulse frequency (Hz).
-   - `rpm_freq`: Engine tachometer pulse frequency (Hz).
-   - Frequency Ratio: `r = speed_freq / rpm_freq`.
-
-2. **Kinematic Derivative Estimation**:
-   At each 25 ms evaluation step, derivatives are estimated with microsecond precision:
-   - `dt = (now_us - prev_us) / 1000000.0`
-   - `dsf = (speed_freq - prev_speed_freq) / dt`
-   - `drf = (rpm_freq - prev_rpm_freq) / dt`
-
-3. **Kinematic Transition Matrix T**:
-   A 6x6 transition matrix is dynamically biased based on throttle and engine conditions:
-   - High RPM (`rpm_freq >= 55.0 Hz`) and positive vehicle acceleration (`dsf >= 0.0 Hz/s`) bias transitions towards upshifts (`T[k][k+1] = 0.06`).
-   - Rapid vehicle deceleration (`dsf < -3.0 Hz/s`) biases transitions towards downshifts (`T[k][k-1] = 0.06`).
-
-4. **Gaussian Likelihood Calculation**:
-   Given empirical ratio means `mu_gi` and variances `sigma_gi^2`:
-   - `L(r | gear = gi) = exp(-0.5 * (r - mu_gi)^2 / sigma_gi^2) / sqrt(2 * pi * sigma_gi^2)`
-
-5. **Clutch Drop Detection & False Upshift Suppression**:
-   When the clutch is disengaged under power, the engine decelerates rapidly (`drf < -35.0 Hz/s`) while vehicle speed remains sustained (`dsf > -5.0 Hz/s`). The filter detects this condition and heavily attenuates higher gear likelihoods (`L(gi) *= 0.0001` for `gi > curr_gear`) to prevent phantom upshifts during gear shifts.
-
-6. **Confidence & Latching Hysteresis**:
-   - The posterior distribution is updated with exponential decay:
-     `P(g_k) ~ L(g_k) * (decay * Pred(g_k) + (1 - decay) / 6)`
-   - The candidate gear must maintain a posterior probability `>= 0.38` continuously for at least 200 ms before `latched_gear` transitions, eliminating transient flickering.
+The cached values are plain `double`s written in the daemon's callback and read by `upd_disp` without a lock. A 64-bit store is not atomic on the 32-bit core, so a read can occasionally see a torn value, and one refresh can mix values from two consecutive responses.
 
 ---
 
-## 5. AMOLED Display & Power Management State Machine
+## 7. Display
 
-The cluster display implements an automatic inactivity sleep timer alongside a user-selectable Always-On mode:
+### 7.1 Pages
+The UI is a single LVGL tabview (`objects.global_tabview`) generated by EEZ Studio from `eezMG56.eez-project`. The tab bar is hidden (size 0) and pages are changed by swiping. `update_display()` reads the active page every 100 ms, takes `bsp_display_lock(100)` and updates only that page; a lock timeout skips the cycle.
+
+| Index | Tab name | Content | Updated widgets |
+| :--- | :--- | :--- | :--- |
+| 0 | `engine_temp` | Coolant temperature, large readout, arc | `engine_temp` (`engineTemp`) |
+| 1 | `oil_temp` | Oil temperature, large readout, arc | `oil_temp` (`oilTemp`) |
+| 2 | `bm_daemon` | Update count, RPM, oil and coolant temperature, HPFP, daemon state | `bmw_frames_count`, `bmw_rpm`, `bmw_oil_temp`, `bmw_engine_temp`, `bmw_hpfp`, `bmw_state` |
+| 3 | `logger` | File size, status, BKLT and LOG switches | updated on every cycle, whatever page is active |
+| 4 | `widget test` | Filter switch | event-driven only |
+
+On every cycle, whatever page is shown, `update_display()` also writes the logger page's size and LOGGING / PAUSED labels and unchecks the LOG switch if the writer has stopped by itself. The arcs on pages 0 and 1 are not driven yet.
+
+Fonts: League Gothic at 42, 48, 96, 120 and 192 px and Teko at 36 px (`components/ui/src/ui_font_*.c`; sources in `ui_reference/fonts`).
+
+### 7.2 Retro LCD emulation
+`lcd_emulator_init()` wraps the display's flush callback. LVGL renders an 8-bit (L8) frame (`CONFIG_LV_COLOR_DEPTH_8`); the decorator turns each flushed tile into a dot-matrix image (3 px cells, 8-bit grayscale shading) and expands it to RGB565 for the panel. Two palettes are configured: a custom amber primary palette and a red-amber alternate, switched by the BMWP2000 state. The widget test page switch turns emulation off and on at runtime. Details: [LCD emulator TOO](../components/lcd_emulator/TOO.MD) and [HOWTO](../components/lcd_emulator/HOWTO.md).
+
+### 7.3 Power management
 
 ```mermaid
 stateDiagram-v2
-    [*] --> AWAKE_FULL: Boot / Display Start
-    
-    state AWAKE_FULL {
-        [*] --> TimerRunning
-        TimerRunning --> TimerRunning: Touch Pressed / wakeDisplay() (Reset Timer)
-    }
+    [*] --> ALWAYS_ON: Boot (backlight_override = true)
 
-    AWAKE_FULL --> ASLEEP: 10s Inactivity Timeout (sleepDisplayTimer_cb)
-    ASLEEP --> AWAKE_FULL: Touch Pressed / wakeDisplay() (Turn Backlight On 100%)
+    ALWAYS_ON: Brightness 40 %
+    ALWAYS_ON: Sleep timer stopped
 
-    AWAKE_FULL --> ALWAYS_ON: Backlight Switch Checked
-    ASLEEP --> ALWAYS_ON: Backlight Switch Checked
-    
-    state ALWAYS_ON {
-        [*] --> Dimmed50
-        Dimmed50: Brightness Clamped to 50%
-        Dimmed50: Sleep Timer Stopped
-    }
+    AWAKE: Brightness 40 %
+    AWAKE: 10 s sleep timer running
 
-    ALWAYS_ON --> AWAKE_FULL: Backlight Switch Unchecked (Restore 100% & Start Timer)
+    ASLEEP: Backlight off
+
+    ALWAYS_ON --> AWAKE: BKLT switch off
+    AWAKE --> AWAKE: Touch, timer restarted
+    AWAKE --> ASLEEP: 10 s without touch
+    ASLEEP --> AWAKE: Touch
+    AWAKE --> ALWAYS_ON: BKLT switch on
 ```
 
-### 5.1 Tabview & Per-Tab Refresh
+Every widget forwards `LV_EVENT_PRESSED` to `action_global_pressed()`, which calls `wakeDisplay()`. `wakeDisplay()` sets 40 % brightness under the display lock (500 ms timeout, because the first frame at boot can hold the lock longer than 100 ms) and restarts or stops the sleep timer depending on `backlight_override`. When the display is asleep, a touch on the LOG switch only wakes it and does not change logging.
 
-The UI is a single LVGL tabview (`objects.global_tabview`, generated by EEZ Studio). `update_display` (10 Hz) reads the active tab index and only refreshes the widgets of that tab, so hidden tabs cost no label updates while holding the display lock:
+---
 
-| Tab | Content | Widgets refreshed |
-| :--- | :--- | :--- |
-| 0 | Coolant (engine) temperature, large `league_192px` reading | `engine_temp` |
-| 1 | BMWP2000 telemetry and daemon state | `bmw_engine_temp`, `bmw_frames_count`, `bmw_hpfp`, `bmw_oil_temp`, `bmw_rpm`, `bmw_state` (colour from `bmwp2000_get_state()`) |
-| 2 | Logger status and START/STOP | `filename`, `filesize`, `buffered_size`, `start_stop_lbl`, `start_stop_btn`, `status` |
+## 8. Build and CI
 
-The tab index is read before `bsp_display_lock(100)` is taken; a lock timeout simply skips that 100 ms cycle. Fonts used: `league_30px`, `league_48px`, `league_192px` (sources in `ui_reference/fonts`).
-
-## 6. Build Server (ESP-IDF Tools MCP)
-
-The firmware is built through Espressif's local MCP server, registered in [.mcp.json](../.mcp.json):
+### 8.1 Local build
+ESP-IDF v6.1, target `esp32s3`. The project can be built through Espressif's MCP server, registered in [.mcp.json](../.mcp.json):
 
 ```
 eim run "idf.py mcp-server" v6.1
@@ -234,11 +239,21 @@ eim run "idf.py mcp-server" v6.1
 
 | Step | Action | Expected result |
 | :--- | :--- | :--- |
-| 1 | Start `claude` from the repository root and approve the project-scoped `esp-idf-eim` server | `claude mcp list` shows it connected |
+| 1 | Start the agent from the repository root and approve the project-scoped `esp-idf-eim` server | The server shows as connected |
 | 2 | Read resource `project://status` | Reports IDF v6.1, target and build dir |
-| 3 | `set_target` (esp32s3) when initializing, then `clean_project` | Fresh CMake cache |
+| 3 | `set_target` (esp32s3) when initialising, then `clean_project` | Fresh CMake cache |
 | 4 | `build_project` | `build/` populated; read the full log on failure |
-| 5 | `flash_project` (port from `project://devices`) | Only on explicit user request |
+| 5 | `flash_project` (port from `project://devices`) | Only on explicit request |
 
-The server resolves the project from its working directory. Fallback without MCP: `eim run "idf.py fullclean build" v6.1`. Constraints: see [docs/CONSTRAINTS.md](CONSTRAINTS.md).
+Without MCP: `eim run "idf.py fullclean build" v6.1`. Constraints: [CONSTRAINTS.md](CONSTRAINTS.md).
 
+### 8.2 CI
+[.github/workflows/build.yml](../.github/workflows/build.yml) runs on pull requests and pushes to `main`, inside the `espressif/idf:v6.1` container:
+
+1. Check out the repository.
+2. Point git at GitHub with the `PRIVATE_REPOS_TOKEN` secret so the component manager can clone the private `bmwp2000` repository.
+3. Restore the component manager cache (keyed on `main/idf_component.yml` and `dependencies.lock`) and the ccache directory.
+4. `idf.py build`, then print ccache statistics.
+5. Upload the application, bootloader and partition table binaries plus `dependencies.lock` as the `firmware` artifact.
+
+The component cache is effective. ccache restores but currently gets no hits between runs, so the build itself is not yet faster on warm runs.
