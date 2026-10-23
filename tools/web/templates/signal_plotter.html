@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MiniGauge - Signal Plotter</title>
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/theme.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/signal_plotter.css">
+</head>
+<body class="theme-dark">
+  <header class="app-header">
+    <div class="header-left">
+      <div class="app-logo">
+        <svg viewBox="0 0 32 32" class="logo-icon" aria-hidden="true">
+          <rect x="3" y="3" width="26" height="26" rx="4" fill="none" stroke="currentColor" stroke-width="2.2" />
+          <polyline points="7,22 12,15 16,18 21,9 25,13" fill="none" stroke="var(--primary)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <div class="logo-text">
+        <h1>MiniGauge <span>Signal Plotter</span></h1>
+        <span class="logo-sub">Parsed CID values vs time and vs each other</span>
+        </div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="toolbar-group">
+        <label for="select-log-file" class="text-muted" style="font-size: 12px;">Log File:</label>
+        <select id="select-log-file" class="select-styled"><option value="">Loading logs...</option></select>
+      </div>
+      <label class="switch-label" title="When a log never defines a LID, decode it using config/lids.json">
+        <input type="checkbox" id="chk-lids-fallback" class="switch-input" checked><span>lids.json fallback</span>
+      </label>
+      <button type="button" class="btn-theme-toggle" id="theme-toggle-btn" data-role="theme-toggle" title="Toggle Light / Dark / Auto">
+        <span id="themeIcon" class="theme-icon">🌓</span>
+        <span id="themeLabel" class="theme-label">Auto</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="sp-toolbar">
+    <div class="seg" role="tablist" aria-label="Plot mode">
+      <button type="button" class="seg-btn active" data-mode="lanes">Stacked lanes</button>
+      <button type="button" class="seg-btn" data-mode="overlay">Overlay</button>
+      <button type="button" class="seg-btn" data-mode="xy">XY</button>
+    </div>
+    <div class="toolbar-group" id="xy-controls" hidden>
+      <label for="select-x" class="text-muted">X axis:</label>
+      <select id="select-x" class="select-styled"></select>
+      <label class="switch-label" title="Color XY points by time (dark to bright)">
+        <input type="checkbox" id="chk-xy-time" class="switch-input" checked><span>Color by time</span>
+      </label>
+      <label for="select-heatmap" class="text-muted" title="Cells: samples per grid cell. Full: smoothed density over the whole chart">Heatmap:</label>
+      <select id="select-heatmap" class="select-styled select-sm">
+        <option value="off">Off (points)</option><option value="cells">Cells</option><option value="full">Full</option>
+      </select>
+      <select id="select-cell" class="select-styled select-sm" disabled></select>
+    </div>
+    <div class="toolbar-group" id="time-controls">
+      <label class="switch-label" title="Draw sample points on each trace">
+        <input type="checkbox" id="chk-points" class="switch-input"><span>Points</span>
+      </label>
+      <label class="switch-label" title="Hold last value between samples (CAN-style) instead of straight lines">
+        <input type="checkbox" id="chk-step" class="switch-input"><span>Step</span>
+      </label>
+    </div>
+    <div class="toolbar-group">
+      <label class="switch-label" title="Fit Y axes to the visible window (off: whole log, stays still while panning)">
+        <input type="checkbox" id="chk-autoy" class="switch-input" checked><span>Auto-fit Y</span>
+      </label>
+    </div>
+    <div class="toolbar-group sp-right">
+      <span class="text-muted" id="range-readout"></span>
+      <button type="button" class="btn btn-secondary btn-sm" id="btn-reset-zoom">Reset zoom</button>
+    </div>
+  </div>
+
+  <main class="sp-main">
+    <aside class="sp-sidebar">
+      <input type="search" id="signal-filter" class="input-styled" placeholder="Filter signals...">
+      <div class="sp-sidebar-actions">
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-clear">Clear</button>
+        <span class="text-muted" id="signal-count"></span>
+      </div>
+      <ul id="signal-list" class="sp-signal-list"></ul>
+    </aside>
+    <div class="sp-splitter" id="sidebar-grip" title="Drag to resize · double-click to reset"></div>
+
+    <section class="sp-plot-area">
+      <div class="sp-canvas-wrap" id="canvas-wrap">
+        <canvas id="plot"></canvas>
+        <div class="sp-empty" id="empty-hint">Pick one or more signals on the left.<br>In XY mode, the first selected signals are plotted against the chosen X axis.</div>
+        <div class="sp-tooltip" id="tooltip" hidden></div>
+      </div>
+      <div class="sp-help text-muted">Wheel: zoom · Drag: pan · Shift+drag: box zoom · Double-click: reset · Drag between lanes: resize (double-click: equalise) · Drag signals in the list to reorder lanes</div>
+    </section>
+  </main>
+
+  <script src="/static/js/theme.js"></script>
+  <script src="/static/js/toast.js"></script>
+  <script src="/static/js/signal_plotter.js"></script>
+</body>
+</html>

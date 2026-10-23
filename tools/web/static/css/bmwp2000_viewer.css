@@ -630,6 +630,12 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* The body scrolls; its blocks must keep their natural height. Flex items shrink by default, and an
+   overflow:hidden child (the CAN frames accordion) has min-height 0, so it got squashed to its border. */
+.inspector-body > * {
+  flex-shrink: 0;
+}
+
 .filter-bar {
   display: flex;
   gap: 6px;

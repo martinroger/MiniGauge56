@@ -215,18 +215,31 @@ class IsoTpReassembler:
         self,
         tester_id: int = 0x6F1,
         ecu_id_min: int = 0x600,
-        ecu_id_max: int = 0x61F,
+        ecu_id_max: int = 0x6FF,
+        tester_addr: int = 0xF1,
         session_timeout_s: float = 1.0,
     ):
         self.tester_id = tester_id
         self.ecu_id_min = ecu_id_min
         self.ecu_id_max = ecu_id_max
+        self.tester_addr = tester_addr
         self.session_timeout_s = session_timeout_s
         # Active reassembly state indexed by CAN ID
         self.active_sessions: Dict[int, Dict[str, Any]] = {}
 
-    def is_iso_tp_candidate(self, can_id: int) -> bool:
-        return can_id == self.tester_id or (self.ecu_id_min <= can_id <= self.ecu_id_max)
+    def is_iso_tp_candidate(self, can_id: int, data: Optional[bytes] = None) -> bool:
+        """BMW-FAST over CAN: tester sends on 0x6F1, ECU NN answers on 0x600+NN with the tester
+        address (0xF1) in Data[0]. Mirrors the bmwp2000 component's rejection filter so non-diagnostic
+        traffic that happens to sit in 0x6xx (e.g. 0x600..0x605 telemetry) is not parsed as ISO-TP."""
+        if can_id == self.tester_id:
+            is_diag_id = True
+        elif self.ecu_id_min <= can_id <= self.ecu_id_max:
+            is_diag_id = data is None or (len(data) >= 1 and data[0] == self.tester_addr)
+        else:
+            return False
+        if data is None:
+            return is_diag_id
+        return is_diag_id and len(data) >= 2 and ((data[1] >> 4) & 0x0F) <= 0x3
 
     def process_frame(self, frame: CanFrame) -> Optional[IsoTpMessage]:
         """Processes a CAN frame, returning a completed IsoTpMessage or None."""
@@ -236,12 +249,8 @@ class IsoTpReassembler:
     def process_frame_events(self, frame: CanFrame) -> Tuple[Optional[IsoTpMessage], Optional[IsoTpMessage]]:
         """Processes a CAN frame. Returns a tuple (interrupted_msg_if_any, completed_msg_if_any)."""
         can_id = frame.can_id
-        if not self.is_iso_tp_candidate(can_id):
-            return None, None
-
         data = frame.data
-        if len(data) < 2:
-            # Non-compliant ISO-TP frame length
+        if not self.is_iso_tp_candidate(can_id, data):
             return None, None
 
         target_addr = data[0]
@@ -278,6 +287,11 @@ class IsoTpReassembler:
                 warnings.append("SF with invalid DLC length 0")
                 return interrupted_msg, None
 
+            if length > 6:
+                # Extended addressing: Data[0] is the target, so an SF carries at most 6 bytes
+                # (plain ISO 15765-2 allows 7; that is the usual KWP2000/BMW-FAST confusion).
+                is_compliant = False
+                warnings.append(f"SF length {length} > 6: BMW extended addressing leaves 6 payload bytes (should be FF)")
             if len(data) < 2 + length:
                 is_compliant = False
                 warnings.append(f"SF truncated: header claims {length} bytes but frame has {len(data) - 2} bytes")
@@ -317,9 +331,13 @@ class IsoTpReassembler:
             warnings = []
             is_compliant = True
 
-            if total_length < 8:
+            # Extended addressing: anything over 6 bytes needs FF+CF, so 7 is the smallest valid FF
+            if total_length <= 6:
                 is_compliant = False
-                warnings.append(f"FF total_length {total_length} < 8 (should be SF)")
+                warnings.append(f"FF total_length {total_length} <= 6 (fits a BMW-FAST Single Frame)")
+            if len(data) < 8:
+                is_compliant = False
+                warnings.append(f"FF DLC {len(data)} < 8 (First Frame must be a full frame)")
 
             self.active_sessions[can_id] = {
                 "start_time_s": frame.time_rel_s,
@@ -391,9 +409,11 @@ class IsoTpReassembler:
 
         # 3: Flow Control (FC)
         elif pci_type == 0x3:
-            # Flow control frame: note in active session if present
-            if can_id in self.active_sessions:
-                self.active_sessions[can_id]["frames"].append(frame_record)
+            # FC is sent by the receiver, so it belongs to the peer's transfer: an ECU FC on 0x612
+            # (Data[0]=0xF1) paces the tester's FF on 0x6F1, i.e. peer CAN ID = 0x600 + Data[0]
+            peer_id = 0x600 + target_addr
+            if peer_id in self.active_sessions:
+                self.active_sessions[peer_id]["frames"].append(frame_record)
             return interrupted_msg, None
 
         return interrupted_msg, None
@@ -775,6 +795,12 @@ class BmwP2000Dissector:
                     result["details"]["transmission_mode_desc"] = mode_info[1]
                     if len(payload) > 3:
                         result["details"]["maximumNumberOfResponsesToSend"] = payload[3]
+                    # BMW-FAST (MED17/MEVD17) wire syntax differs from plain ISO 14230-3, where the mode byte
+                    # is user-optional: single reads are 2 bytes, only fast (0x04) / stop (0x05) carry a mode
+                    if len(payload) > 2 and transmission_mode == 0x01:
+                        result["warnings"].append("0x21 with explicit single mode byte: BMW ECUs expect 2 bytes (0x21 <LID>) and answer NRC 0x12")
+                    elif len(payload) > 2 and transmission_mode not in (0x04, 0x05):
+                        result["warnings"].append(f"0x21 transmissionMode 0x{transmission_mode:02X}: BMW-FAST only uses single (no byte), fast 0x04 and stop 0x05")
 
                 # Response payload unpacking
                 if sid == (SID_READ_DATA_BY_LOCAL_ID + 0x40):
