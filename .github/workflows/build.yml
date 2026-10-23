@@ -1,0 +1,57 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: espressif/idf:v6.1
+    env:
+      CCACHE_DIR: /github/home/.ccache
+    steps:
+      - uses: actions/checkout@v7
+
+      # bmwp2000 and twai_daemon are git dependencies in private repos; the
+      # component manager clones them over HTTPS, so hand git a token.
+      - name: Authenticate git for private components
+        env:
+          PRIVATE_REPOS_TOKEN: ${{ secrets.PRIVATE_REPOS_TOKEN }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global url."https://x-access-token:${PRIVATE_REPOS_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+      - name: Cache component manager downloads
+        uses: actions/cache@v5
+        with:
+          path: /github/home/.cache/Espressif/ComponentManager
+          key: components-${{ hashFiles('main/idf_component.yml', 'dependencies.lock') }}
+          restore-keys: components-
+
+      - name: Cache ccache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ github.ref_name }}-
+            ccache-main-
+            ccache-
+
+      - name: Build
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh
+          idf.py build
+          ccache --show-stats
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: firmware
+          path: |
+            build/*.bin
+            dependencies.lock
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin

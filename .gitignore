@@ -89,6 +89,7 @@ Desktop.ini
 
 # IDE Specific
 *.lock
+!dependencies.lock
 *.DS_Store
 .clangd
 sdkconfig
