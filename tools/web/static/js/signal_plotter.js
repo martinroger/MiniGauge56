@@ -25,7 +25,9 @@
   const state = {
     data: null,
     byName: {},
-    selected: [],          // ordered signal names
+    order: [],             // all signal names, in sidebar order (drag to reorder)
+    selected: [],          // selected names, kept in sidebar order: drives lane order top to bottom
+    colors: {},            // name -> palette index, stable while the signal stays selected
     mode: 'lanes',
     xName: null,
     view: null,            // {a, b} visible range of the x variable
@@ -38,14 +40,27 @@
     step: false,
     autoY: true,
     colorByTime: true,
-    heatmap: false,
+    heatmap: 'off',        // 'off' | 'cells' (per-cell counts) | 'full' (smoothed density over the whole XY space)
     heatCell: 8,
+    heatSmooth: 0.04,      // full mode: kernel width as a fraction of the panel size
     lidsFallback: store.get('lidsFallback', true),
   };
 
   // ---------- helpers ----------
   const cssVar = (n) => getComputedStyle(document.body).getPropertyValue(n).trim();
-  const colorOf = (name) => PALETTE[Math.max(state.selected.indexOf(name), 0) % PALETTE.length];
+  const colorOf = (name) => PALETTE[(state.colors[name] ?? 0) % PALETTE.length];
+  function assignColor(name) {
+    if (state.colors[name] !== undefined) return;
+    const used = new Set(state.selected.map((n) => state.colors[n]));
+    let i = 0; while (used.has(i)) i++;
+    state.colors[name] = i;
+  }
+  function setSelected(names) {
+    const want = new Set(names);
+    Object.keys(state.colors).forEach((n) => { if (!want.has(n)) delete state.colors[n]; });
+    state.selected = [];
+    state.order.forEach((n) => { if (want.has(n)) { assignColor(n); state.selected.push(n); } });
+  }
   const unitOf = (n) => (state.byName[n] || {}).unit || '';
   const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 
@@ -257,7 +272,7 @@
       ax0.tk.ticks.forEach((t) => { const y = Math.round(py0(t)) + .5; ctx.moveTo(p.x, y); ctx.lineTo(p.x + p.w, y); });
       ctx.stroke(); ctx.globalAlpha = 1;
 
-      if (state.mode === 'xy' && state.heatmap) drawHeatmap(p, px);
+      if (state.mode === 'xy' && state.heatmap !== 'off') (state.heatmap === 'full' ? drawDensity(p, px) : drawHeatmap(p, px));
       if (state.mode === 'lanes') drawGaps(p, px, state.byName[p.name]);
       p.axes.forEach((ax) => {
         const py = (v) => p.y + p.h - ((v - ax.lo) / (ax.hi - ax.lo)) * p.h;
@@ -392,22 +407,23 @@
     const { xs, ys, ts } = seriesFor(name);
     const col = colorOf(name);
     const t1 = state.data.duration_s || 1;
-    ctx.globalAlpha = state.heatmap ? 0.55 : 0.85;
-    const r = state.heatmap ? 1 : 1.5;
+    const heat = state.heatmap !== 'off';
+    ctx.globalAlpha = heat ? 0.55 : 0.85;
+    const r = heat ? 1 : 1.5;
     for (let i = 0; i < xs.length; i++) {
       const x = px(xs[i]); if (x < p.x - 3 || x > p.x + p.w + 3) continue;
-      ctx.fillStyle = state.heatmap ? cssVar('--text') : (state.colorByTime ? timeColor(ts[i] / t1, col) : col);
+      ctx.fillStyle = heat ? cssVar('--text') : (state.colorByTime ? timeColor(ts[i] / t1, col) : col);
       ctx.fillRect(x - r, py(ys[i]) - r, 2 * r, 2 * r);
     }
     ctx.globalAlpha = 1;
   }
 
-  function heatColor(f) {
+  function heatRGB(f) {
     const x = clamp(f, 0, 1) * (HEAT.length - 1);
     const i = Math.min(Math.floor(x), HEAT.length - 2), k = x - i;
-    const c = HEAT[i].map((a, j) => Math.round(a + (HEAT[i + 1][j] - a) * k));
-    return `rgb(${c[0]},${c[1]},${c[2]})`;
+    return HEAT[i].map((a, j) => Math.round(a + (HEAT[i + 1][j] - a) * k));
   }
+  function heatColor(f) { const c = heatRGB(f); return `rgb(${c[0]},${c[1]},${c[2]})`; }
 
   // Background density: samples per screen cell, log-scaled
   function drawHeatmap(p, px) {
@@ -434,14 +450,71 @@
         ctx.fillRect(p.x + c * cell, p.y + r * cell, cell, cell);
       }
     }
+    drawColorBar(p, '1', `${max} /cell`);
+  }
+
+  function drawColorBar(p, loLabel, hiLabel) {
     if (p.h < 60) return;
     // colour bar, top-right inside the lane
     const bw = 90, bx = p.x + p.w - bw - 10, by = p.y + 8;
     ctx.globalAlpha = 0.82; ctx.fillStyle = cssVar('--card-bg'); ctx.fillRect(bx - 6, by - 4, bw + 12, 26); ctx.globalAlpha = 1;
     for (let i = 0; i < bw; i++) { ctx.fillStyle = heatColor(i / (bw - 1)); ctx.fillRect(bx + i, by, 1, 7); }
     ctx.font = FONT; ctx.fillStyle = cssVar('--text-muted'); ctx.textBaseline = 'top';
-    ctx.textAlign = 'left'; ctx.fillText('1', bx, by + 9);
-    ctx.textAlign = 'right'; ctx.fillText(`${max} /cell`, bx + bw, by + 9);
+    ctx.textAlign = 'left'; ctx.fillText(loLabel, bx, by + 9);
+    ctx.textAlign = 'right'; ctx.fillText(hiLabel, bx + bw, by + 9);
+  }
+
+  // One pass of a running-sum box blur along rows (step 1) or columns (step = cols), zero outside
+  function boxBlur(src, dst, cols, rows, r, horizontal) {
+    const n = horizontal ? cols : rows, lines = horizontal ? rows : cols;
+    const at = horizontal ? (l, i) => l * cols + i : (l, i) => i * cols + l;
+    const w = 2 * r + 1;
+    for (let l = 0; l < lines; l++) {
+      let acc = 0;
+      for (let i = -r; i <= r; i++) if (i >= 0 && i < n) acc += src[at(l, i)];
+      for (let i = 0; i < n; i++) {
+        dst[at(l, i)] = acc / w;
+        const add = i + r + 1, sub = i - r;
+        if (add < n) acc += src[at(l, add)];
+        if (sub >= 0) acc -= src[at(l, sub)];
+      }
+    }
+  }
+
+  // Full mode: smoothed density estimate painted over the whole XY space of the lane
+  function drawDensity(p, px) {
+    const cell = 3;
+    const cols = Math.ceil(p.w / cell), rows = Math.ceil(p.h / cell);
+    let a = new Float32Array(cols * rows), b = new Float32Array(cols * rows);
+    const { xs, ys } = seriesFor(p.name);
+    const ax = p.axes[0];
+    let total = 0;
+    for (let i = 0; i < xs.length; i++) {
+      const cx = Math.floor((px(xs[i]) - p.x) / cell);
+      const cy = Math.floor((p.h - ((ys[i] - ax.lo) / (ax.hi - ax.lo)) * p.h) / cell);
+      if (cx < 0 || cx >= cols || cy < 0 || cy >= rows) continue;
+      a[cy * cols + cx] += 1; total++;
+    }
+    // three box blurs approximate a Gaussian kernel of the chosen width
+    const sigma = Math.max(state.heatSmooth * Math.min(p.w, p.h) / cell, 1);
+    const r = Math.max(Math.round(sigma), 1);
+    for (let k = 0; k < 3; k++) { boxBlur(a, b, cols, rows, r, true); boxBlur(b, a, cols, rows, r, false); }
+    let max = 0;
+    for (let i = 0; i < a.length; i++) if (a[i] > max) max = a[i];
+    p.heat = { full: true, dens: a, cols, rows, cell, max };
+    // log-ish scale so the sparse tails still read against the empty background
+    // painted through an offscreen bitmap: per-cell fillRect leaves anti-aliasing seams
+    const K = 200, lk = Math.log(K + 1);
+    const off = document.createElement('canvas'); off.width = cols; off.height = rows;
+    const octx = off.getContext('2d'), img = octx.createImageData(cols, rows);
+    for (let i = 0; i < a.length; i++) {
+      const c = heatRGB(Math.log(1 + K * (max ? a[i] / max : 0)) / lk);
+      img.data[i * 4] = c[0]; img.data[i * 4 + 1] = c[1]; img.data[i * 4 + 2] = c[2]; img.data[i * 4 + 3] = 255;
+    }
+    octx.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(off, p.x, p.y, cols * cell, rows * cell);
+    drawColorBar(p, '0', total ? 'max density' : 'no samples');
   }
 
   function drawHover(panels) {
@@ -468,8 +541,13 @@
       }
       if (p.heat) {
         const c = Math.floor((h.px - p.x) / p.heat.cell), r = Math.floor((h.py - p.y) / p.heat.cell);
-        const n = p.heat.counts[r * p.heat.cols + c] || 0;
-        if (n) rows.push({ c: 'transparent', t: `density: ${n} samples in cell` });
+        if (p.heat.full) {
+          const d = p.heat.max ? (p.heat.dens[r * p.heat.cols + c] || 0) / p.heat.max : 0;
+          rows.push({ c: 'transparent', t: `density: ${(d * 100).toFixed(d < 0.1 ? 1 : 0)} % of peak` });
+        } else {
+          const n = p.heat.counts[r * p.heat.cols + c] || 0;
+          if (n) rows.push({ c: 'transparent', t: `density: ${n} samples in cell` });
+        }
       }
       if (best >= 0 && bd <= 30 * 30) {
         head = `t = ${s.ts[best].toFixed(3)} s`;
@@ -600,20 +678,52 @@
   function renderList() {
     const q = $('signal-filter').value.trim().toLowerCase();
     const ul = $('signal-list'); ul.innerHTML = '';
-    const sigs = state.data ? state.data.signals : [];
+    const sigs = state.data ? state.order.map((n) => state.byName[n]) : [];
     sigs.filter((s) => !q || s.name.toLowerCase().includes(q)).forEach((s) => {
       const li = document.createElement('li');
+      li.draggable = true;
+      li.dataset.name = s.name;
       const sel = state.selected.includes(s.name);
       li.className = sel ? 'selected' : '';
       const isX = state.mode === 'xy' && state.xName === s.name;
-      li.innerHTML = `<span class="swatch" style="background:${sel ? colorOf(s.name) : 'transparent'}"></span>` +
+      li.innerHTML = `<span class="grip" aria-hidden="true">⠿</span><span class="swatch" style="background:${sel ? colorOf(s.name) : 'transparent'}"></span>` +
         `<span class="name">${s.name}</span>${isX ? '<span class="xmark">X</span>' : ''}` +
         `<span class="meta">${s.unit || ''} · ${s.t.length}</span>`;
       li.title = `${s.cid || ''} · LID ${s.lid || '?'} · ${s.t.length} samples`;
       li.addEventListener('click', () => toggle(s.name));
+      li.addEventListener('dragstart', (e) => {
+        dragName = s.name; li.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', s.name);
+      });
+      li.addEventListener('dragend', () => { dragName = null; li.classList.remove('dragging'); clearDropMarks(); });
+      li.addEventListener('dragover', (e) => {
+        if (!dragName || dragName === s.name) return;
+        e.preventDefault();
+        const r = li.getBoundingClientRect(), below = e.clientY > r.top + r.height / 2;
+        clearDropMarks(); li.classList.add(below ? 'drop-below' : 'drop-above');
+      });
+      li.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (!dragName || dragName === s.name) return;
+        const below = li.classList.contains('drop-below');
+        moveSignal(dragName, s.name, below);
+      });
       ul.appendChild(li);
     });
     $('signal-count').textContent = `${state.selected.length} / ${sigs.length} selected`;
+  }
+
+  let dragName = null;
+  function clearDropMarks() {
+    document.querySelectorAll('.drop-above, .drop-below').forEach((el) => el.classList.remove('drop-above', 'drop-below'));
+  }
+  // Move `name` next to `target` in the sidebar order; lanes follow because selection is kept in that order
+  function moveSignal(name, target, below) {
+    const o = state.order.filter((n) => n !== name);
+    o.splice(o.indexOf(target) + (below ? 1 : 0), 0, name);
+    state.order = o;
+    setSelected(state.selected);
+    renderList(); draw();
   }
 
   function renderXSelect() {
@@ -624,8 +734,7 @@
   }
 
   function toggle(name) {
-    const i = state.selected.indexOf(name);
-    if (i >= 0) state.selected.splice(i, 1); else state.selected.push(name);
+    setSelected(state.selected.includes(name) ? state.selected.filter((n) => n !== name) : [...state.selected, name]);
     renderList(); draw();
   }
 
@@ -642,10 +751,28 @@
   $('chk-step').addEventListener('change', (e) => { state.step = e.target.checked; draw(); });
   $('chk-autoy').addEventListener('change', (e) => { state.autoY = e.target.checked; draw(); });
   $('chk-xy-time').addEventListener('change', (e) => { state.colorByTime = e.target.checked; draw(); });
-  $('chk-heatmap').addEventListener('change', (e) => { state.heatmap = e.target.checked; $('select-cell').disabled = !e.target.checked; draw(); });
-  $('select-cell').addEventListener('change', (e) => { state.heatCell = +e.target.value; draw(); });
+  // The size select means cell size in 'cells' mode and kernel width in 'full' mode
+  function renderHeatSize() {
+    const sel = $('select-cell');
+    if (state.heatmap === 'full') {
+      sel.title = 'Smoothing (kernel width, % of chart)';
+      sel.innerHTML = [0.02, 0.04, 0.08, 0.15].map((v) => `<option value="${v}">smooth ${v * 100}%</option>`).join('');
+      sel.value = String(state.heatSmooth);
+    } else {
+      sel.title = 'Heatmap cell size';
+      sel.innerHTML = [4, 8, 16, 32].map((v) => `<option value="${v}">${v} px</option>`).join('');
+      sel.value = String(state.heatCell);
+    }
+    sel.disabled = state.heatmap === 'off';
+  }
+  $('select-heatmap').addEventListener('change', (e) => { state.heatmap = e.target.value; renderHeatSize(); draw(); });
+  $('select-cell').addEventListener('change', (e) => {
+    if (state.heatmap === 'full') state.heatSmooth = +e.target.value; else state.heatCell = +e.target.value;
+    draw();
+  });
+  renderHeatSize();
   $('signal-filter').addEventListener('input', renderList);
-  $('btn-clear').addEventListener('click', () => { state.selected = []; renderList(); draw(); });
+  $('btn-clear').addEventListener('click', () => { setSelected([]); renderList(); draw(); });
   $('chk-lids-fallback').checked = state.lidsFallback;
   $('chk-lids-fallback').addEventListener('change', (e) => {
     state.lidsFallback = e.target.checked; store.set('lidsFallback', state.lidsFallback);
@@ -659,11 +786,16 @@
       const r = await fetch(`/api/signals?file=${encodeURIComponent(name)}&lids_fallback=${state.lidsFallback}`);
       const d = await r.json();
       if (d.error) throw new Error(d.error);
-      const prevSel = state.selected, prevView = state.view;
+      const prevSel = state.selected, prevView = state.view, prevOrder = state.order;
       state.data = d; state.byName = {}; xyCache.clear();
       d.signals.forEach((s) => { state.byName[s.name] = s; });
-      state.selected = keepSelection ? prevSel.filter((n) => state.byName[n]) : [];
-      if (!state.selected.length) state.selected = d.signals.slice(0, 3).map((s) => s.name);
+      // keep a custom order across reloads of the same log; new names go to the end
+      const names = d.signals.map((s) => s.name);
+      state.order = keepSelection ? [...prevOrder.filter((n) => state.byName[n]), ...names.filter((n) => !prevOrder.includes(n))] : names;
+      if (!keepSelection) state.colors = {};
+      let sel = keepSelection ? prevSel.filter((n) => state.byName[n]) : [];
+      if (!sel.length) sel = names.slice(0, 3);
+      setSelected(sel);
       renderXSelect();
       resetView();
       if (keepSelection && prevView && state.mode !== 'xy') state.view = prevView;

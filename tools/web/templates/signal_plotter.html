@@ -50,12 +50,11 @@
       <label class="switch-label" title="Color XY points by time (dark to bright)">
         <input type="checkbox" id="chk-xy-time" class="switch-input" checked><span>Color by time</span>
       </label>
-      <label class="switch-label" title="Shade the chart background by how many samples fall in each cell">
-        <input type="checkbox" id="chk-heatmap" class="switch-input"><span>Heatmap</span>
-      </label>
-      <select id="select-cell" class="select-styled select-sm" title="Heatmap cell size" disabled>
-        <option value="4">4 px</option><option value="8" selected>8 px</option><option value="16">16 px</option><option value="32">32 px</option>
+      <label for="select-heatmap" class="text-muted" title="Cells: samples per grid cell. Full: smoothed density over the whole chart">Heatmap:</label>
+      <select id="select-heatmap" class="select-styled select-sm">
+        <option value="off">Off</option><option value="cells">Cells</option><option value="full">Full</option>
       </select>
+      <select id="select-cell" class="select-styled select-sm" disabled></select>
     </div>
     <div class="toolbar-group" id="time-controls">
       <label class="switch-label" title="Draw sample points on each trace">
@@ -93,7 +92,7 @@
         <div class="sp-empty" id="empty-hint">Pick one or more signals on the left.<br>In XY mode, the first selected signals are plotted against the chosen X axis.</div>
         <div class="sp-tooltip" id="tooltip" hidden></div>
       </div>
-      <div class="sp-help text-muted">Wheel: zoom · Drag: pan · Shift+drag: box zoom · Double-click: reset · Drag between lanes: resize (double-click: equalise)</div>
+      <div class="sp-help text-muted">Wheel: zoom · Drag: pan · Shift+drag: box zoom · Double-click: reset · Drag between lanes: resize (double-click: equalise) · Drag signals in the list to reorder lanes</div>
     </section>
   </main>
 

@@ -78,3 +78,8 @@
 .sp-help { font-size: 11px; padding: 0 2px; }
 .sp-signal-list li { min-width: 0; }
 [hidden] { display: none !important; }
+.sp-signal-list .grip { color: var(--text-muted); cursor: grab; font-size: 12px; opacity: 0.5; }
+.sp-signal-list li:hover .grip { opacity: 1; }
+.sp-signal-list li.dragging { opacity: 0.4; }
+.sp-signal-list li.drop-above { box-shadow: inset 0 2px 0 var(--primary); }
+.sp-signal-list li.drop-below { box-shadow: inset 0 -2px 0 var(--primary); }
