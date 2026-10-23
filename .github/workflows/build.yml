@@ -11,6 +11,8 @@ jobs:
     container: espressif/idf:v6.1
     env:
       CCACHE_DIR: /github/home/.ccache
+      CCACHE_COMPILERCHECK: content
+      CCACHE_BASEDIR: /__w/MiniGauge56/MiniGauge56
     steps:
       - uses: actions/checkout@v7
 
@@ -39,6 +41,12 @@ jobs:
             ccache-${{ github.ref_name }}-
             ccache-main-
             ccache-
+
+      - name: ccache state before build
+        run: |
+          du -sh $CCACHE_DIR || true
+          ccache --zero-stats
+          ccache --show-config | grep -E 'cache_dir|hash_dir|sloppiness|compiler_check|base_dir|max_size'
 
       - name: Build
         shell: bash
