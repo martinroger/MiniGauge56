@@ -90,7 +90,7 @@ def analyze_log_exchanges(
 
     for frame in frames:
         # Check if frame is an ISO-TP candidate
-        is_candidate = reassembler.is_iso_tp_candidate(frame.can_id)
+        is_candidate = reassembler.is_iso_tp_candidate(frame.can_id, frame.data)
 
         interrupted_msg, completed_msg = reassembler.process_frame_events(frame)
         if interrupted_msg:
