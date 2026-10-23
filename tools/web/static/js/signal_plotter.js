@@ -48,7 +48,7 @@
 
   // ---------- helpers ----------
   const cssVar = (n) => getComputedStyle(document.body).getPropertyValue(n).trim();
-  const colorOf = (name) => PALETTE[(state.colors[name] ?? 0) % PALETTE.length];
+  const colorOf = (name) => (state.colors[name] === undefined ? '#8a8f98' : PALETTE[state.colors[name] % PALETTE.length]);
   function assignColor(name) {
     if (state.colors[name] !== undefined) return;
     const used = new Set(state.selected.map((n) => state.colors[n]));
@@ -277,7 +277,9 @@
       p.axes.forEach((ax) => {
         const py = (v) => p.y + p.h - ((v - ax.lo) / (ax.hi - ax.lo)) * p.h;
         ax.py = py;
-        ax.names.forEach((n) => (state.mode === 'xy' ? drawScatter(p, px, py, n) : drawLine(p, px, py, n)));
+        // with a heatmap on, the density replaces the points
+        if (state.mode === 'xy') { if (state.heatmap === 'off') ax.names.forEach((n) => drawScatter(p, px, py, n)); }
+        else ax.names.forEach((n) => drawLine(p, px, py, n));
       });
       ctx.restore();
 
@@ -407,12 +409,11 @@
     const { xs, ys, ts } = seriesFor(name);
     const col = colorOf(name);
     const t1 = state.data.duration_s || 1;
-    const heat = state.heatmap !== 'off';
-    ctx.globalAlpha = heat ? 0.55 : 0.85;
-    const r = heat ? 1 : 1.5;
+    ctx.globalAlpha = 0.85;
+    const r = 1.5;
     for (let i = 0; i < xs.length; i++) {
       const x = px(xs[i]); if (x < p.x - 3 || x > p.x + p.w + 3) continue;
-      ctx.fillStyle = heat ? cssVar('--text') : (state.colorByTime ? timeColor(ts[i] / t1, col) : col);
+      ctx.fillStyle = (state.colorByTime ? timeColor(ts[i] / t1, col) : col);
       ctx.fillRect(x - r, py(ys[i]) - r, 2 * r, 2 * r);
     }
     ctx.globalAlpha = 1;
@@ -549,7 +550,13 @@
           if (n) rows.push({ c: 'transparent', t: `density: ${n} samples in cell` });
         }
       }
-      if (best >= 0 && bd <= 30 * 30) {
+      if (p.heat) { // no points to snap to: read out the cursor position instead
+        const yv = ax.lo + ((p.y + p.h - h.py) / p.h) * (ax.hi - ax.lo);
+        rows.unshift(
+          { c: colorOf(state.xName), t: `${state.xName}: ${fmt(xv)} ${unitOf(state.xName)}` },
+          { c: colorOf(p.name), t: `${p.name}: ${fmt(yv)} ${unitOf(p.name)}` },
+        );
+      } else if (best >= 0 && bd <= 30 * 30) {
         head = `t = ${s.ts[best].toFixed(3)} s`;
         rows.unshift(
           { c: colorOf(state.xName), t: `${state.xName}: ${fmt(s.xs[best])} ${unitOf(state.xName)}` },
@@ -764,6 +771,7 @@
       sel.value = String(state.heatCell);
     }
     sel.disabled = state.heatmap === 'off';
+    $('chk-xy-time').disabled = state.heatmap !== 'off';   // only affects points, which a heatmap hides
   }
   $('select-heatmap').addEventListener('change', (e) => { state.heatmap = e.target.value; renderHeatSize(); draw(); });
   $('select-cell').addEventListener('change', (e) => {
