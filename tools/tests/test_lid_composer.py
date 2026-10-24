@@ -189,6 +189,20 @@ class TestLIDComposerLogic(unittest.TestCase):
         self.assertFalse(valid)
         self.assertIn("must be a list of CID keys", err)
 
+    def test_validate_lids_max_cids_per_lid(self):
+        def lid(n):
+            return [{"local_id": "0xF0", "name": "A", "transmission_mode": "fast", "cids": ["RPM"] * n}]
+
+        valid, err = validate_lids(lid(10))
+        self.assertTrue(valid, err)
+
+        for mode in ("fast", "single"):
+            train = lid(11)
+            train[0]["transmission_mode"] = mode
+            valid, err = validate_lids(train)
+            self.assertFalse(valid)
+            self.assertIn("has 11 CIDs (max 10)", err)
+
     def test_create_backup(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             test_file = Path(tmp_dir) / "test_config.json"
@@ -376,6 +390,19 @@ class TestLIDComposerServerEndpoints(unittest.TestCase):
         )
         h_dup.do_POST()
         self.assertEqual(h_dup.status_code, 400)
+
+        # 2b. Too many CIDs in one LID is rejected and nothing is written
+        before = self.test_lids_path.read_text(encoding="utf-8")
+        h_big = self._create_mock_handler(
+            "/api/lids",
+            method="POST",
+            body=json.dumps({"lids": [
+                {"local_id": "0xF0", "name": "Big", "transmission_mode": "fast", "cids": ["RPM"] * 11}
+            ]}).encode("utf-8")
+        )
+        h_big.do_POST()
+        self.assertEqual(h_big.status_code, 400)
+        self.assertEqual(self.test_lids_path.read_text(encoding="utf-8"), before)
 
         # 3. Valid update
         good_trains = [
