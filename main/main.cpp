@@ -23,6 +23,17 @@
 /** @brief Global LVGL display object pointer */
 lv_display_t *main_display = NULL;
 
+#pragma region Cached daemon containers
+
+/** @brief Handle of the update_display task, woken by task notification on fresh telemetry */
+static TaskHandle_t s_update_display_task = NULL;
+
+/** @brief Minimum interval between update_display wake-ups requested by the telemetry callback (microseconds) */
+#define UI_NOTIFY_MIN_INTERVAL_US 50000
+
+/** @brief Fallback refresh period of update_display when no telemetry notification arrives */
+#define UI_REFRESH_TIMEOUT_MS 100
+
 /** @brief Counter of valid decoded BMWP2000 LID telemetry frames */
 static uint32_t s_bmwp_frame_count = 0;
 
@@ -68,6 +79,8 @@ static double s_bmwp_cached_coolant_temp = 0.0;
 /** @brief Cached actual gear decoded from BMWP2000 telemetry */
 static double s_bmwp_cached_gear_actual = 0.0;
 
+#pragma endregion
+
 /**
  * @brief Callback triggered when a fresh BMWP2000 LID packet is parsed.
  *
@@ -80,7 +93,9 @@ static void on_bmwp_telemetry_updated(void *user_ctx)
 {
     (void)user_ctx;
     s_bmwp_frame_count++;
-    s_bmwp_last_frame_us = esp_timer_get_time();
+    int64_t now_us = esp_timer_get_time();
+    int64_t last_notify_us = s_bmwp_last_frame_us;
+    s_bmwp_last_frame_us = now_us;
 
     bmwp2000_get_cid_value("rpm", &s_bmwp_cached_rpm);
     bmwp2000_get_cid_value("oilTemp", &s_bmwp_cached_oil_temp);
@@ -95,6 +110,31 @@ static void on_bmwp_telemetry_updated(void *user_ctx)
     bmwp2000_get_cid_value("oilPressureActual", &s_bmwp_cached_oil_pressure_actual);
     bmwp2000_get_cid_value("coolantTemp", &s_bmwp_cached_coolant_temp);
     bmwp2000_get_cid_value("gearActual", &s_bmwp_cached_gear_actual);
+
+    // Wake the UI task, throttled so LVGL is not redrawn at the raw LID frame rate
+    if (s_update_display_task && (now_us - last_notify_us) >= UI_NOTIFY_MIN_INTERVAL_US)
+    {
+        xTaskNotifyGive(s_update_display_task);
+    }
+}
+
+/**
+ * @brief Callback triggered while BMWP2000 loads its CID and LID dictionaries.
+ *
+ * Currently only pushes a progress line to the serial output.
+ *
+ * @param[in] progress Snapshot of the loading progress (valid only during the call).
+ * @param[in] user_ctx User context pointer passed during callback registration (unused).
+ * @note Thread-safety: Executed synchronously in the context of the task calling bmwp2000_init().
+ */
+static void on_bmwp_load_progress(const bmwp2000_load_progress_t *progress, void *user_ctx)
+{
+    (void)user_ctx;
+    static const char *const phase_names[] = {"IDLE", "PARSING_CIDS", "PARSING_LIDS", "LOADING_CIDS", "LOADING_LIDS", "DONE", "FAILED"};
+    const char *phase_name = progress->phase <= BMWP2000_LOAD_FAILED ? phase_names[progress->phase] : "?";
+    ESP_LOGI("BMWP_LOAD", "%s %u%% | CIDs %lu/%lu | LIDs %lu/%lu", phase_name, progress->percent,
+             (unsigned long)progress->cids_loaded, (unsigned long)progress->cids_total,
+             (unsigned long)progress->lids_loaded, (unsigned long)progress->lids_total);
 }
 
 /** @brief Flag indicating whether the AMOLED display backlight is asleep/off */
@@ -130,6 +170,7 @@ static esp_err_t app_can_frame_router(const twai_frame_t *rx_frame)
     return ESP_OK;
 }
 
+#pragma region Display sleep management
 /**
  * @brief Wakes up the display backlight and resets the inactivity timer.
  *
@@ -201,6 +242,9 @@ static void sleepDisplayTimer_cb(TimerHandle_t xTimer)
     sleepDisplay();
 }
 
+#pragma endregion
+
+#pragma region UI action callbacks
 /**
  * @brief LVGL event callback triggered when the start/stop logging button is clicked.
  *
@@ -285,6 +329,8 @@ extern "C" void action_filter_sw_actuated(lv_event_t *e)
     }
 }
 
+#pragma endregion
+
 /**
  * @brief FreeRTOS UI update task that refreshes LVGL telemetry labels periodically.
  *
@@ -298,6 +344,10 @@ void update_display(void *pvParameters)
         uint32_t tabID = lv_tabview_get_tab_active(objects.global_tabview);
         if (bsp_display_lock(100) == ESP_OK)
         {
+            
+            
+        
+            // Selective tab update
             switch (tabID)
             {
             case 0: // Engine temp
@@ -391,7 +441,8 @@ void update_display(void *pvParameters)
 
             bsp_display_unlock();
         }
-        vTaskDelay(pdMS_TO_TICKS(100));
+        // Sleep until fresh telemetry notifies us, or refresh anyway after the timeout
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(UI_REFRESH_TIMEOUT_MS));
     }
 }
 
@@ -405,6 +456,7 @@ extern "C" void app_main(void)
 {
     sleepDisplayTimer = xTimerCreate("slp_disp", pdMS_TO_TICKS(10000), pdFALSE, NULL, sleepDisplayTimer_cb);
 
+    // SD CARD check
     if (bsp_sdcard_mount() != ESP_OK)
     {
         ESP_LOGW(__func__, "Could not mount SD CARD");
@@ -430,26 +482,6 @@ extern "C" void app_main(void)
     else
     {
         ESP_LOGE(__func__, "Failed to initialize TWAI modern driver");
-    }
-
-    // Initialize BMWP2000 Diagnostic Daemon (ISO 14230-3 / ISO 15765-2)
-    if (bmwp2000_init() == ESP_OK)
-    {
-        ESP_LOGI(__func__, "BMWP2000 diagnostic engine initialized successfully");
-        bmwp2000_register_callback(on_bmwp_telemetry_updated, NULL);
-        if (bmwp2000_start() == ESP_OK)
-        {
-            ESP_LOGI(__func__, "BMWP2000 background daemon task started");
-            
-        }
-        else
-        {
-            ESP_LOGE(__func__, "Failed to start BMWP2000 background daemon task");
-        }
-    }
-    else
-    {
-        ESP_LOGE(__func__, "Failed to initialize BMWP2000 diagnostic engine");
     }
 
     // Display init
@@ -496,80 +528,35 @@ extern "C" void app_main(void)
     }
     wakeDisplay();
 
-    xTaskCreate(update_display, "upd_disp", 4096, NULL, 3, NULL);
+    // Initialize BMWP2000 Diagnostic Daemon (ISO 14230-3 / ISO 15765-2)
+
+    bmwp2000_register_load_progress_callback(on_bmwp_load_progress, NULL);
+
+    if (bmwp2000_init() == ESP_OK)
+    {
+        ESP_LOGI(__func__, "BMWP2000 diagnostic engine initialized successfully");
+        bmwp2000_register_callback(on_bmwp_telemetry_updated, NULL);
+        if (bmwp2000_start() == ESP_OK)
+        {
+            ESP_LOGI(__func__, "BMWP2000 background daemon task started");
+        }
+        else
+        {
+            ESP_LOGE(__func__, "Failed to start BMWP2000 background daemon task");
+        }
+    }
+    else
+    {
+        ESP_LOGE(__func__, "Failed to initialize BMWP2000 diagnostic engine");
+    }
+
+    xTaskCreate(update_display, "upd_disp", 4096, NULL, 3, &s_update_display_task);
     while (true)
     {
         vTaskDelay(pdMS_TO_TICKS(1000));
-        ESP_LOGD("STATUS", "File: %s | Size: %lu kB | Buffered: %lu B",
-                 current_log_filename, current_file_size / 1024, current_buffered_bytes);
-        ESP_LOGD("BMWP_STATUS", "Frames: %lu | RPM: %.0f | Oil: %.1f degC | Coolant: %.1f degC | HPFP: %.1f Bar",
-                 (unsigned long)s_bmwp_frame_count, s_bmwp_cached_rpm, s_bmwp_cached_oil_temp, s_bmwp_cached_engine_temp, s_bmwp_cached_hpfp);
-        // Find problematic cid
-        // if(bmwp2000_read_cid_single("rpm") == ESP_OK)
-        // {
-        //     vTaskDelay(pdMS_TO_TICKS(50));
-        // }
-        // else vTaskDelay(pdMS_TO_TICKS(700));
-        // if(bmwp2000_read_cid_single("oilTemp") == ESP_OK)
-        // {
-        //     vTaskDelay(pdMS_TO_TICKS(50));
-        // }
-        // else vTaskDelay(pdMS_TO_TICKS(700));
-        // if(bmwp2000_read_cid_single("engineTemp") == ESP_OK)
-        // {
-        //     vTaskDelay(pdMS_TO_TICKS(50));
-        // }
-        // else vTaskDelay(pdMS_TO_TICKS(700));
-        // if(bmwp2000_read_cid_single("hpfpPressure") == ESP_OK)
-        // {
-        //     vTaskDelay(pdMS_TO_TICKS(50));
-        // }
-        // else vTaskDelay(pdMS_TO_TICKS(700));
-        // if(bmwp2000_read_cid_single("vehicleSpeed") == ESP_OK)
-        // {
-        //     vTaskDelay(pdMS_TO_TICKS(50));
-        // }
-        // else vTaskDelay(pdMS_TO_TICKS(700));
-        // if(bmwp2000_read_cid_single("maf") == ESP_OK)
-        // {
-        //     vTaskDelay(pdMS_TO_TICKS(50));
-        // }
-        // else vTaskDelay(pdMS_TO_TICKS(700));
-        // if(bmwp2000_read_cid_single("iat") == ESP_OK)
-        // {
-        //     vTaskDelay(pdMS_TO_TICKS(50));
-        // }
-        // else vTaskDelay(pdMS_TO_TICKS(700));
-        // if(bmwp2000_read_cid_single("throttlePressure") == ESP_OK)
-        // {
-        //     vTaskDelay(pdMS_TO_TICKS(50));
-        // }
-        // else vTaskDelay(pdMS_TO_TICKS(700));
-        // if(bmwp2000_read_cid_single("manifoldPressureBoost1") == ESP_OK)
-        // {
-        //     vTaskDelay(pdMS_TO_TICKS(50));
-        // }
-        // else vTaskDelay(pdMS_TO_TICKS(700));
-        // if(bmwp2000_read_cid_single("engineOilTemp") == ESP_OK)
-        // {
-        //     vTaskDelay(pdMS_TO_TICKS(50));
-        // }
-        // else vTaskDelay(pdMS_TO_TICKS(700));
-        // if(bmwp2000_read_cid_single("oilPressureActual") == ESP_OK)
-        // {
-        //     vTaskDelay(pdMS_TO_TICKS(50));
-        // }
-        // else vTaskDelay(pdMS_TO_TICKS(700));
-        // if(bmwp2000_read_cid_single("coolantTemp") == ESP_OK)
-        // {
-        //     vTaskDelay(pdMS_TO_TICKS(50));
-        // }
-        // else vTaskDelay(pdMS_TO_TICKS(700));
-        // if(bmwp2000_read_cid_single("gearActual") == ESP_OK)
-        // {
-        //     vTaskDelay(pdMS_TO_TICKS(50));
-        // }
-        // else vTaskDelay(pdMS_TO_TICKS(700));
-
+        // ESP_LOGD("STATUS", "File: %s | Size: %lu kB | Buffered: %lu B",
+        //          current_log_filename, current_file_size / 1024, current_buffered_bytes);
+        // ESP_LOGD("BMWP_STATUS", "Frames: %lu | RPM: %.0f | Oil: %.1f degC | Coolant: %.1f degC | HPFP: %.1f Bar",
+        //          (unsigned long)s_bmwp_frame_count, s_bmwp_cached_rpm, s_bmwp_cached_oil_temp, s_bmwp_cached_engine_temp, s_bmwp_cached_hpfp);
     }
 }
