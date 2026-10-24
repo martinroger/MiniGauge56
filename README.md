@@ -6,7 +6,7 @@ MiniGauge56 is a side gauge for the Mini R56. It runs on an ESP32-S3 with a 1.75
 
 ## What it does today
 - **CAN interface**: on-chip TWAI controller at 500 kbps through the external `twai_daemon` component (transceiver TX on GPIO 43, RX on GPIO 44, hardware loopback enabled so the gauge's own requests are logged too).
-- **Engine telemetry (BMWP2000)**: the `bmwp2000` component (KWP2000 / ISO 14230-3 over ISO-TP, BMW FAST addressing) defines one dynamic local identifier (`0xF0`, "engineCore") on the DME and polls it. It carries 13 parameters, listed in [config/lids.json](config/lids.json) and scaled from [config/cids.json](config/cids.json): RPM, vehicle speed, MAF, intake air temperature, pre-throttle and manifold boost pressure, HPFP rail pressure, two oil temperatures, oil pressure, two coolant temperatures and actual gear.
+- **Engine telemetry (BMWP2000)**: the `bmwp2000` component (KWP2000 / ISO 14230-3 over ISO-TP, BMW FAST addressing) defines one dynamic local identifier (`0xF0`, "engineCore") on the DME in fast mode, so the DME streams it periodically. It carries 10 parameters (the library limit per LID), listed in [config/lids.json](config/lids.json) and scaled from [config/cids.json](config/cids.json): RPM, vehicle speed, pre-throttle and manifold boost pressure, HPFP rail pressure, two oil temperatures, oil pressure and two coolant temperatures.
 - **CAN logger**: every received frame is packed into a 16-byte record, buffered in a 32 KB PSRAM ring buffer and written to `/sdcard/log_<uptime_us>.bin` in 8 KB blocks. Logging is started and stopped from the UI.
 - **UI**: LVGL 9 tabview generated with EEZ Studio ([eezMG56.eez-project](eezMG56.eez-project)), five swipeable pages with a hidden tab bar:
   1. Coolant temperature (large readout)
@@ -39,7 +39,7 @@ Resolved versions come from [dependencies.lock](dependencies.lock).
 | Dependency | Requested in `main/idf_component.yml` | Resolved |
 | :--- | :--- | :--- |
 | `waveshare/esp32_s3_touch_amoled_1_75` | `^3.0.0` | `3.0.1` |
-| `bmwp2000` | git tag `v3.1.0` | `4845bf0` |
+| `bmwp2000` | git tag `v3.2.0` | `4845bf0` (still the v3.1.0 commit: the lock has not been regenerated since the bump) |
 | `twai_daemon` | git tag `v0.1.0` | `da6507e` (`v0.1.0` + 1 commit; `bmwp2000` requests `twai_daemon` without a version, which resolves to the default branch) |
 | `lvgl/lvgl` (via BSP) | | `9.5.0` |
 | `espressif/esp_lvgl_adapter` (via BSP) | | `0.6.4` |
