@@ -25,6 +25,7 @@
 - `app_can_frame_router()` runs in the `twai_daemon` RX worker task. Nothing it calls may block or allocate.
 - `log_can_frame_handler()` builds the record on the stack and calls `xRingbufferSend(..., 0)`. A full buffer drops the frame.
 - `bmwp2000_feed_can_frame()` must likewise return without waiting; queueing and filtering are the component's responsibility.
+- A LID carries at most 10 CIDs (`bmwp2000` limit, also enforced by the LID composer).
 - The `twai_daemon` RX queue holds 32 frames. If the router stalls, frames are lost at the queue.
 
 ### 2.3 Logging throughput
