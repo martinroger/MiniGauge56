@@ -1,6 +1,6 @@
 dependencies:
   bmwp2000:
-    component_hash: 50112c908337cbfca3d97e5f3e43568c171c122f04d8c8174d8119885b65e6a9
+    component_hash: ca90c0e218d4aaf64536258dcee207168712bdede5f5451e901d09bbc9b1ff49
     dependencies:
     - name: idf
       version: '>=5.5.0'
@@ -12,7 +12,7 @@ dependencies:
       git: https://github.com/martinroger/BMWP2000.git
       path: .
       type: git
-    version: 4845bf0b282a3b82b1a6e3f8fdc6c668cbc51fb2
+    version: 49646d780cd82cd2d76831d1ed1e1090cc545531
   espressif/button:
     component_hash: 7cb7e2944b5828f409af0c92f7fcc0e2d405de09c3325b7ee4a0eba5fb28dfdc
     dependencies:
