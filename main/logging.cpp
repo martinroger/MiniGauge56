@@ -33,11 +33,11 @@ static volatile bool sd_writer_running = false;
  */
 typedef struct
 {
-    uint32_t timestamp; /**< Milliseconds timestamp since boot (4 bytes) */
-    uint16_t id;        /**< Standard 11-bit CAN frame identifier (2 bytes) */
-    uint8_t dlc;        /**< Data length code (1 byte, 0-8) */
-    uint8_t data[8];    /**< Frame payload data (8 bytes) */
-    uint8_t padding;    /**< Explicit padding byte to maintain 16-byte alignment */
+	uint32_t timestamp; /**< Milliseconds timestamp since boot (4 bytes) */
+	uint16_t id;		/**< Standard 11-bit CAN frame identifier (2 bytes) */
+	uint8_t dlc;		/**< Data length code (1 byte, 0-8) */
+	uint8_t data[8];	/**< Frame payload data (8 bytes) */
+	uint8_t padding;	/**< Explicit padding byte to maintain 16-byte alignment */
 } __attribute__((packed)) can_log_record_t;
 
 /** @brief Number of 16-byte frame records per DMA block written to SD */
@@ -67,29 +67,29 @@ static RingbufHandle_t can_rb = NULL;
  */
 void log_can_frame_handler(const twai_frame_t *frame)
 {
-    if (frame == NULL || !is_logging || can_rb == NULL)
-    {
-        return;
-    }
+	if (frame == NULL || !is_logging || can_rb == NULL)
+	{
+		return;
+	}
 
-    can_log_record_t record;
+	can_log_record_t record;
 
-    // Pack the 16-byte struct
-    record.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
-    record.id = (uint16_t)frame->header.id;
-    record.dlc = frame->header.dlc;
-    record.padding = 0;
+	// Pack the 16-byte struct
+	record.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+	record.id = (uint16_t)frame->header.id;
+	record.dlc = frame->header.dlc;
+	record.padding = 0;
 
-    // Clear and copy data payload
-    memset(record.data, 0, sizeof(record.data));
-    uint8_t len = (record.dlc > 8) ? 8 : record.dlc;
-    if (frame->buffer != NULL && len > 0)
-    {
-        memcpy(record.data, frame->buffer, len);
-    }
+	// Clear and copy data payload
+	memset(record.data, 0, sizeof(record.data));
+	uint8_t len = (record.dlc > 8) ? 8 : record.dlc;
+	if (frame->buffer != NULL && len > 0)
+	{
+		memcpy(record.data, frame->buffer, len);
+	}
 
-    // Push to PSRAM Ring Buffer with zero-wait non-blocking semantics
-    xRingbufferSend(can_rb, &record, sizeof(can_log_record_t), 0);
+	// Push to PSRAM Ring Buffer with zero-wait non-blocking semantics
+	xRingbufferSend(can_rb, &record, sizeof(can_log_record_t), 0);
 }
 
 /**
@@ -101,129 +101,129 @@ void log_can_frame_handler(const twai_frame_t *frame)
  */
 static void sd_writer_task(void *pvParameters)
 {
-    sd_writer_running = true;
+	sd_writer_running = true;
 
-    snprintf(current_log_filename, sizeof(current_log_filename),
-             "/sdcard/log_%lld.bin", esp_timer_get_time());
-    current_file_size = 0;
+	snprintf(current_log_filename, sizeof(current_log_filename),
+			 "/sdcard/log_%lld.bin", esp_timer_get_time());
+	current_file_size = 0;
 
-    FILE *f = fopen(current_log_filename, "wb");
-    if (!f)
-    {
-        is_logging = false;
-        sd_writer_running = false;
-        vTaskDelete(NULL);
-        return;
-    }
-    setvbuf(f, NULL, _IONBF, 0);
+	FILE *f = fopen(current_log_filename, "wb");
+	if (!f)
+	{
+		is_logging = false;
+		sd_writer_running = false;
+		vTaskDelete(NULL);
+		return;
+	}
+	setvbuf(f, NULL, _IONBF, 0);
 
-    can_log_record_t *batch_buffer = (can_log_record_t *)heap_caps_malloc(BLOCK_SIZE, MALLOC_CAP_DMA);
-    if (!batch_buffer)
-    {
-        fclose(f);
-        is_logging = false;
-        sd_writer_running = false;
-        vTaskDelete(NULL);
-        return;
-    }
+	can_log_record_t *batch_buffer = (can_log_record_t *)heap_caps_malloc(BLOCK_SIZE, MALLOC_CAP_DMA);
+	if (!batch_buffer)
+	{
+		fclose(f);
+		is_logging = false;
+		sd_writer_running = false;
+		vTaskDelete(NULL);
+		return;
+	}
 
-    size_t items_in_batch = 0;
-    uint32_t last_flush_time = (uint32_t)(esp_timer_get_time() / 1000);
+	size_t items_in_batch = 0;
+	uint32_t last_flush_time = (uint32_t)(esp_timer_get_time() / 1000);
 
-    while (true)
-    {
-        size_t item_size;
-        // Wait up to 100ms while active; poll immediately (0ms) once stopping to drain remaining items
-        TickType_t wait_ticks = is_logging ? pdMS_TO_TICKS(100) : 0;
-        can_log_record_t *item = (can_log_record_t *)xRingbufferReceive(can_rb, &item_size, wait_ticks);
+	while (true)
+	{
+		size_t item_size;
+		// Wait up to 100ms while active; poll immediately (0ms) once stopping to drain remaining items
+		TickType_t wait_ticks = is_logging ? pdMS_TO_TICKS(100) : 0;
+		can_log_record_t *item = (can_log_record_t *)xRingbufferReceive(can_rb, &item_size, wait_ticks);
 
-        if (item)
-        {
-            memcpy(&batch_buffer[items_in_batch++], item, sizeof(can_log_record_t));
-            vRingbufferReturnItem(can_rb, (void *)item);
+		if (item)
+		{
+			memcpy(&batch_buffer[items_in_batch++], item, sizeof(can_log_record_t));
+			vRingbufferReturnItem(can_rb, (void *)item);
 
-            while (items_in_batch < FRAMES_PER_BLOCK)
-            {
-                can_log_record_t *next = (can_log_record_t *)xRingbufferReceive(can_rb, &item_size, 0);
-                if (!next)
-                    break;
-                memcpy(&batch_buffer[items_in_batch++], next, sizeof(can_log_record_t));
-                vRingbufferReturnItem(can_rb, (void *)next);
-            }
-        }
+			while (items_in_batch < FRAMES_PER_BLOCK)
+			{
+				can_log_record_t *next = (can_log_record_t *)xRingbufferReceive(can_rb, &item_size, 0);
+				if (!next)
+					break;
+				memcpy(&batch_buffer[items_in_batch++], next, sizeof(can_log_record_t));
+				vRingbufferReturnItem(can_rb, (void *)next);
+			}
+		}
 
-        current_buffered_bytes = items_in_batch * 16;
+		current_buffered_bytes = items_in_batch * 16;
 
-        uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
-        bool flush_due_to_time = (items_in_batch > 0 && (now - last_flush_time > LAZY_FLUSH_MS));
-        bool flush_due_to_stop = (items_in_batch > 0 && !is_logging);
-        bool block_full = (items_in_batch >= FRAMES_PER_BLOCK);
+		uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+		bool flush_due_to_time = (items_in_batch > 0 && (now - last_flush_time > LAZY_FLUSH_MS));
+		bool flush_due_to_stop = (items_in_batch > 0 && !is_logging);
+		bool block_full = (items_in_batch >= FRAMES_PER_BLOCK);
 
-        if (block_full || flush_due_to_time || flush_due_to_stop)
-        {
-            size_t bytes_to_write = items_in_batch * sizeof(can_log_record_t);
-            fwrite(batch_buffer, 1, bytes_to_write, f);
-            fsync(fileno(f));
+		if (block_full || flush_due_to_time || flush_due_to_stop)
+		{
+			size_t bytes_to_write = items_in_batch * sizeof(can_log_record_t);
+			fwrite(batch_buffer, 1, bytes_to_write, f);
+			fsync(fileno(f));
 
-            current_file_size += bytes_to_write; // Update for LVGL
-            items_in_batch = 0;
-            last_flush_time = now;
-            current_buffered_bytes = 0;
-        }
+			current_file_size += bytes_to_write; // Update for LVGL
+			items_in_batch = 0;
+			last_flush_time = now;
+			current_buffered_bytes = 0;
+		}
 
-        // Exit once logging has stopped, no items remain in the current batch, and ringbuffer is drained
-        if (!is_logging && item == NULL && items_in_batch == 0)
-        {
-            break;
-        }
-    }
+		// Exit once logging has stopped, no items remain in the current batch, and ringbuffer is drained
+		if (!is_logging && item == NULL && items_in_batch == 0)
+		{
+			break;
+		}
+	}
 
-    heap_caps_free(batch_buffer);
-    fclose(f);
-    current_buffered_bytes = 0;
-    sd_writer_running = false;
-    vTaskDelete(NULL);
+	heap_caps_free(batch_buffer);
+	fclose(f);
+	current_buffered_bytes = 0;
+	sd_writer_running = false;
+	vTaskDelete(NULL);
 }
 
 bool init_can_logging(void)
 {
-    if (can_rb != NULL)
-    {
-        return true;
-    }
+	if (can_rb != NULL)
+	{
+		return true;
+	}
 
-    // RingBuffer Init (PSRAM)
-    uint8_t *storage = (uint8_t *)heap_caps_malloc(RB_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    static StaticRingbuffer_t rb_struct;
-    if (storage != NULL)
-    {
-        can_rb = xRingbufferCreateStatic(RB_SIZE, RINGBUF_TYPE_NOSPLIT, storage, &rb_struct);
-    }
+	// RingBuffer Init (PSRAM)
+	uint8_t *storage = (uint8_t *)heap_caps_malloc(RB_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+	static StaticRingbuffer_t rb_struct;
+	if (storage != NULL)
+	{
+		can_rb = xRingbufferCreateStatic(RB_SIZE, RINGBUF_TYPE_NOSPLIT, storage, &rb_struct);
+	}
 
-    return (can_rb != NULL);
+	return (can_rb != NULL);
 }
 
 void start_logging(void)
 {
-    if (!is_logging && !sd_writer_running && can_rb)
-    {
-        // Purge any stale records from previous session to guarantee a fresh start
-        size_t stale_size;
-        void *stale_item;
-        while ((stale_item = xRingbufferReceive(can_rb, &stale_size, 0)) != NULL)
-        {
-            vRingbufferReturnItem(can_rb, stale_item);
-        }
+	if (!is_logging && !sd_writer_running && can_rb)
+	{
+		// Purge any stale records from previous session to guarantee a fresh start
+		size_t stale_size;
+		void *stale_item;
+		while ((stale_item = xRingbufferReceive(can_rb, &stale_size, 0)) != NULL)
+		{
+			vRingbufferReturnItem(can_rb, stale_item);
+		}
 
-        is_logging = true;
-        xTaskCreate(sd_writer_task, "sd_writer", 4096, NULL, 5, NULL);
-        ESP_LOGI(__func__, "Block size: %lu", BLOCK_SIZE);
-    }
+		is_logging = true;
+		xTaskCreate(sd_writer_task, "sd_writer", 4096, NULL, 5, NULL);
+		ESP_LOGI(__func__, "Block size: %lu", BLOCK_SIZE);
+	}
 }
 
 void stop_logging(void)
 {
-    is_logging = false;
+	is_logging = false;
 }
 
 /**
@@ -235,54 +235,54 @@ void stop_logging(void)
  */
 static void mock_can_producer_task(void *pvParameters)
 {
-    uint8_t count = 0;
-    uint16_t mock_id = 0x123;
+	uint8_t count = 0;
+	uint16_t mock_id = 0x123;
 
-    ESP_LOGW("MOCK", "Starting dummy data generator @ 500 Hz");
+	ESP_LOGW("MOCK", "Starting dummy data generator @ 500 Hz");
 
-    while (is_logging)
-    {
-        // 1. Manually pack the 16-byte struct
-        can_log_record_t record;
-        record.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
-        record.id = mock_id;
-        record.dlc = 8;
-        record.padding = 0; // Maintain 16-byte alignment
+	while (is_logging)
+	{
+		// 1. Manually pack the 16-byte struct
+		can_log_record_t record;
+		record.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
+		record.id = mock_id;
+		record.dlc = 8;
+		record.padding = 0; // Maintain 16-byte alignment
 
-        // 2. Fill data with incrementing counter for integrity checks
-        memset(record.data, 0xAA, 8);
-        record.data[0] = count++;
+		// 2. Fill data with incrementing counter for integrity checks
+		memset(record.data, 0xAA, 8);
+		record.data[0] = count++;
 
-        // 3. Push to Ring Buffer
-        if (can_rb)
-        {
-            xRingbufferSend(can_rb, &record, sizeof(can_log_record_t), 0);
-        }
+		// 3. Push to Ring Buffer
+		if (can_rb)
+		{
+			xRingbufferSend(can_rb, &record, sizeof(can_log_record_t), 0);
+		}
 
-        // 500Hz = 2ms delay
-        vTaskDelay(pdMS_TO_TICKS(2));
-    }
+		// 500Hz = 2ms delay
+		vTaskDelay(pdMS_TO_TICKS(2));
+	}
 
-    vTaskDelete(NULL);
+	vTaskDelete(NULL);
 }
 
 void start_logging_test(void)
 {
-    if (!is_logging && !sd_writer_running && can_rb)
-    {
-        // Purge any stale records from previous session to guarantee a fresh start
-        size_t stale_size;
-        void *stale_item;
-        while ((stale_item = xRingbufferReceive(can_rb, &stale_size, 0)) != NULL)
-        {
-            vRingbufferReturnItem(can_rb, stale_item);
-        }
+	if (!is_logging && !sd_writer_running && can_rb)
+	{
+		// Purge any stale records from previous session to guarantee a fresh start
+		size_t stale_size;
+		void *stale_item;
+		while ((stale_item = xRingbufferReceive(can_rb, &stale_size, 0)) != NULL)
+		{
+			vRingbufferReturnItem(can_rb, stale_item);
+		}
 
-        is_logging = true;
-        // Start the SD Writer
-        xTaskCreate(sd_writer_task, "sd_writer", 4096, NULL, 5, NULL);
-        // Start the Dummy Generator
-        xTaskCreate(mock_can_producer_task, "mock_can", 2048, NULL, 5, NULL);
-        ESP_LOGI(__func__, "Block size: %lu", BLOCK_SIZE);
-    }
+		is_logging = true;
+		// Start the SD Writer
+		xTaskCreate(sd_writer_task, "sd_writer", 4096, NULL, 5, NULL);
+		// Start the Dummy Generator
+		xTaskCreate(mock_can_producer_task, "mock_can", 2048, NULL, 5, NULL);
+		ESP_LOGI(__func__, "Block size: %lu", BLOCK_SIZE);
+	}
 }
