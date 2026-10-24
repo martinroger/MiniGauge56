@@ -410,6 +410,6 @@ direct_dependencies:
 - idf
 - twai_daemon
 - waveshare/esp32_s3_touch_amoled_1_75
-manifest_hash: 138ecf0670f332a3096fc94ac297452dead68b6abc7821bcbbaffffee82c9818
+manifest_hash: 80fac54a24c6f60a62cc7417a1362a6614c7632bbdcf3ff7260cda3d01d226dd
 target: esp32s3
 version: 3.0.0
