@@ -43,7 +43,7 @@ These were described in earlier revisions of this document and no longer exist i
 | **REQ-LOG-04** | Block writes | `sd_writer_task` writes 512-record (8 KB) blocks from a DMA-capable buffer, flushes a partial block after 5 s, and `fsync`s after every write. |
 | **REQ-LOG-05** | Session lifecycle | `start_logging()` purges stale records and opens `/sdcard/log_<esp_timer_us>.bin`; `stop_logging()` lets the writer drain everything before closing. A new session is refused while the previous writer is still draining. |
 | **REQ-LOG-06** | SD card mount | SD mount failure is logged and leaves logging unavailable without stopping the rest of the firmware. `CONFIG_BSP_SD_FORMAT_ON_MOUNT_FAIL=y` lets the BSP format a card it cannot mount. |
-| **REQ-BMWP-01** | Component version | `bmwp2000` git tag `v3.2.0` in `main/idf_component.yml`, pinned in `dependencies.lock`. |
+| **REQ-BMWP-01** | Component version | `bmwp2000` git tag `v3.3.0` in `main/idf_component.yml`, pinned in `dependencies.lock`. |
 | **REQ-BMWP-02** | Project configuration | `CONFIG_BMWP2000_CUSTOM_CIDS_PATH="config/cids.json"` and `CONFIG_BMWP2000_CUSTOM_LIDS_PATH="config/lids.json"`. |
 | **REQ-BMWP-03** | LID train | One LID `0xF0` ("engineCore") in `fast` transmission mode (the DME streams it periodically) carrying 10 CIDs, the maximum per LID: `rpm`, `vehicleSpeed`, `throttlePressure`, `manifoldPressureBoost1`, `hpfpPressure`, `oilTemp`, `engineOilTemp`, `oilPressureActual`, `engineTemp`, `coolantTemp`. |
 | **REQ-BMWP-04** | Lifecycle | `bmwp2000_init()`, `bmwp2000_register_callback()` and `bmwp2000_start()` run at boot after CAN init; failures are logged and the rest of the firmware keeps running. |
