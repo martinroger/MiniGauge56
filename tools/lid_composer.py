@@ -31,6 +31,9 @@ from common.http_server import BaseAppHandler, start_server
 DEFAULT_CIDS_PATH = REPO_ROOT / "config" / "cids.json"
 DEFAULT_LIDS_PATH = REPO_ROOT / "config" / "lids.json"
 
+# Maximum number of CIDs that can be assigned to a single LID
+MAX_CIDS_PER_LID = 10
+
 CIDS_FILE_PATH: Path = DEFAULT_CIDS_PATH
 LIDS_FILE_PATH: Path = DEFAULT_LIDS_PATH
 
@@ -145,6 +148,9 @@ def validate_lids(lids_list: List[Any], known_cids: Optional[Dict[str, Any]] = N
         cids = item.get("cids")
         if not isinstance(cids, list):
             return False, f"LID '{local_id}' field 'cids' must be a list of CID keys"
+
+        if len(cids) > MAX_CIDS_PER_LID:
+            return False, f"LID '{local_id}' has {len(cids)} CIDs (max {MAX_CIDS_PER_LID})"
 
         for cid_key in cids:
             if not isinstance(cid_key, str):

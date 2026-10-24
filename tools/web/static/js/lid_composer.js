@@ -6,6 +6,9 @@
 (function () {
   'use strict';
 
+  // Maximum number of CIDs that can be assigned to a single LID
+  const MAX_CIDS_PER_LID = 10;
+
   // Application State
   const state = {
     cids: {},          // Map of CID key -> CID definition
@@ -174,6 +177,12 @@
       renderCidsTable();
 
       setStatus(`Loaded ${Object.keys(state.cids).length} CIDs, ${state.lids.length} LID trains`);
+
+      const oversized = state.lids.filter(t => (t.cids || []).length > MAX_CIDS_PER_LID);
+      if (oversized.length > 0 && window.showToast) {
+        const names = oversized.map(t => t.local_id || '0x??').join(', ');
+        window.showToast(`LID(s) ${names} exceed ${MAX_CIDS_PER_LID} CIDs; trim them before saving.`, 'warning');
+      }
     } catch (err) {
       console.error(err);
       setStatus(`Error: ${err.message}`);
@@ -324,7 +333,8 @@
     // ISO 14230-3 positive response: 1 byte SID (0x61) + 1 byte local_id + payload bytes
     const responseBytes = payloadBytes + 2;
 
-    els.metricCidCount.textContent = cidCount;
+    els.metricCidCount.textContent = `${cidCount} / ${MAX_CIDS_PER_LID}`;
+    els.metricCidCount.style.color = cidCount > MAX_CIDS_PER_LID ? 'var(--color-danger, #e5484d)' : '';
     els.metricPayloadBytes.textContent = `${payloadBytes} B`;
     els.metricResponseBytes.textContent = `${responseBytes} B`;
 
@@ -402,6 +412,12 @@
   }
 
   function addCidToActiveTrain(cidKey) {
+    const activeTrain = getCurrentTrain();
+    if (activeTrain && (activeTrain.cids || []).length >= MAX_CIDS_PER_LID) {
+      if (window.showToast) window.showToast(`An LID can hold at most ${MAX_CIDS_PER_LID} CIDs.`, 'warning');
+      return;
+    }
+
     const train = getCurrentTrain();
     if (!train) {
       if (window.showToast) window.showToast('Please select or create an LID train first.', 'warning');
