@@ -100,3 +100,4 @@ sdkconfig.old
 democode/
 decoder/
 eezMG56.eez-project-ui-state
+*.eez-project-ui-state
