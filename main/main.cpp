@@ -235,6 +235,12 @@ static void on_bmwp_load_progress(const bmwp2000_load_progress_t *progress, void
 /** @brief Flag indicating whether the AMOLED display backlight is asleep/off */
 bool display_off = false;
 
+/** @brief Active-state display brightness (percent), set by the brightness slider and used when waking the display */
+static int s_brightness_percent = 60;
+
+/** @brief Lowest brightness reachable from the slider, so the display can never be turned fully black by touch */
+#define MIN_BRIGHTNESS_PERCENT 5
+
 /** @brief Always-on backlight mode (inactivity sleep disabled); enabled by default at boot */
 bool backlight_override = true;
 
@@ -282,7 +288,7 @@ void wakeDisplay(void)
 		if (bsp_display_lock(WAKE_DISPLAY_LOCK_TIMEOUT_MS) == ESP_OK)
 		{
 			// bsp_display_backlight_on();
-			bsp_display_brightness_set(40);
+			bsp_display_brightness_set(s_brightness_percent);
 			display_off = false;
 			bsp_display_unlock();
 		}
@@ -293,7 +299,7 @@ void wakeDisplay(void)
 		{
 			// backlight_override ? bsp_display_brightness_set(50) : bsp_display_backlight_on();
 			// bsp_display_backlight_on();
-			bsp_display_brightness_set(40);
+			bsp_display_brightness_set(s_brightness_percent);
 			bsp_display_unlock();
 		}
 	}
@@ -408,6 +414,29 @@ extern "C" void action_backlight_sw_unchecked(lv_event_t *e)
 {
 	backlight_override = false;
 	wakeDisplay(); // For good measure to restart the sleep timer
+}
+
+/**
+ * @brief LVGL event callback triggered when the brightness slider value changes.
+ *
+ * Applies the slider value (clamped to MIN_BRIGHTNESS_PERCENT..100) to the panel brightness.
+ *
+ * @param[in] e Pointer to LVGL event descriptor.
+ * @note Thread-safety: Takes the BSP display lock (recursive, so safe from the LVGL task context).
+ */
+static void on_brightness_slider_changed(lv_event_t *e)
+{
+	int32_t value = lv_slider_get_value(lv_event_get_target_obj(e));
+	if (value < MIN_BRIGHTNESS_PERCENT)
+	{
+		value = MIN_BRIGHTNESS_PERCENT;
+	}
+	if (bsp_display_lock(WAKE_DISPLAY_LOCK_TIMEOUT_MS) == ESP_OK)
+	{
+		s_brightness_percent = value;
+		bsp_display_brightness_set(s_brightness_percent);
+		bsp_display_unlock();
+	}
 }
 
 extern "C" void action_filter_sw_actuated(lv_event_t *e)
@@ -641,6 +670,12 @@ extern "C" void app_main(void)
 				{
 					lv_obj_add_state(objects.filter_sw, LV_STATE_CHECKED);
 				}
+			}
+			if (objects.brightness_slider)
+			{
+				lv_slider_set_range(objects.brightness_slider, MIN_BRIGHTNESS_PERCENT, 100);
+				lv_slider_set_value(objects.brightness_slider, s_brightness_percent, LV_ANIM_OFF);
+				lv_obj_add_event_cb(objects.brightness_slider, on_brightness_slider_changed, LV_EVENT_VALUE_CHANGED, NULL);
 			}
 			bsp_display_unlock();
 		}

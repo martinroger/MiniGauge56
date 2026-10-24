@@ -446,6 +446,7 @@ void create_screen_main() {
                                 { 240, 0 }
                             };
                             lv_line_set_points(obj, line_points, 2);
+                            add_style_mg_rule(obj);
                             lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
                         }
                         {
@@ -584,6 +585,7 @@ void create_screen_main() {
                                 { 240, 0 }
                             };
                             lv_line_set_points(obj, line_points, 2);
+                            add_style_mg_rule(obj);
                             lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
                         }
                         {
@@ -722,6 +724,7 @@ void create_screen_main() {
                                 { 240, 0 }
                             };
                             lv_line_set_points(obj, line_points, 2);
+                            add_style_mg_rule(obj);
                             lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
                         }
                         {
@@ -1043,11 +1046,19 @@ void create_screen_main() {
                             // filter_sw
                             lv_obj_t *obj = lv_switch_create(parent_obj);
                             objects.filter_sw = obj;
-                            lv_obj_set_pos(obj, 0, 0);
+                            lv_obj_set_pos(obj, -110, 0);
                             lv_obj_set_size(obj, 72, 132);
                             lv_obj_add_event_cb(obj, action_filter_sw_actuated, LV_EVENT_VALUE_CHANGED, (void *)0);
                             add_style_mg_switch(obj);
                             lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+                        }
+                        {
+                            // brightness_slider
+                            lv_obj_t *obj = lv_slider_create(parent_obj);
+                            objects.brightness_slider = obj;
+                            lv_obj_set_pos(obj, 261, 96);
+                            lv_obj_set_size(obj, 25, 255);
+                            lv_slider_set_value(obj, 25, LV_ANIM_OFF);
                         }
                     }
                 }

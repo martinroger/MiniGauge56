@@ -85,6 +85,7 @@ typedef struct _objects_t {
     lv_obj_t *backlight_sw;
     lv_obj_t *log_sw;
     lv_obj_t *filter_sw;
+    lv_obj_t *brightness_slider;
 } objects_t;
 
 extern objects_t objects;
