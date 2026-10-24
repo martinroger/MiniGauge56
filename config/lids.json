@@ -13,12 +13,10 @@
   {
     "local_id": "0xF0",
     "name": "engineCore",
-    "transmission_mode": "single",
+    "transmission_mode": "fast",
     "cids": [
       "rpm",
       "vehicleSpeed",
-      "maf",
-      "iat",
       "throttlePressure",
       "manifoldPressureBoost1",
       "hpfpPressure",
@@ -26,8 +24,7 @@
       "engineOilTemp",
       "oilPressureActual",
       "engineTemp",
-      "coolantTemp",
-      "gearActual"
+      "coolantTemp"
     ]
   }
 ]
