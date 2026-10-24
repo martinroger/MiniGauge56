@@ -39,7 +39,7 @@ Resolved versions come from [dependencies.lock](dependencies.lock).
 | Dependency | Requested in `main/idf_component.yml` | Resolved |
 | :--- | :--- | :--- |
 | `waveshare/esp32_s3_touch_amoled_1_75` | `^3.0.0` | `3.0.1` |
-| `bmwp2000` | git tag `v3.3.0` | `49646d7` (the v3.2.0 commit; regenerate the lock with `idf.py update-dependencies` to pick up v3.3.0) |
+| `bmwp2000` | git tag `v3.3.0` | `522e8dd` |
 | `twai_daemon` | git tag `v0.1.0` | `da6507e` (`v0.1.0` + 1 commit; `bmwp2000` requests `twai_daemon` without a version, which resolves to the default branch) |
 | `lvgl/lvgl` (via BSP) | | `9.5.0` |
 | `espressif/esp_lvgl_adapter` (via BSP) | | `0.6.4` |
