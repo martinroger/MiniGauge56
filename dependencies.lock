@@ -1,6 +1,6 @@
 dependencies:
   bmwp2000:
-    component_hash: 35009535bdd9c641d528ab6896120454b6304cd52885e5d574d2104998e16de5
+    component_hash: 13a73cca06ca4fd2ff7eb0f6214a21c49bbd168f33131df6b61390b0ec62dbbb
     dependencies:
     - name: idf
       version: '>=5.5.0'
@@ -12,7 +12,7 @@ dependencies:
       git: https://github.com/martinroger/BMWP2000.git
       path: .
       type: git
-    version: ae3272366a8060ebe0b45e7259ffe2ed4cfe4b1a
+    version: 839f77a03ca64b59e6b6d28445f98249a7bdcd1f
   espressif/button:
     component_hash: 7cb7e2944b5828f409af0c92f7fcc0e2d405de09c3325b7ee4a0eba5fb28dfdc
     dependencies:
@@ -289,7 +289,7 @@ dependencies:
       type: service
     version: 1.6.59
   espressif/usb:
-    component_hash: 99eee72ea224d9117d4c342442717a1f20bf8112e2ab5d7d7038b827874f4c92
+    component_hash: 6c2cff118141dbbca181d0d27d71801fdddfc78f7ac03ae43f6e5a8cbd89cb99
     dependencies:
     - name: idf
       require: private
@@ -304,9 +304,9 @@ dependencies:
     - esp32p4
     - esp32h4
     - linux
-    version: 1.6.0
+    version: 1.5.0
   espressif/zlib:
-    component_hash: 9083cada65f1c9d298ef92266232d071c6f2f335164e2799554b3eae73aedc55
+    component_hash: 61b7c41a6c7091085555a3cef58722af4bd9078e8708ee00a0e78efb997daf7c
     dependencies:
     - name: idf
       require: private
@@ -314,7 +314,7 @@ dependencies:
     source:
       registry_url: https://components.espressif.com
       type: service
-    version: 1.3.2~1
+    version: 1.3.2~2
   idf:
     source:
       type: idf
@@ -410,6 +410,6 @@ direct_dependencies:
 - idf
 - twai_daemon
 - waveshare/esp32_s3_touch_amoled_1_75
-manifest_hash: e22d6642e683707ed3ec6d4c12654cd9ab5dea5c9de4abe7ef1734c3ee25c443
+manifest_hash: b2ae5ffd938580e2f292e37eb9b99f650accc185a6f2c4182c31cef9f43c112f
 target: esp32s3
 version: 3.0.0
