@@ -86,13 +86,6 @@
               <label for="input-train-name">Train Name:</label>
               <input type="text" id="input-train-name" placeholder="Engine_Core_Metrics">
             </div>
-            <div class="form-group">
-              <label for="select-train-mode">Transmission Mode:</label>
-              <select id="select-train-mode" class="form-select">
-                <option value="fast">fast (0x04 - High-rate periodic broadcast)</option>
-                <option value="single">single (0x01 - Active polling on-demand)</option>
-              </select>
-            </div>
           </div>
         </div>
 
@@ -142,7 +135,7 @@
           <div class="card train-sequence-card">
             <div class="sequence-header">
               <h3>Active Train CID Sequence (Ordered)</h3>
-              <span class="sequence-subtitle">Sequence dispatched by ECU during transmission</span>
+              <span class="sequence-subtitle">Order of the CIDs in each polled response</span>
             </div>
             <div class="sequence-list" id="active-sequence-list">
               <!-- Dynamically populated sequence items -->

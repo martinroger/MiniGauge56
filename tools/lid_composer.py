@@ -121,7 +121,6 @@ def validate_lids(lids_list: List[Any], known_cids: Optional[Dict[str, Any]] = N
         return False, "LIDs payload must be a JSON array"
 
     hex_id_re = re.compile(r"^0x[0-9a-fA-F]{2}$")
-    valid_modes = {"fast", "single"}  # Only modes supported by the BMWP2000 library
 
     seen_ids = set()
 
@@ -141,9 +140,9 @@ def validate_lids(lids_list: List[Any], known_cids: Optional[Dict[str, Any]] = N
             return False, f"Duplicate local_id '{local_id}' found at index {idx}"
         seen_ids.add(norm_id)
 
-        mode = item.get("transmission_mode", "")
-        if mode not in valid_modes:
-            return False, f"LID '{local_id}' invalid transmission_mode: '{mode}' (valid: {sorted(valid_modes)})"
+        # BMWP2000 4.0.0 polls every LID with '21 <LID>'; the key is refused by the component.
+        if "transmission_mode" in item:
+            return False, f"LID '{local_id}' contains unsupported key 'transmission_mode' (removed in BMWP2000 4.0.0)"
 
         cids = item.get("cids")
         if not isinstance(cids, list):

@@ -4,7 +4,7 @@ Implements:
 - ISO 15765-2 (ISO-TP) multi-frame reassembly (SF, FF, CF, FC)
 - ISO 14230-3 (KWP2000) service dissection and request/response correlation
 - Dynamically Defined Local Identifier (DDLI, Service 0x2C) tracking
-- ReadDataByLocalIdentifier (Service 0x21) and periodic broadcast unpacking
+- ReadDataByLocalIdentifier (Service 0x21, polled with no mode byte) response unpacking
 - Negative Response Code (NRC, Service 0x7F) decoding
 - Unimplemented / unknown service flagging
 - DID parameter scaling with engineering units
@@ -778,29 +778,12 @@ class BmwP2000Dissector:
                 result["details"]["local_id"] = f"0x{local_id:02X}"
                 result["details"]["recordLocalIdentifier"] = f"0x{local_id:02X}"
 
-                # Request parameter decryption (transmissionMode / polling rate)
-                if sid == SID_READ_DATA_BY_LOCAL_ID:
-                    transmission_mode = payload[2] if len(payload) > 2 else 0x01
-                    mode_map = {
-                        0x01: ("single", "Single Response (On Demand Query)"),
-                        0x02: ("slow", "Slow Rate Periodic Polling"),
-                        0x03: ("medium", "Medium Rate Periodic Polling"),
-                        0x04: ("fast", "Fast Rate Periodic Polling (As fast as possible)"),
-                        0x05: ("stop", "Stop Periodic Transmission"),
-                    }
-                    mode_info = mode_map.get(transmission_mode, ("customMode", f"Custom Mode 0x{transmission_mode:02X}"))
-                    result["details"]["transmissionMode"] = f"0x{transmission_mode:02X}"
-                    result["details"]["transmission_mode"] = f"0x{transmission_mode:02X}"
-                    result["details"]["transmission_mode_name"] = mode_info[0]
-                    result["details"]["transmission_mode_desc"] = mode_info[1]
-                    if len(payload) > 3:
-                        result["details"]["maximumNumberOfResponsesToSend"] = payload[3]
-                    # BMW-FAST (MED17/MEVD17) wire syntax differs from plain ISO 14230-3, where the mode byte
-                    # is user-optional: single reads are 2 bytes, only fast (0x04) / stop (0x05) carry a mode
-                    if len(payload) > 2 and transmission_mode == 0x01:
-                        result["warnings"].append("0x21 with explicit single mode byte: BMW ECUs expect 2 bytes (0x21 <LID>) and answer NRC 0x12")
-                    elif len(payload) > 2 and transmission_mode not in (0x04, 0x05):
-                        result["warnings"].append(f"0x21 transmissionMode 0x{transmission_mode:02X}: BMW-FAST only uses single (no byte), fast 0x04 and stop 0x05")
+                # BMW-FAST (MED17/MEVD17) has no transmission mode: the DME answers '21 <LID> <mode>' with
+                # '7F 21 12', so the only valid request is the 2-byte '21 <LID>', repeated at the poll rate.
+                if sid == SID_READ_DATA_BY_LOCAL_ID and len(payload) > 2:
+                    result["warnings"].append(
+                        f"0x21 carries extra byte 0x{payload[2]:02X}: BMW ECUs expect 2 bytes (0x21 <LID>) and answer NRC 0x12 (no periodic transmission)"
+                    )
 
                 # Response payload unpacking
                 if sid == (SID_READ_DATA_BY_LOCAL_ID + 0x40):

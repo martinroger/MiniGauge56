@@ -691,7 +691,8 @@ extern "C" void app_main(void)
 
 	bmwp2000_register_load_progress_callback(on_bmwp_load_progress, NULL);
 
-	if (bmwp2000_init() == ESP_OK)
+	esp_err_t bmwp_err = bmwp2000_init();
+	if (bmwp_err == ESP_OK)
 	{
 		ESP_LOGI(__func__, "BMWP2000 diagnostic engine initialized successfully");
 		bmwp2000_register_callback(on_bmwp_telemetry_updated, NULL);
@@ -706,7 +707,8 @@ extern "C" void app_main(void)
 	}
 	else
 	{
-		ESP_LOGE(__func__, "Failed to initialize BMWP2000 diagnostic engine");
+		// ESP_ERR_INVALID_ARG: lids.json/cids.json malformed or a train still has the removed 'transmission_mode' key
+		ESP_LOGE(__func__, "Failed to initialize BMWP2000 diagnostic engine: %s", esp_err_to_name(bmwp_err));
 	}
 
 	xTaskCreate(update_display, "upd_disp", 4096, NULL, 3, &s_update_display_task);

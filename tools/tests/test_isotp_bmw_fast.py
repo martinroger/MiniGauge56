@@ -64,14 +64,15 @@ class BmwFastIsoTpTests(unittest.TestCase):
         self.assertTrue(r.is_iso_tp_candidate(0x640, bytes.fromhex("F1025A80AAAAAAAA")))
         self.assertEqual(feed(r, [frame(0.0, 0x601, "0000000000000000")]), [])
 
-    def test_read_lid_single_with_mode_byte_warns(self):
+    def test_read_lid_with_any_extra_byte_warns(self):
         d = BmwP2000Dissector({})
         two = d.dissect_message(feed(IsoTpReassembler(), [frame(0.0, 0x6F1, "120221F0AAAAAAAA")])[0])
         three = d.dissect_message(feed(IsoTpReassembler(), [frame(0.0, 0x6F1, "120321F001AAAAAA")])[0])
         fast = d.dissect_message(feed(IsoTpReassembler(), [frame(0.0, 0x6F1, "120321F004AAAAAA")])[0])
         self.assertEqual(two["warnings"], [])
         self.assertTrue(any("NRC 0x12" in w for w in three["warnings"]))
-        self.assertEqual(fast["warnings"], [])
+        self.assertTrue(any("NRC 0x12" in w for w in fast["warnings"]))
+        self.assertNotIn("transmission_mode", fast["details"])
 
 
 if __name__ == "__main__":
