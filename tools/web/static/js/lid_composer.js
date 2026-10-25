@@ -41,7 +41,6 @@
 
     inputTrainLocalId: document.getElementById('input-train-local-id'),
     inputTrainName: document.getElementById('input-train-name'),
-    selectTrainMode: document.getElementById('select-train-mode'),
 
     metricCidCount: document.getElementById('metric-cid-count'),
     metricPayloadBytes: document.getElementById('metric-payload-bytes'),
@@ -234,7 +233,6 @@
     if (!train) {
       els.inputTrainLocalId.value = '';
       els.inputTrainName.value = '';
-      els.selectTrainMode.value = 'fast';
       els.sequenceList.innerHTML = '<div class="empty-sequence-msg">No train selected. Click "+ New LID" to create one.</div>';
       updateFramingMetrics([]);
       return;
@@ -242,7 +240,6 @@
 
     els.inputTrainLocalId.value = train.local_id || '';
     els.inputTrainName.value = train.name || '';
-    els.selectTrainMode.value = train.transmission_mode === 'single' ? 'single' : 'fast';
 
     renderSequenceList(train.cids || []);
     updateFramingMetrics(train.cids || []);
@@ -516,13 +513,6 @@
       }
     });
 
-    els.selectTrainMode.addEventListener('change', (e) => {
-      const train = getCurrentTrain();
-      if (train) {
-        train.transmission_mode = e.target.value;
-      }
-    });
-
     // New Train button
     els.btnNewTrain.addEventListener('click', () => {
       let nextId = 0xF0;
@@ -535,7 +525,6 @@
       const newTrain = {
         local_id: hexStr,
         name: `Custom_Train_${state.lids.length + 1}`,
-        transmission_mode: 'fast',
         cids: []
       };
 

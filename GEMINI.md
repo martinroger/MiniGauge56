@@ -18,7 +18,7 @@
 - Verify method signatures and object properties before calling them.
 
 ## 4. Standard Protocol & Industry Specification Nomenclature
-- **Standard Name Alignment**: When implementing code based on an established standard or industry specification (e.g. ISO 14230-3 / KWP2000, ISO 15765, HTTP), strictly adopt the official protocol service and parameter names (e.g., `readDataByLocalIdentifier`, `dynamicallyDefineLocalIdentifier`, `recordLocalIdentifier`, `transmissionMode`, `responseCode`) throughout method declarations and variable names.
+- **Standard Name Alignment**: When implementing code based on an established standard or industry specification (e.g. ISO 14230-3 / KWP2000, ISO 15765, HTTP), strictly adopt the official protocol service and parameter names (e.g., `readDataByLocalIdentifier`, `dynamicallyDefineLocalIdentifier`, `recordLocalIdentifier`, `responseCode`) throughout method declarations and variable names.
 
 ## 5. Multi-Agent & Subagent Execution Standards
 - **Sequential Build Enforcement**: Subagents are strictly prohibited from executing build, compilation, or flash commands concurrently. All verification builds must be run sequentially or yielded to the parent overseer agent to execute.

@@ -1,11 +1,10 @@
 [
   {
     "_schema_guide": {
-      "description": "Dynamically Defined Local Identifier (LID) Train Composition Schema Guide (ISO 14230-3)",
+      "description": "Dynamically Defined Local Identifier (LID) Train Composition Schema Guide (ISO 14230-3). BMWP2000 4.0.0 polls every LID with '21 <LID>' at the poll rate; the 'transmission_mode' key is no longer supported and makes the definition invalid.",
       "keys": {
         "local_id": "Hexadecimal Local Identifier byte string (e.g., '0xF0', '0xF1', '0xF2').",
         "name": "Descriptive human-readable name string (e.g., 'engineCore', 'boostAir').",
-        "transmission_mode": "ISO 14230-3 transmission mode options: 'single' (0x01, daemon polls the ECU on demand at the active poll rate) or 'fast' (0x04, ECU streams periodically). Only these two are supported by the BMWP2000 library; any other value falls back to 'fast'.",
         "cids": "Array of CID string keys referenced in sequence order from master cids.json."
       }
     }
@@ -13,7 +12,6 @@
   {
     "local_id": "0xF0",
     "name": "engineCore",
-    "transmission_mode": "fast",
     "cids": [
       "rpm",
       "vehicleSpeed",

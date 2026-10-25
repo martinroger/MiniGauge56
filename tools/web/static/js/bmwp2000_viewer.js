@@ -501,8 +501,7 @@
       return `LID ${details.local_id || ''} configured OK`;
     }
     if (item.service_id === '0x21') {
-      const modeStr = details.transmission_mode_name ? ` [${details.transmission_mode_name}]` : '';
-      return `Read Local ID ${details.local_id || ''}${modeStr}`;
+      return `Read Local ID ${details.local_id || ''}`;
     }
     if (item.service_id === '0x61') {
       if (details.signals && details.signals.length > 0) {
@@ -879,7 +878,6 @@
     const paramItems = [];
     if (details.recordLocalIdentifier) paramItems.push(`<div><strong>recordLocalIdentifier:</strong> <code>${details.recordLocalIdentifier}</code></div>`);
     if (details.recordCommonIdentifier) paramItems.push(`<div><strong>recordCommonIdentifier:</strong> <code>${details.recordCommonIdentifier}</code> (${escapeHtml(details.cid_name || details.did_name || '')})</div>`);
-    if (details.transmission_mode) paramItems.push(`<div><strong>transmissionMode:</strong> <code>${details.transmission_mode}</code> (${escapeHtml(details.transmission_mode_name || '')}) &mdash; <span class="text-muted">${escapeHtml(details.transmission_mode_desc || '')}</span></div>`);
     if (details.subFunction) paramItems.push(`<div><strong>subFunction:</strong> <code>${escapeHtml(details.subFunction)}</code></div>`);
     if (details.diagnosticSessionType) paramItems.push(`<div><strong>diagnosticSessionType:</strong> <code>${details.diagnosticSessionType}</code> (${escapeHtml(details.diagnosticSessionName || '')})</div>`);
     if (details.identificationOption) paramItems.push(`<div><strong>identificationOption:</strong> <code>${details.identificationOption}</code> (${escapeHtml(details.identificationOptionName || '')})</div>`);

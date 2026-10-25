@@ -2,7 +2,7 @@
 
 ## 1. System Overview
 
-MiniGauge56 is a side gauge for the Mini R56 built on the Waveshare ESP32-S3 Touch AMOLED 1.75". One CAN link carries both the diagnostic exchange with the DME and the traffic that is logged to SD. Received frames go through a single router to the SD logger and to the `bmwp2000` KWP2000 engine, which receives a periodic stream of engine parameters and hands decoded values to the UI.
+MiniGauge56 is a side gauge for the Mini R56 built on the Waveshare ESP32-S3 Touch AMOLED 1.75". One CAN link carries both the diagnostic exchange with the DME and the traffic that is logged to SD. Received frames go through a single router to the SD logger and to the `bmwp2000` KWP2000 engine, which polls engine parameters from the DME and hands decoded values to the UI.
 
 ```mermaid
 graph TD
@@ -138,7 +138,7 @@ sequenceDiagram
 - `CONFIG_BMWP2000_CUSTOM_CIDS_PATH="config/cids.json"`: the CID dictionary (ECU identifier, size, position, sign and `((raw * mul) / div) + add` scaling for each named parameter).
 - `CONFIG_BMWP2000_CUSTOM_LIDS_PATH="config/lids.json"`: the LID trains to define on the ECU.
 
-The project defines one LID, `0xF0` "engineCore", in `fast` transmission mode with 10 CIDs (the maximum per LID): the daemon defines the LID on the DME with `dynamicallyDefineLocalIdentifier` (`0x2C`), then requests it once with `readDataByLocalIdentifier` (`0x21`, transmission mode `0x04`), after which the DME sends the LID periodically. Each response is decoded into the 10 CIDs. In `single` mode (`0x01`) the daemon would instead request every response itself.
+The project defines one LID, `0xF0` "engineCore", with 10 CIDs (the maximum per LID): the daemon defines the LID on the DME with `dynamicallyDefineLocalIdentifier` (`0x2C`), then polls it with `readDataByLocalIdentifier` (`0x21 <LID>`, no mode byte) every poll interval (`CONFIG_BMWP2000_SINGLE_POLL_RATE_MS`). The DME has no periodic transmission service, so values update at the poll rate only. Each response is decoded into the 10 CIDs. The `transmission_mode` key is no longer allowed in `lids.json` (BMWP2000 4.0.0 refuses it with `ESP_ERR_INVALID_ARG`).
 
 ```mermaid
 sequenceDiagram
@@ -152,9 +152,9 @@ sequenceDiagram
     TX->>DME: request frames
     DME-->>ROUTER: positive response 0x6C (0x612)
     ROUTER->>D: bmwp2000_feed_can_frame
-    D->>TX: 0x21 read LID 0xF0, mode 0x04 fast
+    D->>TX: 0x21 read LID 0xF0 (no mode byte)
     TX->>DME: request
-    loop Periodic stream
+    loop Every poll interval
         DME-->>ROUTER: 0x61 response, multi-frame ISO-TP
         ROUTER->>D: bmwp2000_feed_can_frame
         Note over D: Reassemble and decode 10 CIDs

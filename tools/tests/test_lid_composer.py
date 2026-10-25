@@ -140,13 +140,11 @@ class TestLIDComposerLogic(unittest.TestCase):
             {
                 "local_id": "0xF0",
                 "name": "Engine_Core_Metrics",
-                "transmission_mode": "fast",
                 "cids": ["RPM", "HPFP_Pressure"]
             },
             {
                 "local_id": "0xF1",
                 "name": "Transmission_Metrics",
-                "transmission_mode": "single",
                 "cids": ["Gear"]
             }
         ]
@@ -161,47 +159,39 @@ class TestLIDComposerLogic(unittest.TestCase):
         self.assertIn("must be a JSON array", err)
 
         # Invalid local_id format
-        valid, err = validate_lids([{"local_id": "F0", "name": "A", "transmission_mode": "fast", "cids": []}])
+        valid, err = validate_lids([{"local_id": "F0", "name": "A", "cids": []}])
         self.assertFalse(valid)
         self.assertIn("invalid local_id", err)
 
         # Duplicate local_id
         valid, err = validate_lids([
-            {"local_id": "0xF0", "name": "A", "transmission_mode": "fast", "cids": []},
-            {"local_id": "0xF0", "name": "B", "transmission_mode": "single", "cids": []}
+            {"local_id": "0xF0", "name": "A", "cids": []},
+            {"local_id": "0xF0", "name": "B", "cids": []}
         ])
         self.assertFalse(valid)
         self.assertIn("Duplicate local_id", err)
 
-        # Invalid transmission_mode
-        valid, err = validate_lids([{"local_id": "0xF0", "name": "A", "transmission_mode": "ultra_fast", "cids": []}])
-        self.assertFalse(valid)
-        self.assertIn("invalid transmission_mode", err)
-
-        # Modes not supported by the BMWP2000 library
-        for unsupported in ("medium", "slow", "stop"):
-            valid, err = validate_lids([{"local_id": "0xF0", "name": "A", "transmission_mode": unsupported, "cids": []}])
+        # transmission_mode was removed in BMWP2000 4.0.0: the key is refused whatever its value
+        for mode in ("fast", "single", "ultra_fast"):
+            valid, err = validate_lids([{"local_id": "0xF0", "name": "A", "transmission_mode": mode, "cids": []}])
             self.assertFalse(valid)
-            self.assertIn("invalid transmission_mode", err)
+            self.assertIn("transmission_mode", err)
 
         # cids is not a list
-        valid, err = validate_lids([{"local_id": "0xF0", "name": "A", "transmission_mode": "fast", "cids": "RPM"}])
+        valid, err = validate_lids([{"local_id": "0xF0", "name": "A", "cids": "RPM"}])
         self.assertFalse(valid)
         self.assertIn("must be a list of CID keys", err)
 
     def test_validate_lids_max_cids_per_lid(self):
         def lid(n):
-            return [{"local_id": "0xF0", "name": "A", "transmission_mode": "fast", "cids": ["RPM"] * n}]
+            return [{"local_id": "0xF0", "name": "A", "cids": ["RPM"] * n}]
 
         valid, err = validate_lids(lid(10))
         self.assertTrue(valid, err)
 
-        for mode in ("fast", "single"):
-            train = lid(11)
-            train[0]["transmission_mode"] = mode
-            valid, err = validate_lids(train)
-            self.assertFalse(valid)
-            self.assertIn("has 11 CIDs (max 10)", err)
+        valid, err = validate_lids(lid(11))
+        self.assertFalse(valid)
+        self.assertIn("has 11 CIDs (max 10)", err)
 
     def test_create_backup(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -249,7 +239,6 @@ class TestLIDComposerServerEndpoints(unittest.TestCase):
             {
                 "local_id": "0xF0",
                 "name": "Engine_Core_Metrics",
-                "transmission_mode": "fast",
                 "cids": ["RPM"]
             }
         ], indent=2), encoding="utf-8")
@@ -318,7 +307,6 @@ class TestLIDComposerServerEndpoints(unittest.TestCase):
             "btn-save-lids",
             "input-train-local-id",
             "input-train-name",
-            "select-train-mode",
             "metric-cid-count",
             "metric-payload-bytes",
             "metric-response-bytes",
@@ -380,8 +368,8 @@ class TestLIDComposerServerEndpoints(unittest.TestCase):
 
         # 2. Invalid train data (duplicate local_id)
         bad_trains = [
-            {"local_id": "0xF0", "name": "Train1", "transmission_mode": "fast", "cids": ["RPM"]},
-            {"local_id": "0xF0", "name": "Train2", "transmission_mode": "fast", "cids": []},
+            {"local_id": "0xF0", "name": "Train1", "cids": ["RPM"]},
+            {"local_id": "0xF0", "name": "Train2", "cids": []},
         ]
         h_dup = self._create_mock_handler(
             "/api/lids",
@@ -397,7 +385,7 @@ class TestLIDComposerServerEndpoints(unittest.TestCase):
             "/api/lids",
             method="POST",
             body=json.dumps({"lids": [
-                {"local_id": "0xF0", "name": "Big", "transmission_mode": "fast", "cids": ["RPM"] * 11}
+                {"local_id": "0xF0", "name": "Big", "cids": ["RPM"] * 11}
             ]}).encode("utf-8")
         )
         h_big.do_POST()
@@ -410,13 +398,11 @@ class TestLIDComposerServerEndpoints(unittest.TestCase):
             {
                 "local_id": "0xF0",
                 "name": "Engine_Core_Metrics",
-                "transmission_mode": "fast",
                 "cids": ["RPM"]
             },
             {
                 "local_id": "0xF1",
                 "name": "Custom_Metrics",
-                "transmission_mode": "single",
                 "cids": ["RPM"]
             }
         ]

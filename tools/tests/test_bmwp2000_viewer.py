@@ -180,15 +180,15 @@ class TestBmwP2000ViewerLogic(unittest.TestCase):
         dissector = BmwP2000Dissector()
         reassembler = IsoTpReassembler()
 
-        # 1. 0x21 ReadDataByLocalIdentifier with fastRate polling (0x04)
+        # 1. 0x21 ReadDataByLocalIdentifier: a trailing mode byte is not valid on BMW-FAST (warns, no mode decoding)
         payload = bytes.fromhex("21F004")
         frame = CanFrame(100, 0.1, 0x6F1, 8, bytes([0x12, len(payload)]) + payload)
         msg = reassembler.process_frame(frame)
         dissected = dissector.dissect_message(msg)
         self.assertEqual(dissected["service_id"], "0x21")
         self.assertEqual(dissected["details"]["recordLocalIdentifier"], "0xF0")
-        self.assertEqual(dissected["details"]["transmissionMode"], "0x04")
-        self.assertEqual(dissected["details"]["transmission_mode_name"], "fast")
+        self.assertNotIn("transmissionMode", dissected["details"])
+        self.assertTrue(any("NRC 0x12" in w for w in dissected["warnings"]))
 
         # 2. 0x10 StartDiagnosticSession with bmwSpecialDiagnosticSession (0x86)
         payload10 = bytes.fromhex("1086")
@@ -433,7 +433,7 @@ class TestBmwP2000ServerAndApi(unittest.TestCase):
             "ambientTemp": {"id": "0x4401", "memory_size": 1, "signed": True, "mul": 1, "div": 1, "add": 0},
             "timingAdvance": {"id": "0x4402", "memory_size": 2, "signed": True, "mul": 0.5, "div": 1.0, "add": 0},
         }
-        lids = [{"local_id": "0xF0", "name": "mix", "transmission_mode": "fast", "cids": ["ambientTemp", "timingAdvance"]}]
+        lids = [{"local_id": "0xF0", "name": "mix", "cids": ["ambientTemp", "timingAdvance"]}]
         resp_payload = bytes.fromhex("61F0FBFFF6")
         frame = CanFrame(110, 0.11, 0x612, 8, bytes([0xF1, len(resp_payload)]) + resp_payload)
 
