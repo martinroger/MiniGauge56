@@ -1,0 +1,10 @@
+BasedOnStyle: LLVM
+UseTab: Always
+TabWidth: 4
+IndentWidth: 4
+ContinuationIndentWidth: 4
+BreakBeforeBraces: Allman
+PointerAlignment: Right
+ColumnLimit: 0
+IndentCaseLabels: false
+SortIncludes: Never
