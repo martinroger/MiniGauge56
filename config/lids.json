@@ -15,14 +15,14 @@
     "cids": [
       "rpm",
       "vehicleSpeed",
-      "throttlePressure",
       "manifoldPressureBoost1",
       "hpfpPressure",
       "oilTemp",
-      "engineOilTemp",
       "oilPressureActual",
       "engineTemp",
-      "coolantTemp"
+      "ambientPressure",
+      "manifoldPressure",
+      "gearActual"
     ]
   }
 ]

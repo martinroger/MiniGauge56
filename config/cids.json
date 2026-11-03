@@ -46,6 +46,28 @@
     "unit": "hPa",
     "description": "Pre-Throttle Charge Pressure (Actual Boost) (Druck vor Drosselklappe Rohwert)"
   },
+    "ambientPressure": {
+    "id": "0x4201",
+    "memory_size": 2,
+    "position": 1,
+    "signed": false,
+    "mul": 0.0390625,
+    "div": 1.0,
+    "add": 0.0,
+    "unit": "hPa",
+    "description": "Ambient atmospheric pressure"
+  },
+    "manifoldPressure": {
+    "id": "0x4202",
+    "memory_size": 2,
+    "position": 1,
+    "signed": false,
+    "mul": 0.0390625,
+    "div": 1.0,
+    "add": 0.0,
+    "unit": "hPa",
+    "description": "Intake manifold absolute pressure"
+  },
     "manifoldPressureBoost1": {
     "id": "0x4205",
     "memory_size": 2,
