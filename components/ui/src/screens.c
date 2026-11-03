@@ -337,7 +337,7 @@ void create_screen_main() {
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_caption_42(obj);
                             lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "hPa");
+                            lv_label_set_text_static(obj, "BAR");
                         }
                     }
                 }
@@ -412,11 +412,12 @@ void create_screen_main() {
                             // oil_temp_2
                             lv_obj_t *obj = lv_label_create(parent_obj);
                             objects.oil_temp_2 = obj;
-                            lv_obj_set_pos(obj, -13, -58);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                            lv_obj_set_pos(obj, -30, -58);
+                            lv_obj_set_size(obj, 181, LV_SIZE_CONTENT);
                             lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
                             lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
                             add_style_mg_text_value_120(obj);
+                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_label_set_text_static(obj, "00.0");
                         }
                         {
@@ -453,11 +454,12 @@ void create_screen_main() {
                             // engine_oil_temp
                             lv_obj_t *obj = lv_label_create(parent_obj);
                             objects.engine_oil_temp = obj;
-                            lv_obj_set_pos(obj, -13, 58);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                            lv_obj_set_pos(obj, -30, 58);
+                            lv_obj_set_size(obj, 181, LV_SIZE_CONTENT);
                             lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
                             lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
                             add_style_mg_text_value_120(obj);
+                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_label_set_text_static(obj, "00.0");
                         }
                         {
@@ -551,11 +553,12 @@ void create_screen_main() {
                             // engine_temp_2
                             lv_obj_t *obj = lv_label_create(parent_obj);
                             objects.engine_temp_2 = obj;
-                            lv_obj_set_pos(obj, -13, -58);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                            lv_obj_set_pos(obj, -30, -58);
+                            lv_obj_set_size(obj, 181, LV_SIZE_CONTENT);
                             lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
                             lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
                             add_style_mg_text_value_120(obj);
+                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_label_set_text_static(obj, "00.0");
                         }
                         {
@@ -592,11 +595,12 @@ void create_screen_main() {
                             // coolant_temp
                             lv_obj_t *obj = lv_label_create(parent_obj);
                             objects.coolant_temp = obj;
-                            lv_obj_set_pos(obj, -13, 58);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                            lv_obj_set_pos(obj, -30, 58);
+                            lv_obj_set_size(obj, 181, LV_SIZE_CONTENT);
                             lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
                             lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
                             add_style_mg_text_value_120(obj);
+                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_label_set_text_static(obj, "00.0");
                         }
                         {
@@ -690,12 +694,13 @@ void create_screen_main() {
                             // manifold_pressure
                             lv_obj_t *obj = lv_label_create(parent_obj);
                             objects.manifold_pressure = obj;
-                            lv_obj_set_pos(obj, -13, -58);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                            lv_obj_set_pos(obj, -30, -58);
+                            lv_obj_set_size(obj, 181, LV_SIZE_CONTENT);
                             lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
                             lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
                             add_style_mg_text_value_120(obj);
-                            lv_label_set_text_static(obj, "00.0");
+                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
+                            lv_label_set_text_static(obj, "0.00");
                         }
                         {
                             lv_obj_t *obj = lv_label_create(parent_obj);
@@ -713,7 +718,7 @@ void create_screen_main() {
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_caption_42(obj);
                             lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "hPA");
+                            lv_label_set_text_static(obj, "BAR");
                         }
                         {
                             lv_obj_t *obj = lv_line_create(parent_obj);
@@ -731,11 +736,12 @@ void create_screen_main() {
                             // throttle_pressure
                             lv_obj_t *obj = lv_label_create(parent_obj);
                             objects.throttle_pressure = obj;
-                            lv_obj_set_pos(obj, -13, 58);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                            lv_obj_set_pos(obj, -30, 58);
+                            lv_obj_set_size(obj, 181, LV_SIZE_CONTENT);
                             lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
                             lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
                             add_style_mg_text_value_120(obj);
+                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_label_set_text_static(obj, "00.0");
                         }
                         {
@@ -754,7 +760,7 @@ void create_screen_main() {
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_caption_42(obj);
                             lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "hPA");
+                            lv_label_set_text_static(obj, "BAR");
                         }
                     }
                 }
@@ -886,7 +892,7 @@ void create_screen_main() {
                             lv_obj_set_pos(obj, 90, 20);
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_status(obj);
-                            lv_label_set_text_static(obj, "hPa THROT");
+                            lv_label_set_text_static(obj, "BAR THROT");
                         }
                         {
                             // bmw_manifold_boost
@@ -905,7 +911,7 @@ void create_screen_main() {
                             lv_obj_set_pos(obj, 90, 45);
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_status(obj);
-                            lv_label_set_text_static(obj, "hPa BOOST");
+                            lv_label_set_text_static(obj, "BAR BOOST");
                         }
                         {
                             // bmw_engine_oil_temp
@@ -943,7 +949,7 @@ void create_screen_main() {
                             lv_obj_set_pos(obj, 66, 95);
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_status(obj);
-                            lv_label_set_text_static(obj, "hPa OIL");
+                            lv_label_set_text_static(obj, "BAR OIL");
                         }
                         {
                             // bmw_coolant_temp
