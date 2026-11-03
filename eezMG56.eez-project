@@ -1522,7 +1522,7 @@
                       "type": "LVGLLabelWidget",
                       "left": 0,
                       "top": -112,
-                      "width": 47,
+                      "width": 52,
                       "height": 45,
                       "customInputs": [],
                       "customOutputs": [],
@@ -1562,7 +1562,7 @@
                       },
                       "group": "",
                       "groupIndex": 0,
-                      "text": "hPa",
+                      "text": "BAR",
                       "textType": "literal",
                       "longMode": "WRAP",
                       "recolor": false,
@@ -1889,9 +1889,9 @@
                     {
                       "objID": "fdbd2b31-b7dd-41ec-a263-fdbbb09fc0a9",
                       "type": "LVGLLabelWidget",
-                      "left": -13,
+                      "left": -30,
                       "top": -58,
-                      "width": 148,
+                      "width": 181,
                       "height": 91,
                       "customInputs": [],
                       "customOutputs": [],
@@ -1914,7 +1914,7 @@
                       "identifier": "oil_temp_2",
                       "leftUnit": "px",
                       "topUnit": "px",
-                      "widthUnit": "content",
+                      "widthUnit": "px",
                       "heightUnit": "content",
                       "children": [],
                       "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
@@ -1929,7 +1929,14 @@
                       "states": "",
                       "useStyle": "mg_text_value_120",
                       "localStyles": {
-                        "objID": "45d81646-0841-4ace-b6f1-a080b0f2be8f"
+                        "objID": "45d81646-0841-4ace-b6f1-a080b0f2be8f",
+                        "definition": {
+                          "MAIN": {
+                            "DEFAULT": {
+                              "text_align": "RIGHT"
+                            }
+                          }
+                        }
                       },
                       "group": "",
                       "groupIndex": 0,
@@ -2095,9 +2102,9 @@
                     {
                       "objID": "b525d31b-005c-4591-d153-b3fb2f17ef8a",
                       "type": "LVGLLabelWidget",
-                      "left": -13,
+                      "left": -30,
                       "top": 58,
-                      "width": 148,
+                      "width": 181,
                       "height": 91,
                       "customInputs": [],
                       "customOutputs": [],
@@ -2120,7 +2127,7 @@
                       "identifier": "engine_oil_temp",
                       "leftUnit": "px",
                       "topUnit": "px",
-                      "widthUnit": "content",
+                      "widthUnit": "px",
                       "heightUnit": "content",
                       "children": [],
                       "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
@@ -2135,7 +2142,14 @@
                       "states": "",
                       "useStyle": "mg_text_value_120",
                       "localStyles": {
-                        "objID": "dc5a8620-ab0b-4a65-c937-65f6085e1a87"
+                        "objID": "dc5a8620-ab0b-4a65-c937-65f6085e1a87",
+                        "definition": {
+                          "MAIN": {
+                            "DEFAULT": {
+                              "text_align": "RIGHT"
+                            }
+                          }
+                        }
                       },
                       "group": "",
                       "groupIndex": 0,
@@ -2568,9 +2582,9 @@
                     {
                       "objID": "7f9746da-376f-405d-d982-c351a7109e77",
                       "type": "LVGLLabelWidget",
-                      "left": -13,
+                      "left": -30,
                       "top": -58,
-                      "width": 148,
+                      "width": 181,
                       "height": 91,
                       "customInputs": [],
                       "customOutputs": [],
@@ -2593,7 +2607,7 @@
                       "identifier": "engine_temp_2",
                       "leftUnit": "px",
                       "topUnit": "px",
-                      "widthUnit": "content",
+                      "widthUnit": "px",
                       "heightUnit": "content",
                       "children": [],
                       "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
@@ -2608,7 +2622,14 @@
                       "states": "",
                       "useStyle": "mg_text_value_120",
                       "localStyles": {
-                        "objID": "23741390-08da-46a2-fee1-cd661cf1ef5f"
+                        "objID": "23741390-08da-46a2-fee1-cd661cf1ef5f",
+                        "definition": {
+                          "MAIN": {
+                            "DEFAULT": {
+                              "text_align": "RIGHT"
+                            }
+                          }
+                        }
                       },
                       "group": "",
                       "groupIndex": 0,
@@ -2774,9 +2795,9 @@
                     {
                       "objID": "c62c1b49-eb30-41fa-c3d7-3b2e1d1c568f",
                       "type": "LVGLLabelWidget",
-                      "left": -13,
+                      "left": -30,
                       "top": 58,
-                      "width": 148,
+                      "width": 181,
                       "height": 91,
                       "customInputs": [],
                       "customOutputs": [],
@@ -2799,7 +2820,7 @@
                       "identifier": "coolant_temp",
                       "leftUnit": "px",
                       "topUnit": "px",
-                      "widthUnit": "content",
+                      "widthUnit": "px",
                       "heightUnit": "content",
                       "children": [],
                       "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
@@ -2814,7 +2835,14 @@
                       "states": "",
                       "useStyle": "mg_text_value_120",
                       "localStyles": {
-                        "objID": "c3f71c8a-b403-4676-df70-89f6688c5cb5"
+                        "objID": "c3f71c8a-b403-4676-df70-89f6688c5cb5",
+                        "definition": {
+                          "MAIN": {
+                            "DEFAULT": {
+                              "text_align": "RIGHT"
+                            }
+                          }
+                        }
                       },
                       "group": "",
                       "groupIndex": 0,
@@ -3247,9 +3275,9 @@
                     {
                       "objID": "0599ee67-332b-436e-adc2-335f76158fd4",
                       "type": "LVGLLabelWidget",
-                      "left": -13,
+                      "left": -30,
                       "top": -58,
-                      "width": 148,
+                      "width": 181,
                       "height": 91,
                       "customInputs": [],
                       "customOutputs": [],
@@ -3272,7 +3300,7 @@
                       "identifier": "manifold_pressure",
                       "leftUnit": "px",
                       "topUnit": "px",
-                      "widthUnit": "content",
+                      "widthUnit": "px",
                       "heightUnit": "content",
                       "children": [],
                       "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
@@ -3287,11 +3315,18 @@
                       "states": "",
                       "useStyle": "mg_text_value_120",
                       "localStyles": {
-                        "objID": "293314e4-1965-4a5b-f79a-7752d997cd11"
+                        "objID": "293314e4-1965-4a5b-f79a-7752d997cd11",
+                        "definition": {
+                          "MAIN": {
+                            "DEFAULT": {
+                              "text_align": "RIGHT"
+                            }
+                          }
+                        }
                       },
                       "group": "",
                       "groupIndex": 0,
-                      "text": "00.0",
+                      "text": "0.00",
                       "textType": "literal",
                       "longMode": "CLIP",
                       "recolor": false,
@@ -3353,7 +3388,7 @@
                       "type": "LVGLLabelWidget",
                       "left": 88,
                       "top": -35,
-                      "width": 50,
+                      "width": 52,
                       "height": 45,
                       "customInputs": [],
                       "customOutputs": [],
@@ -3393,7 +3428,7 @@
                       },
                       "group": "",
                       "groupIndex": 0,
-                      "text": "hPA",
+                      "text": "BAR",
                       "textType": "literal",
                       "longMode": "WRAP",
                       "recolor": false,
@@ -3453,9 +3488,9 @@
                     {
                       "objID": "b8eae1b6-281e-483f-f809-bc1061ae80e8",
                       "type": "LVGLLabelWidget",
-                      "left": -13,
+                      "left": -30,
                       "top": 58,
-                      "width": 148,
+                      "width": 181,
                       "height": 91,
                       "customInputs": [],
                       "customOutputs": [],
@@ -3478,7 +3513,7 @@
                       "identifier": "throttle_pressure",
                       "leftUnit": "px",
                       "topUnit": "px",
-                      "widthUnit": "content",
+                      "widthUnit": "px",
                       "heightUnit": "content",
                       "children": [],
                       "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
@@ -3493,7 +3528,14 @@
                       "states": "",
                       "useStyle": "mg_text_value_120",
                       "localStyles": {
-                        "objID": "bb9bd313-493a-4e1e-f72b-8349172f45c7"
+                        "objID": "bb9bd313-493a-4e1e-f72b-8349172f45c7",
+                        "definition": {
+                          "MAIN": {
+                            "DEFAULT": {
+                              "text_align": "RIGHT"
+                            }
+                          }
+                        }
                       },
                       "group": "",
                       "groupIndex": 0,
@@ -3559,7 +3601,7 @@
                       "type": "LVGLLabelWidget",
                       "left": 88,
                       "top": 81,
-                      "width": 50,
+                      "width": 52,
                       "height": 45,
                       "customInputs": [],
                       "customOutputs": [],
@@ -3599,7 +3641,7 @@
                       },
                       "group": "",
                       "groupIndex": 0,
-                      "text": "hPA",
+                      "text": "BAR",
                       "textType": "literal",
                       "longMode": "WRAP",
                       "recolor": false,
@@ -4256,7 +4298,7 @@
                       "type": "LVGLLabelWidget",
                       "left": 90,
                       "top": 20,
-                      "width": 158,
+                      "width": 161,
                       "height": 36,
                       "customInputs": [],
                       "customOutputs": [],
@@ -4290,7 +4332,7 @@
                       },
                       "group": "",
                       "groupIndex": 0,
-                      "text": "hPa THROT",
+                      "text": "BAR THROT",
                       "textType": "literal",
                       "longMode": "WRAP",
                       "recolor": false,
@@ -4354,7 +4396,7 @@
                       "type": "LVGLLabelWidget",
                       "left": 90,
                       "top": 45,
-                      "width": 159,
+                      "width": 162,
                       "height": 36,
                       "customInputs": [],
                       "customOutputs": [],
@@ -4388,7 +4430,7 @@
                       },
                       "group": "",
                       "groupIndex": 0,
-                      "text": "hPa BOOST",
+                      "text": "BAR BOOST",
                       "textType": "literal",
                       "longMode": "WRAP",
                       "recolor": false,
@@ -4550,7 +4592,7 @@
                       "type": "LVGLLabelWidget",
                       "left": 66,
                       "top": 95,
-                      "width": 111,
+                      "width": 114,
                       "height": 36,
                       "customInputs": [],
                       "customOutputs": [],
@@ -4584,7 +4626,7 @@
                       },
                       "group": "",
                       "groupIndex": 0,
-                      "text": "hPa OIL",
+                      "text": "BAR OIL",
                       "textType": "literal",
                       "longMode": "WRAP",
                       "recolor": false,
