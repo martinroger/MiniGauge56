@@ -192,7 +192,7 @@ void create_screen_main() {
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_caption_42(obj);
                             lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "COOL");
+                            lv_label_set_text_static(obj, "ENGINE");
                         }
                         {
                             lv_obj_t *obj = lv_label_create(parent_obj);
@@ -206,7 +206,36 @@ void create_screen_main() {
                     }
                 }
                 {
-                    lv_obj_t *obj = lv_tabview_add_tab(parent_obj, "oil_temp");
+                    lv_obj_t *obj = lv_tabview_add_tab(parent_obj, "gear actual");
+                    lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
+                    lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
+                    lv_obj_set_scroll_dir(obj, LV_DIR_NONE);
+                    {
+                        lv_obj_t *parent_obj = obj;
+                        {
+                            // gear_actual
+                            lv_obj_t *obj = lv_label_create(parent_obj);
+                            objects.gear_actual = obj;
+                            lv_obj_set_pos(obj, 0, 0);
+                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                            lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
+                            lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
+                            add_style_mg_text_value_192(obj);
+                            lv_label_set_text_static(obj, "---");
+                        }
+                        {
+                            lv_obj_t *obj = lv_label_create(parent_obj);
+                            objects.obj3 = obj;
+                            lv_obj_set_pos(obj, 0, 184);
+                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                            add_style_mg_text_caption_42(obj);
+                            lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
+                            lv_label_set_text_static(obj, "GEAR");
+                        }
+                    }
+                }
+                {
+                    lv_obj_t *obj = lv_tabview_add_tab(parent_obj, "ambient_pressure");
                     lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
                     lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
                     lv_obj_set_scroll_dir(obj, LV_DIR_NONE);
@@ -214,7 +243,7 @@ void create_screen_main() {
                         lv_obj_t *parent_obj = obj;
                         {
                             lv_obj_t *obj = lv_scale_create(parent_obj);
-                            objects.obj3 = obj;
+                            objects.obj4 = obj;
                             lv_obj_set_pos(obj, 0, 0);
                             lv_obj_set_size(obj, 448, 448);
                             lv_scale_set_mode(obj, LV_SCALE_MODE_ROUND_INNER);
@@ -222,6 +251,74 @@ void create_screen_main() {
                             lv_scale_set_angle_range(obj, 210);
                             lv_scale_set_rotation(obj, 165);
                             lv_scale_set_total_tick_count(obj, 15);
+                            lv_scale_set_major_tick_every(obj, 2);
+                            lv_scale_set_label_show(obj, false);
+                            lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
+                            lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+                            add_style_mg_scale(obj);
+                            lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+                        }
+                        {
+                            // ambient_pressure_arc
+                            lv_obj_t *obj = lv_arc_create(parent_obj);
+                            objects.ambient_pressure_arc = obj;
+                            lv_obj_set_pos(obj, 0, 0);
+                            lv_obj_set_size(obj, 376, 376);
+                            lv_arc_set_range(obj, 0, 1000);
+                            lv_arc_set_value(obj, 25);
+                            lv_arc_set_bg_start_angle(obj, 165);
+                            lv_arc_set_bg_end_angle(obj, 15);
+                            lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+                            add_style_mg_arc(obj);
+                        }
+                        {
+                            // ambient_pressure
+                            lv_obj_t *obj = lv_label_create(parent_obj);
+                            objects.ambient_pressure = obj;
+                            lv_obj_set_pos(obj, 0, 0);
+                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                            lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
+                            lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
+                            add_style_mg_text_value_192(obj);
+                            lv_label_set_text_static(obj, "00.0");
+                        }
+                        {
+                            lv_obj_t *obj = lv_label_create(parent_obj);
+                            objects.obj5 = obj;
+                            lv_obj_set_pos(obj, 0, 184);
+                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                            add_style_mg_text_caption_42(obj);
+                            lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
+                            lv_label_set_text_static(obj, "AMBIENT");
+                        }
+                        {
+                            lv_obj_t *obj = lv_label_create(parent_obj);
+                            objects.obj6 = obj;
+                            lv_obj_set_pos(obj, 0, -112);
+                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                            add_style_mg_text_caption_42(obj);
+                            lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
+                            lv_label_set_text_static(obj, "BAR");
+                        }
+                    }
+                }
+                {
+                    lv_obj_t *obj = lv_tabview_add_tab(parent_obj, "oil_temp_pressure");
+                    lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
+                    lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
+                    lv_obj_set_scroll_dir(obj, LV_DIR_NONE);
+                    {
+                        lv_obj_t *parent_obj = obj;
+                        {
+                            lv_obj_t *obj = lv_scale_create(parent_obj);
+                            objects.obj7 = obj;
+                            lv_obj_set_pos(obj, 0, 0);
+                            lv_obj_set_size(obj, 448, 448);
+                            lv_scale_set_mode(obj, LV_SCALE_MODE_ROUND_INNER);
+                            lv_scale_set_range(obj, 10, 40);
+                            lv_scale_set_angle_range(obj, 156);
+                            lv_scale_set_rotation(obj, 192);
+                            lv_scale_set_total_tick_count(obj, 11);
                             lv_scale_set_major_tick_every(obj, 2);
                             lv_scale_set_label_show(obj, false);
                             lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
@@ -237,59 +334,21 @@ void create_screen_main() {
                             lv_obj_set_size(obj, 376, 376);
                             lv_arc_set_range(obj, 0, 1000);
                             lv_arc_set_value(obj, 25);
-                            lv_arc_set_bg_start_angle(obj, 165);
-                            lv_arc_set_bg_end_angle(obj, 15);
+                            lv_arc_set_bg_start_angle(obj, 192);
+                            lv_arc_set_bg_end_angle(obj, 348);
                             lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
                             add_style_mg_arc(obj);
                         }
                         {
-                            // oil_temp
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.oil_temp = obj;
-                            lv_obj_set_pos(obj, 0, 0);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
-                            lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
-                            add_style_mg_text_value_192(obj);
-                            lv_label_set_text_static(obj, "00.0");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.obj4 = obj;
-                            lv_obj_set_pos(obj, 0, 184);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_mg_text_caption_42(obj);
-                            lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "OIL");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.obj5 = obj;
-                            lv_obj_set_pos(obj, 0, -112);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_mg_text_caption_42(obj);
-                            lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "ºC");
-                        }
-                    }
-                }
-                {
-                    lv_obj_t *obj = lv_tabview_add_tab(parent_obj, "oil_pressure");
-                    lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
-                    lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
-                    lv_obj_set_scroll_dir(obj, LV_DIR_NONE);
-                    {
-                        lv_obj_t *parent_obj = obj;
-                        {
                             lv_obj_t *obj = lv_scale_create(parent_obj);
-                            objects.obj6 = obj;
+                            objects.obj8 = obj;
                             lv_obj_set_pos(obj, 0, 0);
                             lv_obj_set_size(obj, 448, 448);
                             lv_scale_set_mode(obj, LV_SCALE_MODE_ROUND_INNER);
                             lv_scale_set_range(obj, 10, 40);
-                            lv_scale_set_angle_range(obj, 210);
-                            lv_scale_set_rotation(obj, 165);
-                            lv_scale_set_total_tick_count(obj, 15);
+                            lv_scale_set_angle_range(obj, 156);
+                            lv_scale_set_rotation(obj, 12);
+                            lv_scale_set_total_tick_count(obj, 11);
                             lv_scale_set_major_tick_every(obj, 2);
                             lv_scale_set_label_show(obj, false);
                             lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
@@ -305,26 +364,27 @@ void create_screen_main() {
                             lv_obj_set_size(obj, 376, 376);
                             lv_arc_set_range(obj, 0, 1000);
                             lv_arc_set_value(obj, 25);
-                            lv_arc_set_bg_start_angle(obj, 165);
-                            lv_arc_set_bg_end_angle(obj, 15);
+                            lv_arc_set_bg_start_angle(obj, 12);
+                            lv_arc_set_bg_end_angle(obj, 168);
                             lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
                             add_style_mg_arc(obj);
                         }
                         {
-                            // oil_pressure
+                            // oil_temp
                             lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.oil_pressure = obj;
-                            lv_obj_set_pos(obj, 0, 0);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                            objects.oil_temp = obj;
+                            lv_obj_set_pos(obj, -30, -58);
+                            lv_obj_set_size(obj, 181, LV_SIZE_CONTENT);
                             lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
                             lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
-                            add_style_mg_text_value_192(obj);
+                            add_style_mg_text_value_120(obj);
+                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_label_set_text_static(obj, "00.0");
                         }
                         {
                             lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.obj7 = obj;
-                            lv_obj_set_pos(obj, 0, 184);
+                            objects.obj9 = obj;
+                            lv_obj_set_pos(obj, 0, -144);
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_caption_42(obj);
                             lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -332,87 +392,30 @@ void create_screen_main() {
                         }
                         {
                             lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.obj8 = obj;
-                            lv_obj_set_pos(obj, 0, -112);
+                            objects.obj10 = obj;
+                            lv_obj_set_pos(obj, 74, -35);
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_caption_42(obj);
                             lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "BAR");
+                            lv_label_set_text_static(obj, "ºC");
                         }
-                    }
-                }
-                {
-                    lv_obj_t *obj = lv_tabview_add_tab(parent_obj, "oil_temp_2");
-                    lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
-                    lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
-                    lv_obj_set_scroll_dir(obj, LV_DIR_NONE);
-                    {
-                        lv_obj_t *parent_obj = obj;
                         {
-                            lv_obj_t *obj = lv_scale_create(parent_obj);
-                            objects.obj9 = obj;
+                            lv_obj_t *obj = lv_line_create(parent_obj);
                             lv_obj_set_pos(obj, 0, 0);
-                            lv_obj_set_size(obj, 448, 448);
-                            lv_scale_set_mode(obj, LV_SCALE_MODE_ROUND_INNER);
-                            lv_scale_set_range(obj, 10, 40);
-                            lv_scale_set_angle_range(obj, 156);
-                            lv_scale_set_rotation(obj, 192);
-                            lv_scale_set_total_tick_count(obj, 11);
-                            lv_scale_set_major_tick_every(obj, 2);
-                            lv_scale_set_label_show(obj, false);
-                            lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
-                            lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
-                            add_style_mg_scale(obj);
+                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                            static lv_point_precise_t line_points[] = {
+                                { 0, 0 },
+                                { 240, 0 }
+                            };
+                            lv_line_set_points(obj, line_points, 2);
+                            add_style_mg_rule(obj);
                             lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
                         }
                         {
-                            // oil_temp_arc_2
-                            lv_obj_t *obj = lv_arc_create(parent_obj);
-                            objects.oil_temp_arc_2 = obj;
-                            lv_obj_set_pos(obj, 0, 0);
-                            lv_obj_set_size(obj, 376, 376);
-                            lv_arc_set_range(obj, 0, 1000);
-                            lv_arc_set_value(obj, 25);
-                            lv_arc_set_bg_start_angle(obj, 192);
-                            lv_arc_set_bg_end_angle(obj, 348);
-                            lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
-                            add_style_mg_arc(obj);
-                        }
-                        {
-                            lv_obj_t *obj = lv_scale_create(parent_obj);
-                            objects.obj10 = obj;
-                            lv_obj_set_pos(obj, 0, 0);
-                            lv_obj_set_size(obj, 448, 448);
-                            lv_scale_set_mode(obj, LV_SCALE_MODE_ROUND_INNER);
-                            lv_scale_set_range(obj, 10, 40);
-                            lv_scale_set_angle_range(obj, 156);
-                            lv_scale_set_rotation(obj, 12);
-                            lv_scale_set_total_tick_count(obj, 11);
-                            lv_scale_set_major_tick_every(obj, 2);
-                            lv_scale_set_label_show(obj, false);
-                            lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
-                            lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
-                            add_style_mg_scale(obj);
-                            lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
-                        }
-                        {
-                            // engine_oil_temp_arc
-                            lv_obj_t *obj = lv_arc_create(parent_obj);
-                            objects.engine_oil_temp_arc = obj;
-                            lv_obj_set_pos(obj, 0, 0);
-                            lv_obj_set_size(obj, 376, 376);
-                            lv_arc_set_range(obj, 0, 1000);
-                            lv_arc_set_value(obj, 25);
-                            lv_arc_set_bg_start_angle(obj, 12);
-                            lv_arc_set_bg_end_angle(obj, 168);
-                            lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
-                            add_style_mg_arc(obj);
-                        }
-                        {
-                            // oil_temp_2
+                            // oil_pressure
                             lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.oil_temp_2 = obj;
-                            lv_obj_set_pos(obj, -30, -58);
+                            objects.oil_pressure = obj;
+                            lv_obj_set_pos(obj, -30, 58);
                             lv_obj_set_size(obj, 181, LV_SIZE_CONTENT);
                             lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
                             lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
@@ -423,216 +426,24 @@ void create_screen_main() {
                         {
                             lv_obj_t *obj = lv_label_create(parent_obj);
                             objects.obj11 = obj;
-                            lv_obj_set_pos(obj, 0, -144);
+                            lv_obj_set_pos(obj, 87, 81);
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_caption_42(obj);
                             lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "OIL");
+                            lv_label_set_text_static(obj, "BAR");
                         }
+                    }
+                }
+                {
+                    lv_obj_t *obj = lv_tabview_add_tab(parent_obj, "manifold pressures");
+                    lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
+                    lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
+                    lv_obj_set_scroll_dir(obj, LV_DIR_NONE);
+                    {
+                        lv_obj_t *parent_obj = obj;
                         {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
+                            lv_obj_t *obj = lv_scale_create(parent_obj);
                             objects.obj12 = obj;
-                            lv_obj_set_pos(obj, 74, -35);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_mg_text_caption_42(obj);
-                            lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "ºC");
-                        }
-                        {
-                            lv_obj_t *obj = lv_line_create(parent_obj);
-                            lv_obj_set_pos(obj, 0, 0);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            static lv_point_precise_t line_points[] = {
-                                { 0, 0 },
-                                { 240, 0 }
-                            };
-                            lv_line_set_points(obj, line_points, 2);
-                            add_style_mg_rule(obj);
-                            lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
-                        }
-                        {
-                            // engine_oil_temp
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.engine_oil_temp = obj;
-                            lv_obj_set_pos(obj, -30, 58);
-                            lv_obj_set_size(obj, 181, LV_SIZE_CONTENT);
-                            lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
-                            lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
-                            add_style_mg_text_value_120(obj);
-                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "00.0");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.obj13 = obj;
-                            lv_obj_set_pos(obj, 0, 144);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_mg_text_caption_42(obj);
-                            lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "E-OIL");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.obj14 = obj;
-                            lv_obj_set_pos(obj, 74, 81);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_mg_text_caption_42(obj);
-                            lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "ºC");
-                        }
-                    }
-                }
-                {
-                    lv_obj_t *obj = lv_tabview_add_tab(parent_obj, "coolant_temps");
-                    lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
-                    lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
-                    lv_obj_set_scroll_dir(obj, LV_DIR_NONE);
-                    {
-                        lv_obj_t *parent_obj = obj;
-                        {
-                            lv_obj_t *obj = lv_scale_create(parent_obj);
-                            objects.obj15 = obj;
-                            lv_obj_set_pos(obj, 0, 0);
-                            lv_obj_set_size(obj, 448, 448);
-                            lv_scale_set_mode(obj, LV_SCALE_MODE_ROUND_INNER);
-                            lv_scale_set_range(obj, 10, 40);
-                            lv_scale_set_angle_range(obj, 156);
-                            lv_scale_set_rotation(obj, 192);
-                            lv_scale_set_total_tick_count(obj, 11);
-                            lv_scale_set_major_tick_every(obj, 2);
-                            lv_scale_set_label_show(obj, false);
-                            lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
-                            lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
-                            add_style_mg_scale(obj);
-                            lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
-                        }
-                        {
-                            // engine_temp_arc_2
-                            lv_obj_t *obj = lv_arc_create(parent_obj);
-                            objects.engine_temp_arc_2 = obj;
-                            lv_obj_set_pos(obj, 0, 0);
-                            lv_obj_set_size(obj, 376, 376);
-                            lv_arc_set_range(obj, 0, 1000);
-                            lv_arc_set_value(obj, 25);
-                            lv_arc_set_bg_start_angle(obj, 192);
-                            lv_arc_set_bg_end_angle(obj, 348);
-                            lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
-                            add_style_mg_arc(obj);
-                        }
-                        {
-                            lv_obj_t *obj = lv_scale_create(parent_obj);
-                            objects.obj16 = obj;
-                            lv_obj_set_pos(obj, 0, 0);
-                            lv_obj_set_size(obj, 448, 448);
-                            lv_scale_set_mode(obj, LV_SCALE_MODE_ROUND_INNER);
-                            lv_scale_set_range(obj, 10, 40);
-                            lv_scale_set_angle_range(obj, 156);
-                            lv_scale_set_rotation(obj, 12);
-                            lv_scale_set_total_tick_count(obj, 11);
-                            lv_scale_set_major_tick_every(obj, 2);
-                            lv_scale_set_label_show(obj, false);
-                            lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
-                            lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
-                            add_style_mg_scale(obj);
-                            lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
-                        }
-                        {
-                            // coolant_temp_arc
-                            lv_obj_t *obj = lv_arc_create(parent_obj);
-                            objects.coolant_temp_arc = obj;
-                            lv_obj_set_pos(obj, 0, 0);
-                            lv_obj_set_size(obj, 376, 376);
-                            lv_arc_set_range(obj, 0, 1000);
-                            lv_arc_set_value(obj, 25);
-                            lv_arc_set_bg_start_angle(obj, 12);
-                            lv_arc_set_bg_end_angle(obj, 168);
-                            lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
-                            add_style_mg_arc(obj);
-                        }
-                        {
-                            // engine_temp_2
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.engine_temp_2 = obj;
-                            lv_obj_set_pos(obj, -30, -58);
-                            lv_obj_set_size(obj, 181, LV_SIZE_CONTENT);
-                            lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
-                            lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
-                            add_style_mg_text_value_120(obj);
-                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "00.0");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.obj17 = obj;
-                            lv_obj_set_pos(obj, 0, -144);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_mg_text_caption_42(obj);
-                            lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "ENG");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.obj18 = obj;
-                            lv_obj_set_pos(obj, 74, -35);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_mg_text_caption_42(obj);
-                            lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "ºC");
-                        }
-                        {
-                            lv_obj_t *obj = lv_line_create(parent_obj);
-                            lv_obj_set_pos(obj, 0, 0);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            static lv_point_precise_t line_points[] = {
-                                { 0, 0 },
-                                { 240, 0 }
-                            };
-                            lv_line_set_points(obj, line_points, 2);
-                            add_style_mg_rule(obj);
-                            lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
-                        }
-                        {
-                            // coolant_temp
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.coolant_temp = obj;
-                            lv_obj_set_pos(obj, -30, 58);
-                            lv_obj_set_size(obj, 181, LV_SIZE_CONTENT);
-                            lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
-                            lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
-                            add_style_mg_text_value_120(obj);
-                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "00.0");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.obj19 = obj;
-                            lv_obj_set_pos(obj, 0, 144);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_mg_text_caption_42(obj);
-                            lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "CLNT");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.obj20 = obj;
-                            lv_obj_set_pos(obj, 74, 81);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_mg_text_caption_42(obj);
-                            lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "ºC");
-                        }
-                    }
-                }
-                {
-                    lv_obj_t *obj = lv_tabview_add_tab(parent_obj, "pressures");
-                    lv_obj_add_event_cb(obj, action_global_pressed, LV_EVENT_PRESSED, (void *)0);
-                    lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
-                    lv_obj_set_scroll_dir(obj, LV_DIR_NONE);
-                    {
-                        lv_obj_t *parent_obj = obj;
-                        {
-                            lv_obj_t *obj = lv_scale_create(parent_obj);
-                            objects.obj21 = obj;
                             lv_obj_set_pos(obj, 0, 0);
                             lv_obj_set_size(obj, 448, 448);
                             lv_scale_set_mode(obj, LV_SCALE_MODE_ROUND_INNER);
@@ -662,7 +473,7 @@ void create_screen_main() {
                         }
                         {
                             lv_obj_t *obj = lv_scale_create(parent_obj);
-                            objects.obj22 = obj;
+                            objects.obj13 = obj;
                             lv_obj_set_pos(obj, 0, 0);
                             lv_obj_set_size(obj, 448, 448);
                             lv_scale_set_mode(obj, LV_SCALE_MODE_ROUND_INNER);
@@ -678,9 +489,9 @@ void create_screen_main() {
                             lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
                         }
                         {
-                            // throttle_pressure_arc
+                            // manifold_pressure_boost_1_arc
                             lv_obj_t *obj = lv_arc_create(parent_obj);
-                            objects.throttle_pressure_arc = obj;
+                            objects.manifold_pressure_boost_1_arc = obj;
                             lv_obj_set_pos(obj, 0, 0);
                             lv_obj_set_size(obj, 376, 376);
                             lv_arc_set_range(obj, 0, 1000);
@@ -704,7 +515,7 @@ void create_screen_main() {
                         }
                         {
                             lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.obj23 = obj;
+                            objects.obj14 = obj;
                             lv_obj_set_pos(obj, 0, -144);
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_caption_42(obj);
@@ -713,7 +524,7 @@ void create_screen_main() {
                         }
                         {
                             lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.obj24 = obj;
+                            objects.obj15 = obj;
                             lv_obj_set_pos(obj, 88, -35);
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_caption_42(obj);
@@ -733,9 +544,9 @@ void create_screen_main() {
                             lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
                         }
                         {
-                            // throttle_pressure
+                            // manifold_pressure_boost_1
                             lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.throttle_pressure = obj;
+                            objects.manifold_pressure_boost_1 = obj;
                             lv_obj_set_pos(obj, -30, 58);
                             lv_obj_set_size(obj, 181, LV_SIZE_CONTENT);
                             lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
@@ -746,16 +557,16 @@ void create_screen_main() {
                         }
                         {
                             lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.obj25 = obj;
+                            objects.obj16 = obj;
                             lv_obj_set_pos(obj, 0, 144);
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_caption_42(obj);
                             lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "THROT");
+                            lv_label_set_text_static(obj, "MANF 1");
                         }
                         {
                             lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.obj26 = obj;
+                            objects.obj17 = obj;
                             lv_obj_set_pos(obj, 88, 81);
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_caption_42(obj);
@@ -819,9 +630,9 @@ void create_screen_main() {
                             lv_label_set_text_static(obj, "RPM");
                         }
                         {
-                            // bmw_oil_temp
+                            // bmw_speed
                             lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.bmw_oil_temp = obj;
+                            objects.bmw_speed = obj;
                             lv_obj_set_pos(obj, -60, -55);
                             lv_obj_set_size(obj, 120, LV_SIZE_CONTENT);
                             lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
@@ -832,143 +643,10 @@ void create_screen_main() {
                         }
                         {
                             lv_obj_t *obj = lv_label_create(parent_obj);
-                            lv_obj_set_pos(obj, 54, -55);
+                            lv_obj_set_pos(obj, 39, -55);
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_status(obj);
-                            lv_label_set_text_static(obj, "ºC OIL");
-                        }
-                        {
-                            // bmw_engine_temp
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.bmw_engine_temp = obj;
-                            lv_obj_set_pos(obj, -60, -30);
-                            lv_obj_set_size(obj, 120, LV_SIZE_CONTENT);
-                            lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
-                            add_style_mg_text_status(obj);
-                            lv_obj_set_style_text_color(obj, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "000000");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            lv_obj_set_pos(obj, 68, -30);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_mg_text_status(obj);
-                            lv_label_set_text_static(obj, "ºC COOL");
-                        }
-                        {
-                            // bmw_hpfp
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.bmw_hpfp = obj;
-                            lv_obj_set_pos(obj, -60, -5);
-                            lv_obj_set_size(obj, 120, LV_SIZE_CONTENT);
-                            lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
-                            add_style_mg_text_status(obj);
-                            lv_obj_set_style_text_color(obj, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "000000");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            lv_obj_set_pos(obj, 82, -5);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_mg_text_status(obj);
-                            lv_label_set_text_static(obj, "BAR HPFP");
-                        }
-                        {
-                            // bmw_throttle_pressure
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.bmw_throttle_pressure = obj;
-                            lv_obj_set_pos(obj, -60, 20);
-                            lv_obj_set_size(obj, 120, LV_SIZE_CONTENT);
-                            lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
-                            add_style_mg_text_status(obj);
-                            lv_obj_set_style_text_color(obj, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "000000");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            lv_obj_set_pos(obj, 90, 20);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_mg_text_status(obj);
-                            lv_label_set_text_static(obj, "BAR THROT");
-                        }
-                        {
-                            // bmw_manifold_boost
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.bmw_manifold_boost = obj;
-                            lv_obj_set_pos(obj, -60, 45);
-                            lv_obj_set_size(obj, 120, LV_SIZE_CONTENT);
-                            lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
-                            add_style_mg_text_status(obj);
-                            lv_obj_set_style_text_color(obj, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "000000");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            lv_obj_set_pos(obj, 90, 45);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_mg_text_status(obj);
-                            lv_label_set_text_static(obj, "BAR BOOST");
-                        }
-                        {
-                            // bmw_engine_oil_temp
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.bmw_engine_oil_temp = obj;
-                            lv_obj_set_pos(obj, -60, 70);
-                            lv_obj_set_size(obj, 120, LV_SIZE_CONTENT);
-                            lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
-                            add_style_mg_text_status(obj);
-                            lv_obj_set_style_text_color(obj, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "000000");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            lv_obj_set_pos(obj, 68, 70);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_mg_text_status(obj);
-                            lv_label_set_text_static(obj, "ºC E OIL");
-                        }
-                        {
-                            // bmw_engine_oil_pressure
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.bmw_engine_oil_pressure = obj;
-                            lv_obj_set_pos(obj, -60, 95);
-                            lv_obj_set_size(obj, 120, LV_SIZE_CONTENT);
-                            lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
-                            add_style_mg_text_status(obj);
-                            lv_obj_set_style_text_color(obj, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "000000");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            lv_obj_set_pos(obj, 66, 95);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_mg_text_status(obj);
-                            lv_label_set_text_static(obj, "BAR OIL");
-                        }
-                        {
-                            // bmw_coolant_temp
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.bmw_coolant_temp = obj;
-                            lv_obj_set_pos(obj, -60, 120);
-                            lv_obj_set_size(obj, 120, LV_SIZE_CONTENT);
-                            lv_label_set_long_mode(obj, LV_LABEL_LONG_CLIP);
-                            add_style_mg_text_status(obj);
-                            lv_obj_set_style_text_color(obj, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
-                            lv_label_set_text_static(obj, "000000");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            lv_obj_set_pos(obj, 81, 120);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            add_style_mg_text_status(obj);
-                            lv_label_set_text_static(obj, "ºC COOL 2");
+                            lv_label_set_text_static(obj, "KPH");
                         }
                     }
                 }
