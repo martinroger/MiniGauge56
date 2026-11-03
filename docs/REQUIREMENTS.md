@@ -45,12 +45,12 @@ These were described in earlier revisions of this document and no longer exist i
 | **REQ-LOG-06** | SD card mount | SD mount failure is logged and leaves logging unavailable without stopping the rest of the firmware. `CONFIG_BSP_SD_FORMAT_ON_MOUNT_FAIL=y` lets the BSP format a card it cannot mount. |
 | **REQ-BMWP-01** | Component version | `bmwp2000` git tag `v3.3.0` in `main/idf_component.yml`, pinned in `dependencies.lock`. |
 | **REQ-BMWP-02** | Project configuration | `CONFIG_BMWP2000_CUSTOM_CIDS_PATH="config/cids.json"` and `CONFIG_BMWP2000_CUSTOM_LIDS_PATH="config/lids.json"`. |
-| **REQ-BMWP-03** | LID train | One LID `0xF0` ("engineCore") polled with `0x21 0xF0` at the poll rate (no `transmission_mode` key; the DME has no periodic transmission) carrying 10 CIDs, the maximum per LID: `rpm`, `vehicleSpeed`, `throttlePressure`, `manifoldPressureBoost1`, `hpfpPressure`, `oilTemp`, `engineOilTemp`, `oilPressureActual`, `engineTemp`, `coolantTemp`. |
+| **REQ-BMWP-03** | LID train | One LID `0xF0` ("engineCore") polled with `0x21 0xF0` at the poll rate (no `transmission_mode` key; the DME has no periodic transmission) carrying 10 CIDs, the maximum per LID: `rpm`, `vehicleSpeed`, `manifoldPressureBoost1`, `hpfpPressure`, `oilTemp`, `oilPressureActual`, `engineTemp`, `ambientPressure`, `manifoldPressure`, `gearActual`. |
 | **REQ-BMWP-04** | Lifecycle | `bmwp2000_init()`, `bmwp2000_register_callback()` and `bmwp2000_start()` run at boot after CAN init; failures are logged and the rest of the firmware keeps running. |
-| **REQ-BMWP-05** | Telemetry cache | `on_bmwp_telemetry_updated()` counts updates, timestamps the last one and reads 13 CIDs with `bmwp2000_get_cid_value()`: the 10 in the LID plus `maf`, `iat` and `gearActual`, which are no longer in the LID and stay at 0. |
-| **REQ-UI-01** | Page layout | One tabview, tab bar hidden, horizontal swipe between five pages: coolant, oil, BMWP2000, logger, widget test. |
+| **REQ-BMWP-05** | Telemetry cache | `on_bmwp_telemetry_updated()` counts updates, timestamps the last one and reads the 10 CIDs of the LID with `bmwp2000_get_cid_value()`. Pressures are decoded in hPa and cached in bar; `gearActual` is cached raw. |
+| **REQ-UI-01** | Page layout | One tabview, tab bar hidden, horizontal swipe between eight pages: coolant, gear, ambient pressure, oil temperature + pressure, manifold pressures, BMWP2000, logger, widget test. |
 | **REQ-UI-02** | Per-page refresh | `update_display()` runs every 100 ms and only updates the active page's widgets under `bsp_display_lock(100)`; a lock timeout skips the cycle. |
-| **REQ-UI-03** | Readouts | Coolant page shows `engineTemp`; oil page shows `oilTemp`; BMWP2000 page shows update count, RPM, `oilTemp`, `engineTemp`, `hpfpPressure` and the daemon state. |
+| **REQ-UI-03** | Readouts | Coolant page shows `engineTemp`; gear page shows raw `gearActual`; ambient page shows `ambientPressure` (arc 0.8 to 1.1 bar); oil page shows `oilTemp` and `oilPressureActual`; manifold page shows `manifoldPressure` and `manifoldPressureBoost1` (arcs 0.5 to 2.5 bar); BMWP2000 page shows update count, RPM, `vehicleSpeed` and the daemon state. |
 | **REQ-UI-04** | Daemon state indication | The state label names the `bmwp2000_get_state()` state; the LCD emulator switches to the alternate palette in `CLEAR_LID` and `UNINIT`, and to the primary palette otherwise. |
 | **REQ-UI-05** | Logging control | The LOG switch starts and stops logging; the switch is reverted if the start is refused or the writer aborts. The logger page shows written plus buffered size and LOGGING / PAUSED. |
 | **REQ-UI-06** | Display power | Always-on is the boot default (BKLT switch checked) at 40 % brightness. With BKLT off, the backlight turns off after 10 s without touch; any touch wakes it. A LOG switch touch while asleep only wakes the display. |
@@ -84,7 +84,7 @@ These were described in earlier revisions of this document and no longer exist i
 | **REQ-BMWP-05** | [`main/main.cpp`](../main/main.cpp) | `on_bmwp_telemetry_updated()` | `BMWP_STATUS` debug log |
 | **REQ-UI-01** | [`components/ui/src/screens.c`](../components/ui/src/screens.c) | `objects.global_tabview` | On device |
 | **REQ-UI-02** | [`main/main.cpp`](../main/main.cpp) | `update_display()` | Code review |
-| **REQ-UI-03** | [`main/main.cpp`](../main/main.cpp) | `objects.engine_temp`, `objects.oil_temp`, `objects.bmw_*` | On device |
+| **REQ-UI-03** | [`main/main.cpp`](../main/main.cpp) | `objects.engine_temp`, `objects.gear_actual`, `objects.ambient_pressure`, `objects.oil_temp`, `objects.oil_pressure`, `objects.manifold_pressure*`, `objects.bmw_*` | On device |
 | **REQ-UI-04** | [`main/main.cpp`](../main/main.cpp) | `bmwp2000_get_state()`, `lcd_emulator_select_palette_slot()` | On device |
 | **REQ-UI-05** | [`main/main.cpp`](../main/main.cpp) | `action_start_stop_clicked()`, `objects.log_sw` | On device |
 | **REQ-UI-06** | [`main/main.cpp`](../main/main.cpp) | `wakeDisplay()`, `sleepDisplay()`, `backlight_override`, `sleepDisplayTimer` | On device |
@@ -99,8 +99,8 @@ These were described in earlier revisions of this document and no longer exist i
 ## 5. Known gaps
 Observed in the current code, not requirements:
 - The coolant and oil page arcs (`engine_temp_arc`, `oil_temp_arc`) are never updated.
-- Six of the 10 polled CIDs are cached but not displayed: `vehicleSpeed`, `throttlePressure`, `manifoldPressureBoost1`, `engineOilTemp`, `oilPressureActual`, `coolantTemp`.
-- `on_bmwp_telemetry_updated()` still reads `maf`, `iat` and `gearActual`, which were removed from the LID to stay within 10 CIDs.
+- `hpfpPressure` is polled and logged but not displayed.
+- The `gearActual` encoding is not known yet, so the gear page shows the raw value.
 - `hpfpPressure` is scaled to MPa in `config/cids.json`, while the UI caption and code comments say bar.
 - Log records keep 16 bits of the CAN ID, so 29-bit extended IDs are truncated.
 - Log filenames use uptime, not wall-clock time.

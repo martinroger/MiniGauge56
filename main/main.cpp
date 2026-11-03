@@ -55,31 +55,20 @@ static double s_bmwp_cached_hpfp = 0.0;
 /** @brief Cached vehicle speed (km/h) decoded from BMWP2000 telemetry */
 static double s_bmwp_cached_vehicle_speed = 0.0;
 
-// Not part of the active LID (config/lids.json), re-enable when added back to the LID
-// /** @brief Cached mass air flow (kg/h) decoded from BMWP2000 telemetry */
-// static double s_bmwp_cached_maf = 0.0;
+/** @brief Cached ambient (barometric) pressure (bar) decoded from BMWP2000 telemetry */
+static double s_bmwp_cached_ambient_pressure = 0.0;
 
-// /** @brief Cached intake air temperature (degC) decoded from BMWP2000 telemetry */
-// static double s_bmwp_cached_iat = 0.0;
-
-/** @brief Cached pre-throttle charge pressure (bar) decoded from BMWP2000 telemetry */
-static double s_bmwp_cached_throttle_pressure = 0.0;
+/** @brief Cached intake manifold absolute pressure (bar) decoded from BMWP2000 telemetry */
+static double s_bmwp_cached_manifold_pressure = 0.0;
 
 /** @brief Cached intake manifold boost pressure 1 (bar) decoded from BMWP2000 telemetry */
 static double s_bmwp_cached_manifold_pressure_boost1 = 0.0;
 
-/** @brief Cached engine oil temperature (degC) decoded from BMWP2000 telemetry */
-static double s_bmwp_cached_engine_oil_temp = 0.0;
-
 /** @brief Cached actual oil pressure (bar) decoded from BMWP2000 telemetry */
 static double s_bmwp_cached_oil_pressure_actual = 0.0;
 
-/** @brief Cached engine coolant temperature (degC) from the coolantTemp CID decoded from BMWP2000 telemetry */
-static double s_bmwp_cached_coolant_temp = 0.0;
-
-// Not part of the active LID (config/lids.json), re-enable when added back to the LID
-// /** @brief Cached actual gear decoded from BMWP2000 telemetry */
-// static double s_bmwp_cached_gear_actual = 0.0;
+/** @brief Cached actual gear (raw CID value, encoding not yet known) decoded from BMWP2000 telemetry */
+static double s_bmwp_cached_gear_actual = 0.0;
 
 #pragma endregion
 
@@ -88,11 +77,11 @@ static double s_bmwp_cached_coolant_temp = 0.0;
 /** @brief Full-scale value of every gauge arc (lv_arc_set_range(0, UI_ARC_FULL_SCALE) in the EEZ project) */
 #define UI_ARC_FULL_SCALE 1000
 
-/** @brief Engine / coolant temperature arc span (degC) */
+/** @brief Engine temperature arc span (degC) */
 #define UI_ARC_COOLANT_MIN 50.0
 #define UI_ARC_COOLANT_MAX 130.0
 
-/** @brief Oil temperature arc span (degC), shared by oilTemp and engineOilTemp */
+/** @brief Oil temperature arc span (degC) */
 #define UI_ARC_OIL_TEMP_MIN 50.0
 #define UI_ARC_OIL_TEMP_MAX 150.0
 
@@ -103,7 +92,11 @@ static double s_bmwp_cached_coolant_temp = 0.0;
 #define UI_ARC_OIL_PRESSURE_MIN 0.0
 #define UI_ARC_OIL_PRESSURE_MAX 6.0
 
-/** @brief Absolute charge pressure arc span (bar), shared by manifold and pre-throttle pressure */
+/** @brief Ambient pressure arc span (bar) */
+#define UI_ARC_AMBIENT_MIN 0.8
+#define UI_ARC_AMBIENT_MAX 1.1
+
+/** @brief Absolute manifold pressure arc span (bar), shared by manifoldPressure and manifoldPressureBoost1 */
 #define UI_ARC_BOOST_MIN 0.5
 #define UI_ARC_BOOST_MAX 2.5
 
@@ -167,14 +160,11 @@ static void on_bmwp_telemetry_updated(void *user_ctx)
 	bmwp2000_get_cid_value("engineTemp", &s_bmwp_cached_engine_temp);
 	bmwp2000_get_cid_value("hpfpPressure", &s_bmwp_cached_hpfp);
 	bmwp2000_get_cid_value("vehicleSpeed", &s_bmwp_cached_vehicle_speed);
-	// bmwp2000_get_cid_value("maf", &s_bmwp_cached_maf);
-	// bmwp2000_get_cid_value("iat", &s_bmwp_cached_iat);
-	cache_pressure_bar("throttlePressure", &s_bmwp_cached_throttle_pressure);
+	cache_pressure_bar("ambientPressure", &s_bmwp_cached_ambient_pressure);
+	cache_pressure_bar("manifoldPressure", &s_bmwp_cached_manifold_pressure);
 	cache_pressure_bar("manifoldPressureBoost1", &s_bmwp_cached_manifold_pressure_boost1);
-	bmwp2000_get_cid_value("engineOilTemp", &s_bmwp_cached_engine_oil_temp);
 	cache_pressure_bar("oilPressureActual", &s_bmwp_cached_oil_pressure_actual);
-	bmwp2000_get_cid_value("coolantTemp", &s_bmwp_cached_coolant_temp);
-	// bmwp2000_get_cid_value("gearActual", &s_bmwp_cached_gear_actual);
+	bmwp2000_get_cid_value("gearActual", &s_bmwp_cached_gear_actual);
 
 	// Wake the UI task, throttled so LVGL is not redrawn at the raw LID frame rate
 	if (s_update_display_task && (now_us - last_notify_us) >= UI_NOTIFY_MIN_INTERVAL_US)
@@ -491,48 +481,33 @@ void update_display(void *pvParameters)
 					lv_arc_set_value(objects.engine_temp_arc, ui_arc_value(s_bmwp_cached_engine_temp, UI_ARC_COOLANT_MIN, UI_ARC_COOLANT_MAX));
 					break;
 
-			case 1: // Oil temp
-					lv_label_set_text_fmt(objects.oil_temp, "%.1f", s_bmwp_cached_oil_temp);
-					lv_arc_set_value(objects.oil_temp_arc, ui_arc_value(s_bmwp_cached_oil_temp, UI_ARC_OIL_TEMP_MIN, UI_ARC_OIL_TEMP_MAX));
+			case 1: // Gear (raw CID value until the encoding is known)
+					lv_label_set_text_fmt(objects.gear_actual, "%ld", lround(s_bmwp_cached_gear_actual));
 					break;
 
-			case 2: // Oil pressure
+			case 2: // Ambient pressure
+					lv_label_set_text_fmt(objects.ambient_pressure, "%.2f", s_bmwp_cached_ambient_pressure);
+					lv_arc_set_value(objects.ambient_pressure_arc, ui_arc_value(s_bmwp_cached_ambient_pressure, UI_ARC_AMBIENT_MIN, UI_ARC_AMBIENT_MAX));
+					break;
+
+			case 3: // Oil temp + oil pressure
+					lv_label_set_text_fmt(objects.oil_temp, "%.1f", s_bmwp_cached_oil_temp);
+					lv_arc_set_value(objects.oil_temp_arc, ui_arc_value(s_bmwp_cached_oil_temp, UI_ARC_OIL_TEMP_MIN, UI_ARC_OIL_TEMP_MAX));
 					lv_label_set_text_fmt(objects.oil_pressure, "%.2f", s_bmwp_cached_oil_pressure_actual);
 					lv_arc_set_value(objects.oil_pressure_arc, ui_arc_value(s_bmwp_cached_oil_pressure_actual, UI_ARC_OIL_PRESSURE_MIN, UI_ARC_OIL_PRESSURE_MAX));
 					break;
 
-			case 3: // Oil temp + engine oil temp
-					lv_label_set_text_fmt(objects.oil_temp_2, "%.1f", s_bmwp_cached_oil_temp);
-					lv_arc_set_value(objects.oil_temp_arc_2, ui_arc_value(s_bmwp_cached_oil_temp, UI_ARC_OIL_TEMP_MIN, UI_ARC_OIL_TEMP_MAX));
-					lv_label_set_text_fmt(objects.engine_oil_temp, "%.1f", s_bmwp_cached_engine_oil_temp);
-					lv_arc_set_value(objects.engine_oil_temp_arc, ui_arc_value(s_bmwp_cached_engine_oil_temp, UI_ARC_OIL_TEMP_MIN, UI_ARC_OIL_TEMP_MAX));
+			case 4: // Manifold pressure + manifold boost pressure 1
+					lv_label_set_text_fmt(objects.manifold_pressure, "%.2f", s_bmwp_cached_manifold_pressure);
+					lv_arc_set_value(objects.manifold_pressure_arc, ui_arc_value(s_bmwp_cached_manifold_pressure, UI_ARC_BOOST_MIN, UI_ARC_BOOST_MAX));
+					lv_label_set_text_fmt(objects.manifold_pressure_boost_1, "%.2f", s_bmwp_cached_manifold_pressure_boost1);
+					lv_arc_set_value(objects.manifold_pressure_boost_1_arc, ui_arc_value(s_bmwp_cached_manifold_pressure_boost1, UI_ARC_BOOST_MIN, UI_ARC_BOOST_MAX));
 					break;
 
-			case 4: // Engine temp + coolant temp
-					lv_label_set_text_fmt(objects.engine_temp_2, "%.1f", s_bmwp_cached_engine_temp);
-					lv_arc_set_value(objects.engine_temp_arc_2, ui_arc_value(s_bmwp_cached_engine_temp, UI_ARC_COOLANT_MIN, UI_ARC_COOLANT_MAX));
-					lv_label_set_text_fmt(objects.coolant_temp, "%.1f", s_bmwp_cached_coolant_temp);
-					lv_arc_set_value(objects.coolant_temp_arc, ui_arc_value(s_bmwp_cached_coolant_temp, UI_ARC_COOLANT_MIN, UI_ARC_COOLANT_MAX));
-					break;
-
-			case 5: // Manifold + pre-throttle pressure
-					lv_label_set_text_fmt(objects.manifold_pressure, "%.2f", s_bmwp_cached_manifold_pressure_boost1);
-					lv_arc_set_value(objects.manifold_pressure_arc, ui_arc_value(s_bmwp_cached_manifold_pressure_boost1, UI_ARC_BOOST_MIN, UI_ARC_BOOST_MAX));
-					lv_label_set_text_fmt(objects.throttle_pressure, "%.2f", s_bmwp_cached_throttle_pressure);
-					lv_arc_set_value(objects.throttle_pressure_arc, ui_arc_value(s_bmwp_cached_throttle_pressure, UI_ARC_BOOST_MIN, UI_ARC_BOOST_MAX));
-					break;
-
-			case 6: // BM Daemon
-					lv_label_set_text_fmt(objects.bmw_engine_temp, "%.1f", s_bmwp_cached_engine_temp);
+			case 5: // BM Daemon
 					lv_label_set_text_fmt(objects.bmw_frames_count, "%lu", s_bmwp_frame_count);
-					lv_label_set_text_fmt(objects.bmw_hpfp, "%.1f", s_bmwp_cached_hpfp);
-					lv_label_set_text_fmt(objects.bmw_oil_temp, "%.1f", s_bmwp_cached_oil_temp);
 					lv_label_set_text_fmt(objects.bmw_rpm, "%lu", lround(s_bmwp_cached_rpm));
-					lv_label_set_text_fmt(objects.bmw_throttle_pressure, "%.2f", s_bmwp_cached_throttle_pressure);
-					lv_label_set_text_fmt(objects.bmw_manifold_boost, "%.2f", s_bmwp_cached_manifold_pressure_boost1);
-					lv_label_set_text_fmt(objects.bmw_engine_oil_temp, "%.1f", s_bmwp_cached_engine_oil_temp);
-					lv_label_set_text_fmt(objects.bmw_engine_oil_pressure, "%.2f", s_bmwp_cached_oil_pressure_actual);
-					lv_label_set_text_fmt(objects.bmw_coolant_temp, "%.1f", s_bmwp_cached_coolant_temp);
+					lv_label_set_text_fmt(objects.bmw_speed, "%lu", lround(s_bmwp_cached_vehicle_speed));
 				switch (bmwp2000_get_state())
 				{
 				case BMWP2000_STATE_BACKOFF_WAIT:
@@ -581,7 +556,7 @@ void update_display(void *pvParameters)
 				}
 				break;
 
-			case 7: // Logger
+			case 6: // Logger
 
 				break;
 
