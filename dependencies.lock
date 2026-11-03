@@ -1,6 +1,6 @@
 dependencies:
   bmwp2000:
-    component_hash: 13a73cca06ca4fd2ff7eb0f6214a21c49bbd168f33131df6b61390b0ec62dbbb
+    component_hash: 6c08b4ddda0ccc647a7441fa1d430d45b731616d15a79e1c8fe91c1aa043d1ad
     dependencies:
     - name: idf
       version: '>=5.5.0'
@@ -12,7 +12,7 @@ dependencies:
       git: https://github.com/martinroger/BMWP2000.git
       path: .
       type: git
-    version: 839f77a03ca64b59e6b6d28445f98249a7bdcd1f
+    version: 238998e0c8c84c5a8e353418c2b870d741890310
   espressif/button:
     component_hash: 7cb7e2944b5828f409af0c92f7fcc0e2d405de09c3325b7ee4a0eba5fb28dfdc
     dependencies:
@@ -410,6 +410,6 @@ direct_dependencies:
 - idf
 - twai_daemon
 - waveshare/esp32_s3_touch_amoled_1_75
-manifest_hash: b2ae5ffd938580e2f292e37eb9b99f650accc185a6f2c4182c31cef9f43c112f
+manifest_hash: ea154a748d56a0a58a43bd04194be7e24369a7ebcb7d1b49ce1ff6ca345e7cb1
 target: esp32s3
 version: 3.0.0
