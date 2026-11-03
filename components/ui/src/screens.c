@@ -393,7 +393,7 @@ void create_screen_main() {
                         {
                             lv_obj_t *obj = lv_label_create(parent_obj);
                             objects.obj10 = obj;
-                            lv_obj_set_pos(obj, 74, -35);
+                            lv_obj_set_pos(obj, 75, -35);
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_caption_42(obj);
                             lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -426,7 +426,7 @@ void create_screen_main() {
                         {
                             lv_obj_t *obj = lv_label_create(parent_obj);
                             objects.obj11 = obj;
-                            lv_obj_set_pos(obj, 87, 81);
+                            lv_obj_set_pos(obj, 88, 81);
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_mg_text_caption_42(obj);
                             lv_obj_set_style_text_color(obj, lv_color_hex(0xcccccc), LV_PART_MAIN | LV_STATE_DEFAULT);

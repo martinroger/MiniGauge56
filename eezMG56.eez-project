@@ -1815,7 +1815,7 @@
                     {
                       "objID": "e3fce76e-e52f-4c39-e025-38da7b5204b4",
                       "type": "LVGLLabelWidget",
-                      "left": 74,
+                      "left": 75,
                       "top": -35,
                       "width": 27,
                       "height": 45,
@@ -1977,7 +1977,7 @@
                     {
                       "objID": "357b2e68-5e42-431d-e6aa-2884f2c27c09",
                       "type": "LVGLLabelWidget",
-                      "left": 87,
+                      "left": 88,
                       "top": 81,
                       "width": 52,
                       "height": 45,

@@ -6,14 +6,17 @@ MiniGauge56 is a side gauge for the Mini R56. It runs on an ESP32-S3 with a 1.75
 
 ## What it does today
 - **CAN interface**: on-chip TWAI controller at 500 kbps through the external `twai_daemon` component (transceiver TX on GPIO 43, RX on GPIO 44, hardware loopback enabled so the gauge's own requests are logged too).
-- **Engine telemetry (BMWP2000)**: the `bmwp2000` component (KWP2000 / ISO 14230-3 over ISO-TP, BMW FAST addressing) defines one dynamic local identifier (`0xF0`, "engineCore") on the DME and polls it with `readDataByLocalIdentifier` at the daemon poll rate (the DME has no periodic transmission service). It carries 10 parameters (the library limit per LID), listed in [config/lids.json](config/lids.json) and scaled from [config/cids.json](config/cids.json): RPM, vehicle speed, pre-throttle and manifold boost pressure, HPFP rail pressure, two oil temperatures, oil pressure and two coolant temperatures.
+- **Engine telemetry (BMWP2000)**: the `bmwp2000` component (KWP2000 / ISO 14230-3 over ISO-TP, BMW FAST addressing) defines one dynamic local identifier (`0xF0`, "engineCore") on the DME and polls it with `readDataByLocalIdentifier` at the daemon poll rate (the DME has no periodic transmission service). It carries 10 parameters (the library limit per LID), listed in [config/lids.json](config/lids.json) and scaled from [config/cids.json](config/cids.json): RPM, vehicle speed, ambient pressure, manifold absolute pressure, manifold boost pressure 1, HPFP rail pressure, oil temperature, oil pressure, coolant temperature and actual gear.
 - **CAN logger**: every received frame is packed into a 16-byte record, buffered in a 32 KB PSRAM ring buffer and written to `/sdcard/log_<uptime_us>.bin` in 8 KB blocks. Logging is started and stopped from the UI.
-- **UI**: LVGL 9 tabview generated with EEZ Studio ([eezMG56.eez-project](eezMG56.eez-project)), five swipeable pages with a hidden tab bar:
+- **UI**: LVGL 9 tabview generated with EEZ Studio ([eezMG56.eez-project](eezMG56.eez-project)), eight swipeable pages with a hidden tab bar:
   1. Coolant temperature (large readout)
-  2. Oil temperature (large readout)
-  3. BMWP2000 page: frame counter, RPM, oil and coolant temperature, HPFP and daemon state
-  4. Logger page: file size, logging status, backlight (BKLT) and LOG switches
-  5. Widget test page: switch to bypass the LCD emulation filter
+  2. Actual gear (raw CID value)
+  3. Ambient pressure (bar)
+  4. Oil temperature and oil pressure
+  5. Manifold absolute pressure and manifold boost pressure 1 (bar)
+  6. BMWP2000 page: daemon state, frame counter, RPM and vehicle speed
+  7. Logger page: file size, logging status, backlight (BKLT) and LOG switches
+  8. Widget test page: LCD emulation filter switch and brightness slider
 - **Retro LCD emulator**: in-tree `lcd_emulator` flush decorator that renders the 8-bit LVGL frame as an amber dot-matrix LCD (cell 3 px, 8-bit grayscale, custom primary and alternate palettes). The alternate palette is shown while the BMWP2000 daemon is clearing its LID or uninitialised.
 - **Display power**: always-on at 40 % brightness by default; with the BKLT switch off the panel sleeps after 10 s without touch and wakes on the next touch.
 - **Host tools**: zero-dependency Python web tools to inspect logs, compose LID trains and plot signals ([tools/README.md](tools/README.md)).
