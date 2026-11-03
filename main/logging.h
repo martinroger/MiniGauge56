@@ -67,6 +67,8 @@ extern "C"
 	 * @note Thread-safety: Thread-safe.
 	 * @note Side effects: Sets is_logging to true, opens a new timestamped file on SD card,
 	 *                    and spawns the sd_writer FreeRTOS task (stack 4096, priority 5).
+	 *                    Then makes the BMWP2000 daemon clear and redefine its LID (CLEAR_LID ->
+	 *                    SETUP_LID -> RUNNING) so those frames are part of the log.
 	 */
 	void start_logging(void);
 

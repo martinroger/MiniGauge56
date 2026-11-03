@@ -10,6 +10,7 @@
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "twai_daemon.h"
+#include "bmwp2000.h"
 #include <time.h>
 #include <sys/time.h>
 
@@ -218,6 +219,18 @@ void start_logging(void)
 		is_logging = true;
 		xTaskCreate(sd_writer_task, "sd_writer", 4096, NULL, 5, NULL);
 		ESP_LOGI(__func__, "Block size: %lu", BLOCK_SIZE);
+
+		// Clear and redefine the dynamic LID now that the log is open (is_logging is already
+		// set), so the 0x2C clear/define exchange is part of the recording. Skipped when the
+		// daemon is not started, polling resumes on its own once the sequence completes.
+		if (bmwp2000_get_state() != BMWP2000_STATE_UNINIT)
+		{
+			esp_err_t err = bmwp2000_restart_lid();
+			if (err != ESP_OK)
+			{
+				ESP_LOGW(__func__, "LID restart failed: %s", esp_err_to_name(err));
+			}
+		}
 	}
 }
 
